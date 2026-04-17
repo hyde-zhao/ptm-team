@@ -16,7 +16,13 @@ Claude Code 使用的 Agents 集合
 
 ### ngfw-factory-installer
 
-用于卸载安装自动化工厂的 NGFW 软件，在 Cluade Code 中可执行以下命令启动
+用于卸载安装自动化工厂设备的 Agent，在使用之前需要先运行以下脚本加载 Agent 需要用到的 Skills
+
+```shell
+uv run script/skills_manager.py --load "自动化工厂运维"
+```
+
+然后在 Cluade Code 中可执行以下命令启动 Agent
 
 ```shell
 claude --allow-dangerously-skip-permissions --agent ngfw-factory-installer
@@ -54,7 +60,6 @@ md5sum: 3682c766b11460eb55af6957a7ce653f
 安装包: ftp://<IP_ADDRESS>/ngfw/images/V6R01C02B006/TGFW-V6R01C02B006-ft-install-release-20260327154345.tar.gz
 md5sum: 3682c766b11460eb55af6957a7ce653f
 ```
-
 </details>
 
 ## script
@@ -66,7 +71,7 @@ md5sum: 3682c766b11460eb55af6957a7ce653f
 Skills 管理工具，可以便捷的启用、禁用 Skill，以及对 Skills 组打包成独立的配置以快速切换，运行命令如下
 
 ```shell
-
+uv run script/skills_manager.py
 ```
 
 ## skills
