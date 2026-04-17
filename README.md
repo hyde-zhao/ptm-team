@@ -1,93 +1,82 @@
 # ptm-team
 
+TGFW测试组 PTM (Product Test Management) Team 项目
 
+## agents
 
-## Getting started
+Claude Code 使用的 Agents 集合
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+### 使用方法
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+在 clone 了代码之后，你还需要在你的 Code Agent 配置目录中建立软链接，它才可以正确的识别到这些 skills
 
-## Add your files
+对于 Claude Code 的话你可以使用以下命令创建软链接
+- 先创建 Claude Code 的配置目录 `mkdir -p .claude`
+- 再创建 Agents 软链接 `ln -s "$(pwd)/agents" "$(pwd)/.claude/agents"`
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+### ngfw-factory-installer
+
+用于卸载安装自动化工厂的 NGFW 软件，在 Cluade Code 中可执行以下命令启动
+
+```shell
+claude --allow-dangerously-skip-permissions --agent ngfw-factory-installer
+```
+
+执行安装的提示词示例如下
+
+<details>
+<summary>点击展开提示词</summary>
+
+```md
+给以下设备卸载安装 ngfw
+# 第1个设备
+设备形态: C3758R
+安装包: ftp://<IP_ADDRESS>/ngfw/images/V6R01C02B007/TGFW-V6R01C02B007-hg-install-release-20260411154810.tar.gz
+md5sum: 6648e96ddb27e4a6c65cb15f0a7250ba
+# 第2个设备
+设备形态: NXP290
+安装包: ftp://<IP_ADDRESS>/ngfw/images/V6R01C02B006/TGFW-V6R01C02B006-arm-install-release-20260327154239.tar.gz
+md5: 9b6116c6899c864a556b0070e01aad69
+# 第3个设备
+设备形态: 杰伦老海光-A1500
+安装包: ftp://<IP_ADDRESS>/ngfw/images/V6R01C02B006/TGFW-V6R01C02B006-hg-install-release-20260327154048-jl.tar.gz
+md5sum: 915e11c579f53fb0147c953a2e70cf7d
+# 第4个设备
+设备形态: 新海光-乐研海光5380-A2200
+安装包: ftp://<IP_ADDRESS>/ngfw/images/V6R01C02B006/TGFW-V6R01C02B006-hg-install-release-20260327160412.tar.gz
+md5sum: d84b48ff3c23b27579579dd973a3bf40
+# 第5个设备
+设备形态：新飞腾-乐研飞腾E2000Q-A600
+安装包: ftp://<IP_ADDRESS>/ngfw/images/V6R01C02B006/TGFW-V6R01C02B006-ft-install-release-20260327154345.tar.gz
+md5sum: 3682c766b11460eb55af6957a7ce653f
+# 第6个设备
+设备形态：新飞腾-乐研飞腾E2000Q-A100
+安装包: ftp://<IP_ADDRESS>/ngfw/images/V6R01C02B006/TGFW-V6R01C02B006-ft-install-release-20260327154345.tar.gz
+md5sum: 3682c766b11460eb55af6957a7ce653f
+```
+
+</details>
+
+## script
+
+可使用的单文件工具
+
+### skills_manager.py
+
+Skills 管理工具，可以便捷的启用、禁用 Skill，以及对 Skills 组打包成独立的配置以快速切换，运行命令如下
+
+```shell
 
 ```
-cd existing_repo
-git remote add origin http://<IP_ADDRESS>/<INTERNAL_GIT_PATH>/ptm-team.git
-git branch -M main
-git push -uf origin main
-```
 
-## Integrate with your tools
+## skills
 
-- [ ] [Set up project integrations](http://<IP_ADDRESS>/<INTERNAL_GIT_PATH>/ptm-team/-/settings/integrations)
+项目所有的 skills 工具
 
-## Collaborate with your team
+### 使用方法
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+在 clone 了代码之后，你还需要在你的 Code Agent 配置目录中建立软链接，它才可以正确的识别到这些 skills
 
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+对于 Claude Code 的话你可以使用以下命令创建软链接
+- 先创建 Claude Code 的配置目录 `mkdir -p .claude`
+- 再创建 Skills 软链接 `ln -s "$(pwd)/skills" "$(pwd)/.claude/skills"`

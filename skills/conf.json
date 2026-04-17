@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "自动化工厂运维": [
+      "auto-factory-env",
+      "ngfw-install"
+    ]
+  }
+}
