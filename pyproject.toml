@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ptm-team"
+version = "0.1.0"
+description = "PTM Team workflow asset installer and manager"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "inquirerpy>=0.3.4",
+]
+
+[project.scripts]
+ptm-team = "script.ptm_team.cli:main"
+
+[tool.setuptools]
+packages = ["script.ptm_team"]
+package-dir = {"" = "."}

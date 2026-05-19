@@ -224,3 +224,9 @@ tests.tar.gz
 .codex/
 AGENTS.md
 CLAUDE.md
+
+# ptm-team install manifest
+.ptm-team-manifest.json
+
+# egg-info (already covered by *.egg-info/ but ensure it's caught)
+ptm_team.egg-info/
