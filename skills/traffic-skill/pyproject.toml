@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "traffic-skill"
+version = "0.1.0"
+description = "CLI agent for defining, sending, and checking Ixia-C traffic flows."
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.9",
+    "snappi>=0.10",
+    "pyyaml>=6.0",
+    "paramiko>=3.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+traffic = "traffic_skill.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
