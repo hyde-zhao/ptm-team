@@ -1,0 +1,120 @@
+---
+metadata:
+  version: 0.1
+
+#             ┌──────┐port3
+#      ┌──────┤      ├──────┐
+#      │      │ DUT1 │      │
+#      │ port1└───┬──┘      │
+#      │          │port2    │
+#      │          │         │
+#      │          │         │
+#      │          │port2    │
+#      │      ┌───┴──┐      │
+#      │ port1│      │port3 │
+#      └──────┤  TG1 ├──────┘
+#             └──────┘
+# 根节点
+nodes:
+  # 节点（设备）的key值，在自动化脚本和支撑中使用该名称调用该设备
+  tg1:
+    # 该节点名称
+    name: tg1
+    # 该节点的设备类型
+    type: TG
+    # 该节点的sub类型
+    sub_type: "IXIA-C"
+    # 机框的IP地址
+    host: "<IP_ADDRESS>"
+    # 机框的IP地址
+    ssh_host: "<IP_ADDRESS>"
+    # 设备的管理端口,对于物理仪表不需要，对于TGFW、TG等类型的节点需要。
+    port: 22
+    # Api Server IP 地址
+    api_server: "<IP_ADDRESS>:8450"
+    # 连接设备使用的用户名
+    username: root
+    # 设备的管理密码
+    password: ngfw123!@#
+    # 接口列表
+    interfaces:
+      # 接口的key值，在自动化脚本和支撑中使用该名称调用该接口
+      port1:
+        # 接口的名称
+        name: port1
+        # 单板或者网卡的ID，在设备内部处理时使用的Id。
+        board_id: 2
+        # 接口的Id，接口在设备中的使用的ID（在DUT中例如GE1_1，用于下发配置。仪表使用几号端口）
+        port_id: GE3_7
+        #tcp socket 端口号
+        socket_port: 5577
+        # 接口的类型,分为GE_Fiber,GE_Copper,XGE
+        type: GE_Copper
+        # 接口的默认IP地址
+        default_ip: "100.0.0.16/24"
+        default_ipv6:  "2001:0:0:8::16/64"
+        # 接口的默认mac地址
+        mac_address: "00:90:0b:a9:c4:b2"
+        # 接口所属的link名称
+        link: link1
+      port2:
+        name: port2
+        board_id: 2
+        port_id: GE3_8
+        socket_port: 5578
+        type: GE_Copper
+        default_ip: "200.0.0.16/24"
+        default_ipv6:  "2001:0:0:9::16/64"
+        mac_address: "00:90:0b:a9:c4:b3"
+        link: link2
+      port3:
+        name: port3
+        board_id: 2
+        port_id: TE4_3
+        socket_port: 5581
+        type: XGE_Fiber
+        default_ip: "200.0.1.16/24"
+        default_ipv6:  "2001:0:0:10::16/64"
+        mac_address: "00:90:0b:b5:8e:52"
+        link: link3
+  dut1:
+    name: dut1
+    type: DUT
+    sub_type: DAS-TGFW1900
+    version: v60r001c00spc300
+    host: "<IP_ADDRESS>"
+    ssh_host: "<IP_ADDRESS>"
+    port: 22
+    # web管理用户名
+    web_username: "admin"
+    # web管理密码
+    web_password: "Ngfw123!@#"
+    # 后台用户名
+    username: root
+    # 后台密码
+    password: "ngfw123!@#"
+    interfaces:
+      port1:
+        name: GE0_2
+        port_id: GE0_2
+        type: GE_Copper
+        default_ip: "100.0.0.15/24"
+        default_ipv6: "2001:0:0:8::15/64"
+        mac_address: "c0:ea:c3:20:78:01"
+        link: link1
+      port2:
+        name: GE0_10
+        port_id: GE0_10
+        type: GE_Copper
+        default_ip: "200.0.0.15/24"
+        default_ipv6: "2001:0:0:9::15/64"
+        mac_address: "c0:ea:c3:20:78:0d"
+        link: link2
+      port3:
+        name: TE1_1
+        port_id: TE1_1
+        type: XGE_Fiber
+        default_ip: "200.0.1.15/24"
+        default_ipv6: "2001:0:0:10::15/64"
+        mac_address: "cc:d3:9d:9b:26:1a"
+        link: link3

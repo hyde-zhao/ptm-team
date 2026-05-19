@@ -1,0 +1,55 @@
+---
+metadata:
+  version: 0.1
+
+nodes:
+  tg1:
+    name: tg1
+    type: TG
+    sub_type: IXIA-C
+    host: 192.0.2.10
+    ssh_host: 192.0.2.10
+    port: 22
+    api_server: 192.0.2.10:8443
+    username: root
+    password: "<password>"
+    interfaces:
+      port1:
+        name: port1
+        port_id: P1
+        socket_port: 5555
+        type: GE_Copper
+        default_ip: <IP_ADDRESS>/24
+        default_ipv6: 2001:db8:1::2/64
+        mac_address: 00:00:00:00:01:02
+        link: link1
+      port2:
+        name: port2
+        port_id: P2
+        socket_port: 5556
+        type: GE_Copper
+        default_ip: <IP_ADDRESS>/24
+        default_ipv6: 2001:db8:2::2/64
+        mac_address: 00:00:00:00:02:02
+        link: link2
+  dut1:
+    name: dut1
+    type: DUT
+    interfaces:
+      port1:
+        name: GE0_1
+        port_id: GE0_1
+        type: GE_Copper
+        default_ip: <IP_ADDRESS>/24
+        default_ipv6: 2001:db8:1::1/64
+        mac_address: 00:00:00:00:01:01
+        link: link1
+      port2:
+        name: GE0_2
+        port_id: GE0_2
+        type: GE_Copper
+        default_ip: <IP_ADDRESS>/24
+        default_ipv6: 2001:db8:2::1/64
+        mac_address: 00:00:00:00:02:01
+        link: link2
+

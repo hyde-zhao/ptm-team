@@ -1,0 +1,91 @@
+{
+  "flows": [
+    {
+      "duration": {
+        "choice": "fixed_packets",
+        "fixed_packets": {
+          "gap": 12,
+          "packets": 10
+        }
+      },
+      "metrics": {
+        "enable": true,
+        "loss": false,
+        "timestamps": false
+      },
+      "name": "demo",
+      "packet": [
+        {
+          "choice": "ethernet",
+          "ethernet": {
+            "dst": {
+              "choice": "value",
+              "value": "c0:ea:c3:20:78:01"
+            },
+            "src": {
+              "choice": "value",
+              "value": "00:90:0b:a9:c4:b2"
+            }
+          }
+        },
+        {
+          "choice": "ipv4",
+          "ipv4": {
+            "dst": {
+              "choice": "value",
+              "value": "200.0.0.16"
+            },
+            "src": {
+              "choice": "value",
+              "value": "100.0.0.16"
+            },
+            "time_to_live": {
+              "choice": "value",
+              "value": 64
+            }
+          }
+        },
+        {
+          "choice": "udp",
+          "udp": {
+            "dst_port": {
+              "choice": "value",
+              "value": 8888
+            },
+            "src_port": {
+              "choice": "value",
+              "value": 8888
+            }
+          }
+        }
+      ],
+      "rate": {
+        "choice": "pps",
+        "pps": "10"
+      },
+      "size": {
+        "choice": "fixed",
+        "fixed": 128
+      },
+      "tx_rx": {
+        "choice": "port",
+        "port": {
+          "rx_names": [
+            "port2"
+          ],
+          "tx_name": "port1"
+        }
+      }
+    }
+  ],
+  "ports": [
+    {
+      "location": "<IP_ADDRESS>:5577",
+      "name": "port1"
+    },
+    {
+      "location": "<IP_ADDRESS>:5578",
+      "name": "port2"
+    }
+  ]
+}
