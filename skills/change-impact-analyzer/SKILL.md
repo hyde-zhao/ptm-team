@@ -12,52 +12,89 @@ status: active
 
 ## 目标
 
-当特性的测试用例已设计完成并归档后，收到需求变更时：
-1. 分析变更影响的模块和子模块
-2. 仅对受影响部分执行增量 MFQ 分析
-3. 对变更的逻辑用例执行增量用例设计
-4. 确保不修改未受影响的用例
+当特性的测试资产已按 v6 追踪链归档后，收到需求变更时：
+1. 直接消费 `Scenario Chain / Action Source / Knowledge Reference / delivery/<特性名>特性测试用例.md`
+2. 复用最终测试用例总表的**精确检索语义**命中最小受影响范围
+3. 仅对受影响的 MFQ / 设计 / 覆盖资产执行增量处理
+4. 保持未受影响资产不变，并保留原有 `trace_refs / confirmation_gap_refs / fact_status`
 
 ## 适用范围
 
 - 适用阶段：MFQ 扩展分支（已完成首次用例设计后）
-- 输入：变更需求描述 + 已有 `.output/` 全量数据
-- 输出：增量修改的用例 + 更新的覆盖报告
+- 输入：变更需求描述 + 已有 `analysis/`, `design/`, `checkpoints/`, `delivery/`, `doc/STATE.yaml` 基线资产
+- 输出：最小影响范围 + 增量更新建议
 
 ## 前置条件
 
 - [ ] 首次 MFQ 分析和用例设计已完成
-- [ ] 交付物已生成（`.output/delivery/` 存在）
+- [ ] 交付物已生成（`delivery/` 存在）
+- [ ] `delivery/<特性名>特性测试用例.md` 已由 `deliverable-renderer` 生成
+- [ ] 上游 LC / PC / tool-analysis 已保留 `trace_refs / scenario_refs / action_source_refs / factor_refs / confirmation_gap_refs / fact_status`
+
+## 必须消费的输入契约
+
+### 1. 交付测试用例总表
+
+| 来源 | 必收字段 | 用途 |
+|------|----------|------|
+| `delivery/<特性名>特性测试用例.md` | `logic_case_id`, `physical_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status`, `source_artifacts` | 用精确过滤命中变更入口，并回链到 LC / PC |
+
+### 2. STORY-04 / STORY-08 上游资产
+
+| 来源 | 必收字段 | 用途 |
+|------|----------|------|
+| `analysis/integration/logic-cases.md` | `LC-ID`, `source_tp_ids`, `关联SR`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 扩展 LC / TP / 场景链影响范围 |
+| `analysis/integration/test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `trace_refs`, `confirmation_gap_refs`, `status` | 判断测试数据是否受影响 |
+| `analysis/integration/tool-analysis.md` | `tool_entry_id`, `tool_id`, `tool_kind`, `scenario_refs`, `action_source_refs`, `factor_refs`, `status` | 回链已使用工具与工具缺口 |
+| `design/pc/*.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status` | 确认受影响 PC 范围 |
+| `analysis/coverage/*.md` | `requirement_gaps`, `test_point_gaps`, `trace_refs`, `fact_status` | 判断是否需要增量覆盖复核 |
+
+> 若输入只给自然语言变更描述而没有可回链的结构化锚点，必须输出 `[待确认]`，不得发明新的检索接口或模糊匹配规则。
 
 ## 执行流程
 
 ### 步骤 1：变更需求解析
 
-读取变更需求，提取：
-- 变更类型：新增功能 / 修改功能 / 删除功能
-- 变更描述：具体变更内容
-- 影响范围预估：可能涉及的模块
+读取变更需求，优先提取**结构化锚点**：
+- `requirement_ids`
+- `logic_case_id`
+- `feature_tags`
+- 已明确给出的 `scenario_refs / action_source_refs / factor_refs / tool_id`
+- 变更类型：新增 / 修改 / 删除
+
+若只提供自由文本：
+- 可以整理为待确认字段清单；
+- **不得**对测试用例总表或设计文件做全文、模糊、语义或相似度检索。
 
 ### 步骤 2：影响分析
 
-**模块级影响**：
-1. 对照目录结构，识别受影响的四级/五级目录
-2. 对照耦合图模型，识别间接影响的耦合模块
-3. 输出影响矩阵：
+先按最终测试用例总表的既有语义命中 `delivery/<特性名>特性测试用例.md`：
+
+1. `requirement_id`：精确命中 `requirement_ids`
+2. `logic_case_id`：精确等于 `logic_case_id`
+3. `feature_tags`：多标签按精确 AND 命中
+
+命中后再沿 v6 追踪链扩展**最小必要范围**：
+
+1. 从命中的测试用例行收集 `logic_case_id / physical_case_id`
+2. 回链 `scenario_refs / action_source_refs / factor_refs / trace_refs`
+3. 如命中工具条目，再关联 `tool_entry_id / tool_id`
+4. 仅在同一 trace 证据闭环内扩展到相邻 LC / TD / PC / tool-analysis
+
+输出影响矩阵：
 
 ```markdown
 ## 变更影响矩阵
 
-| 影响类型 | 模块 | 子模块 | 影响程度 | 说明 |
-|---------|------|--------|---------|------|
-| 直接影响 | 模块A | 子模块A1 | 高 | 变更涉及功能 |
-| 耦合影响 | 模块B | 子模块B2 | 中 | 与A1存在耦合 |
-| 不受影响 | 模块C | — | — | 无关联 |
+| impact_type | requirement_ids | logic_case_refs | physical_case_refs | scenario_refs | action_source_refs | factor_refs | tool_analysis_refs | tool_gap_refs | 说明 |
+|-------------|-----------------|-----------------|--------------------|---------------|--------------------|-------------|--------------------|---------------|------|
+| direct | REQ-020 | LC-001 | PC-001 | SCN-001 | AS-001 | FAC-001 | TOOL-001 | — | 直接命中索引与 trace |
+| propagated | REQ-020 | LC-003 | — | SCN-001 | AS-001 | FAC-003 | — | GAP-TOOL-001 | 同一 trace/factor 受影响 |
 ```
 
 ### 步骤 3：增量 MFQ 分析
 
-仅对受影响的模块/子模块执行 MFQ：
+仅对步骤 2 命中的范围执行增量 MFQ：
 
 1. **增量 M 分析**：更新受影响子模块的测试点
    - 新增变更引入的新测试点
@@ -66,11 +103,17 @@ status: active
 2. **增量 F 分析**：检查变更是否引入新的耦合关系
 3. **增量 Q 分析**：检查变更是否影响质量属性
 
+若变更只命中：
+- `factor_refs` → 优先缩到相关 LC / TD / PC
+- `action_source_refs` → 优先缩到同动作源下的 LC / PC / tool-analysis
+- `tool_gap_refs / tool_analysis_refs` → 只更新对应工具分析与受影响用例链
+
 ### 步骤 4：增量整合
 
-1. 在整合表中标记变更状态（新增/修改/删除）
+1. 在受影响 LC / TD 范围内标记变更状态（新增/修改/删除）
 2. 重新执行受影响逻辑用例的合并
-3. 更新测试数据
+3. 更新命中的测试数据与覆盖证据
+4. 保持未命中的 LC / PC / tool-analysis 不变
 
 ### 步骤 5：增量用例设计
 
@@ -85,9 +128,9 @@ status: active
 
 ### 步骤 7：更新交付物
 
-1. 更新受影响章节的测试方案
-2. 更新受影响模块的测试用例
-3. 在文档中标注变更记录
+1. 仅更新受影响章节的测试方案
+2. 仅更新受影响模块的测试用例
+3. 仅刷新受影响条目的索引与审计记录
 
 ## 不可变保护
 
@@ -96,30 +139,54 @@ status: active
 - 不受影响的逻辑用例
 - 不受影响的物理用例
 - 不受影响的设计过程文档
+- 不受影响的 `delivery/<特性名>特性测试用例.md` 行
+- 不受影响的工具分析条目
+
+## 输出骨架
+
+至少输出以下字段：
+
+| 字段 | 说明 |
+|------|------|
+| `requirement_ids` | 命中的需求编号 |
+| `logic_case_refs` | 受影响 LC |
+| `physical_case_refs` | 受影响 PC |
+| `scenario_refs` | 回链场景 |
+| `action_source_refs` | 回链动作源 |
+| `factor_refs` | 回链因子 |
+| `tool_analysis_refs` | 已使用工具条目 |
+| `tool_gap_refs` | 工具缺口条目 |
+| `trace_refs` | 原样保留 trace 链 |
+| `confirmation_gap_refs` | 原样保留未确认事实 |
+| `fact_status` | 原样保留确认状态 |
+| `suggested_updates` | 建议重做的 MFQ / design / coverage 资产 |
 
 ## 变更审计记录
 
-每次变更在 `.output/` 中记录：
+每次变更至少输出一份可审阅审计摘要：
 
 ```markdown
 ## 变更记录
 
-| 变更ID | 日期 | 变更描述 | 影响模块 | 新增TP | 修改TP | 删除TP | 新增PC | 修改PC | 删除PC |
-|--------|------|---------|---------|--------|--------|--------|--------|--------|--------|
-| CHG-001 | ... | ... | A1,B2 | 3 | 2 | 1 | 5 | 3 | 1 |
+| 变更ID | 命中锚点 | logic_case_refs | physical_case_refs | factor_refs | tool_gap_refs | confirmation_gap_refs | fact_status |
+|--------|----------|-----------------|--------------------|-------------|---------------|-----------------------|-------------|
+| CHG-001 | REQ-020,LC-001 | LC-001,LC-003 | PC-001 | FAC-001 | GAP-TOOL-001 | GAP-001 | needs-confirmation |
 ```
 
 ## Gotchas
 
-- 变更可能触发连锁耦合影响，需沿耦合图传播分析
+- 必须复用最终测试用例总表的精确过滤语义，**不得**引入模糊检索、全文扫描或自定义 ranking
+- `trace_refs / confirmation_gap_refs / fact_status` 只能透传或并集汇总，不能改名
 - 删除功能时要同步删除对应的测试点和用例，不要留下孤儿数据
 - 修改功能时要检查修改是否改变了设计方法的适用性
-- 变更后的覆盖检查需包含变更前后的需求差异
+- 若命中的是工具缺口或工具分析条目，也必须显式输出 `tool_gap_refs / tool_analysis_refs`
+- 变更后的覆盖检查需包含变更前后的需求差异，但范围只限命中资产
 
 ## 验收标准
 
-- [ ] 变更影响矩阵完整
+- [ ] 基于 `delivery/<特性名>特性测试用例.md` 和 v6 trace 链输出最小影响范围
+- [ ] 影响矩阵保留 `logic_case_refs / physical_case_refs / scenario_refs / action_source_refs / factor_refs`
+- [ ] 命中工具分析时保留 `tool_analysis_refs / tool_gap_refs`
 - [ ] 仅受影响的模块被修改
 - [ ] 未受影响的用例文件未被修改
-- [ ] 增量覆盖率 = 100%
-- [ ] 变更审计记录已写入
+- [ ] 不引入模糊检索或新增检索接口

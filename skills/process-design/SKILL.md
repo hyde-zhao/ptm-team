@@ -1,10 +1,10 @@
 ---
 name: process-design
 description: >-
-  P-Process 流程图法用例设计：五步完成流程图建模→分支路径枚举→路径→LC→路径触发数据→物理用例。
-  基于 PPDCS 中 P-Process 特征：多步骤有前后约束的业务流程。
+  P-Process 流程图法用例设计：消费 design-plan + design-planner-reasoning +
+  LC/TD trace，输出流程图、路径枚举、覆盖策略、路径触发数据、数据叠加与物理用例。
   触发词包括：流程图、流程图法、路径分析、分支覆盖、P-Process。
-  适用场景：MFQ 设计阶段，PPDCS 特征为 P-Process 的逻辑用例。
+  适用场景：MFQ design 阶段，已确认主方法为 P-Process 的逻辑用例。
 argument-hint: "逻辑用例 ID（如 LC-002）"
 user-invokable: true
 status: active
@@ -12,218 +12,270 @@ status: active
 
 ## 目标
 
-对设计计划中 PPDCS 特征为 **P-Process** 的逻辑用例，执行五步设计过程，
-建模业务流程→枚举分支路径（含路径枚举表）→路径→LC→路径触发数据→输出物理用例。
+对设计计划中推荐为 **P-Process** 的逻辑用例，输出完整图形链工件，而不是只给最终 PC：
 
-## 理论基础
-
-P-Process 是 PPDCS 五特征之一：
-> 被测功能有"多步骤、有前后约束"的业务流程含义，
-> 流程不可回退（区别于 S-State），步骤间有确定的顺序约束。
-
-**识别条件**：需求描述包含"先...再..."、"如果...则..."、"流程"等词，
-且流程不存在状态回退（回退则应使用 S-State）。
-
-**建模工具**：流程图（flowchart）/ 活动图（activity diagram）
+1. 读取 `design-plan.md` 与 `design-planner-reasoning.md`；
+2. 回链 `logic-cases.md`、`test-data.md`、`confirmed-scenarios.md`；
+3. 生成流程图、节点清单、路径枚举表、覆盖策略、路径触发数据/数据叠加表；
+4. 在保留 `needs-confirmation` / `confirmation_gap_refs` 的前提下输出物理用例。
 
 ## 适用范围
 
+> 统一输出规则：本 Skill 的方法过程写入 `design/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
+
+
 - 适用阶段：MFQ 的 design 阶段
-- 输入：`.output/integration/design-plan.md`（PPDCS=P-Process 的 LC）
-- 输出：`.output/design/<module>/<sub-module>/` 目录下的设计文件
+- 输入：
+  - `analysis/integration/design-plan.md`
+  - `analysis/plan/design-planner-reasoning.md`
+  - `analysis/integration/logic-cases.md`
+  - `analysis/integration/test-data.md`
+  - `analysis/scenarios/confirmed-scenarios.md`
+  - `process/REQUIREMENTS.md` / `process/HLD.md`（仅作为边界与术语基线）
+- 输出：`design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
 
 ## 前置条件
 
-- [ ] 设计计划已确认
-- [ ] 当前逻辑用例的 PPDCS 特征为 P-Process
+- [ ] 设计计划已确认，且目标 LC 的 `设计Skill = process-design`
+- [ ] `design-planner-reasoning.md` 中存在对应 LC 的 reasoning
+- [ ] `logic-cases.md` 中保留完整 trace / gap 字段
+- [ ] `confirmed-scenarios.md` 中可找到对应 `scenario_refs / scenario_chain_refs`
+- [ ] 若 `fact_status=needs-confirmation`，已准备在设计输出中原样保留不确定性
 
-## 五步用例设计过程
+## 必须消费的输入契约
 
-读取 `test-point-integrator` 输出的逻辑用例（含因子-取值表和动作路径），执行以下五步：
+### 1. STORY-05 下游契约
 
-### 第一步：测试数据（因子-取值表补全）
+| 来源 | 必收字段 | 用途 |
+|------|----------|------|
+| `design-plan.md` | `LC-ID`, `逻辑用例标题`, `PPDCS特征`, `推荐方法`, `设计Skill`, `主信号`, `候选特征`, `排除摘要`, `关键trace`, `待确认事项` | 决定 LC 是否进入 `process-design`，并记录设计上下文 |
+| `design-planner-reasoning.md` | `recommended_feature`, `recommended_method`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `scenario_refs`, `scenario_chain_refs`, `td_refs`, `test_object_refs`, `factor_refs`, `uncertain_facts` | 复核为何采用流程图法，并保留待确认事实 |
 
-从整合阶段的因子-取值表出发，补充因子类型和等价类分类：
+### 2. STORY-04 / 上游场景与 trace 契约
 
-```markdown
-| 因子 | 取值 | 类型 | 等价类 |
-|------|------|------|--------|
-| 过滤规则名称 | rule_new（新名称） | 参数 | 有效 |
-| 过滤规则名称 | rule_exist（已存在名称） | 参数 | 边界（重复） |
-| 过滤规则名称 | 空 | 参数 | 无效 |
-| 规则条件格式 | src_ip=<IP_ADDRESS>（合法格式） | 参数 | 有效 |
-| 规则条件格式 | 非法格式（如 abc） | 参数 | 无效 |
-| 覆盖选项 | 是 | 参数 | 有效 |
-| 覆盖选项 | 否 | 参数 | 有效 |
+| 来源 | 必收字段 | 用途 |
+|------|----------|------|
+| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则`, `关联SR` | 还原 LC 主流程和 trace 链 |
+| `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `source_section`, `scenario_refs`, `action_source_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | 分析路径触发数据与数据叠加 |
+| `confirmed-scenarios.md` | `precondition_operations`, `atomic_operations`, `observation_points`, `expected_state`, `minimal_logic_chain`, `data_overlay_slots`, `Action Source`, `Knowledge Reference`, `confirmation_gaps` | 建图、定节点、识别可叠加数据位置 |
+
+> 若 `design-plan.md`、`design-planner-reasoning.md`、`logic-cases.md` 三者对同一 LC 的主方法结论不一致：
+> - 不得自行裁决；
+> - 在输出中标记 `[待确认]`；
+> - 维持 `fact_status=needs-confirmation`。
+
+## 执行流程
+
+### 步骤 1：锁定目标 LC 与设计上下文
+
+1. 从 `design-plan.md` 选出 `设计Skill = process-design` 的 LC。
+2. 读取同一 LC 在 `design-planner-reasoning.md` 的：
+   - `primary_signal`
+   - `candidate_features`
+   - `exclusion_reasons`
+   - `fact_status`
+   - `uncertain_facts`
+3. 若 reasoning 中 `S-State` 仍为强候选，必须在设计过程文档中保留“为何仍按 Process 落地”的说明，不得静默忽略。
+
+### 步骤 2：建立流程节点模型
+
+从 `confirmed-scenarios.md` 与 LC 动作路径还原流程节点：
+
+- `precondition_operations` → 前置准备节点
+- `atomic_operations` → 动作节点
+- 条件分流 / 规则命中 → 决策节点
+- `observation_points` → 观察节点
+- 终态 / 结束观测 → 结束节点
+
+**节点最少字段**：
+
+| 字段 | 说明 |
+|------|------|
+| `node_id` | 节点编号 |
+| `node_type` | `start / precondition / action / decision / observation / end` |
+| `source_op_id` | 回链 `PRE-* / AO-*` |
+| `decision_condition` | 分支条件；未知则写 `[待确认]` |
+| `observation_ref` | 观察点引用 |
+| `trace_refs` | 对应 trace |
+| `confirmation_gap_refs` | 未确认事实引用 |
+| `fact_status` | `confirmed / needs-confirmation` |
+
+图示优先使用 Mermaid `flowchart`。
+
+### 步骤 3：生成路径枚举表
+
+最小覆盖基线：
+
+1. 主路径 1 条；
+2. 每个独立决策分支至少 1 条；
+3. 仅当需求 / HLD / reasoning 已明确时，才加入异常路径、回退路径、循环路径。
+
+**路径枚举表最少字段**：
+
+| 字段 | 说明 |
+|------|------|
+| `path_id` | 路径编号 |
+| `node_sequence` | 节点序列 |
+| `branch_reason` | 分支原因 |
+| `coverage_goal` | `main-flow / branch / exception / rollback / loop` |
+| `scenario_chain_refs` | 命中的 PRE/AO/Observation |
+| `trace_refs` | 关键 trace |
+| `confirmation_gap_refs` | 不确定分支 |
+| `fact_status` | `confirmed / needs-confirmation` |
+
+### 步骤 4：定义覆盖策略
+
+覆盖策略必须显式写出，而不是默认“全覆盖”：
+
+| 场景 | 最低要求 |
+|------|----------|
+| 普通流程 | 分支覆盖 |
+| 核心主干 / 高风险流程 | 分支覆盖 + 关键路径覆盖 |
+| 含明确循环 | `0 / 1 / N` 次循环策略 |
+| 异常路径已确认 | 必须单列覆盖 |
+
+**输出要求**：
+
+- 逐条说明每个 `path_id` 是否进入最终 PC 集；
+- 被裁剪路径必须给理由；
+- 若因上游缺口无法确定是否保留路径，写 `[待确认]`，并将 LC `fact_status` 维持为 `needs-confirmation`。
+
+### 步骤 5：分析路径触发数据与数据叠加
+
+以 `test-data.md` 为准，为每条路径建立 `trigger_data + data_overlay_set`：
+
+1. 从 `factor_refs` 找到候选 TD；
+2. 按 `source_section` 判断其属于前置条件、动作输入还是观察数据；
+3. 仅将与当前路径相关的数据挂到对应节点 / `data_overlay_slots`；
+4. `TD.status=needs-confirmation` 时，不得定值，只能保留 `[待确认]`。
+
+**路径触发数据/叠加表最少字段**：
+
+| 字段 | 说明 |
+|------|------|
+| `path_id` | 关联路径 |
+| `trigger_node_id` | 触发节点 |
+| `factor_ref` | 因子引用 |
+| `td_ref` | 测试数据引用 |
+| `value_set` | 取值；未确认值保留 `[待确认]` |
+| `source_section` | `condition / action-input / observation / environment` |
+| `data_overlay_set` | 叠加后的路径级数据集编号 |
+| `confirmation_gap_refs` | 来自 TD / reasoning / scenario 的缺口 |
+| `status` | `ready / needs-confirmation` |
+
+### 步骤 6：生成物理用例
+
+PC 由 `覆盖策略选中的 path × data_overlay_set` 生成。
+
+**与 `state-design` 共用的物理用例骨架**：
+
+| 字段 | 说明 |
+|------|------|
+| `physical_case_id` | 物理用例编号 |
+| `logic_case_id` | 所属 LC |
+| `requirement_ids` | 关联需求 / SR |
+| `feature_tags` | 功能分类标签 |
+| `case_title` | 用例标题 |
+| `priority` | 优先级 |
+| `preconditions` | 前置条件 |
+| `test_steps` | 步骤 |
+| `expected_results` | 预期结果 |
+| `graph_ref` | `path_id` |
+| `coverage_goal` | 路径覆盖目标 |
+| `trigger_data` | 触发数据摘要 |
+| `trace_refs` | trace 链 |
+| `scenario_refs` | 来源场景 |
+| `scenario_chain_refs` | PRE/AO 引用 |
+| `action_source_refs` | 动作源 |
+| `confirmation_gap_refs` | 未确认事实 |
+| `fact_status` | `confirmed / needs-confirmation` |
+
+> 若某条 PC 依赖未确认路径条件或未确认 TD，`test_steps / expected_results / trigger_data` 必须显式保留 `[待确认]`，不得写成确定语气。
+
+## 输出文件结构
+
+```text
+design/ppdcs/<basename>.md
+design/pc/<basename>.md
 ```
 
-**因子类型说明**：
-- **环境状态**：系统预置状态（如"已存在同名规则"）
-- **参数**：输入参数取值
-- **预期**：预期结果类别（用于约束分析）
+### `design/ppdcs/<basename>.md`
 
-### 第二步：分支路径枚举
+至少包含：
 
-**P-Process 的动作路径来自流程图的分支**，使用 Mermaid flowchart 建模，然后枚举所有分支路径：
+- `recommended_feature / recommended_method / design_skill`
+- `primary_signal`
+- `candidate_features`
+- `exclusion_reasons`
+- `fact_status`
+- `test_object_refs / factor_refs`
+- Design Context（来自 `design-plan + reasoning`）
+- Flow Graph（Mermaid + 节点清单）
+- Path Enumeration
+- Coverage Strategy
+- Trigger Data & Data Overlay
+- PC Derivation Summary
+- Uncertain Facts / Confirmation Gaps
+
+### `design/pc/<basename>.md`
+
+只输出最终 PC，但每条 PC 必须回链：
+
+- `graph_ref`
+- `trace_refs`
+- `scenario_refs`
+- `scenario_chain_refs`
+- `confirmation_gap_refs`
+- `fact_status`
+
+## 输出格式骨架
+
+### Flow Graph
 
 ```mermaid
 flowchart TD
-    A[开始: 用户提交日志过滤规则] --> B{规则格式校验}
-    B -->|通过| C{是否存在同名规则}
-    B -->|不通过| D[返回格式错误提示]
-    C -->|不存在| E[保存规则]
-    C -->|存在| F{是否覆盖}
-    F -->|是| G[覆盖保存]
-    F -->|否| H[取消操作]
-    E --> I[规则生效]
-    G --> I
-    D --> J[结束]
-    H --> J
-    I --> J
+    START([Start]) --> PRE1[PRE-01]
+    PRE1 --> AO1[AO-01]
+    AO1 --> D1{条件判定}
+    D1 -->|Y| AO2[AO-02]
+    D1 -->|N| OBS1[OBS-ERR]
+    AO2 --> OBS2[OBS-OK]
+    OBS1 --> END([End])
+    OBS2 --> END
 ```
 
-**路径枚举表**（标准化格式，每条分支路径为一行）：
-
-| 路径ID | 分支序列 | 覆盖的功能节点 | 路径类型 |
-|--------|---------|--------------|---------|
-| P-01 | A→B(通过)→C(不存在)→E→I→J | 格式校验通过/无同名规则/保存规则/规则生效 | 主路径 |
-| P-02 | A→B(通过)→C(存在)→F(是)→G→I→J | 格式校验通过/同名规则存在/选择覆盖/覆盖保存 | 分支路径 |
-| P-03 | A→B(通过)→C(存在)→F(否)→H→J | 格式校验通过/同名规则存在/取消覆盖 | 分支路径 |
-| P-04 | A→B(不通过)→D→J | 格式校验失败/返回格式错误 | 异常路径 |
-
-> **P-Process 路径数量**：通常与判断分支数相同（每个判断节点的每个方向为一条分支），远多于1条。
-
-### 第三步：数据组合分析
-
-**组合策略选择**：
-
-| 条件 | 策略 |
-|------|------|
-| 路径本身已隔离各分支 | 每条路径选典型数据；各路径数据相互独立 |
-| 同一路径内有参数组合 | ≤3 因子用全组合；≥4 因子用 Pairwise |
-| 存在守卫条件依赖 | 先分析约束（IF...THEN...格式），再生成组合 |
-
-**组合约束分析**（守卫条件即约束）：
-
-```
-P1 约束：规则格式 = 合法 AND 规则名 = 新名称 → 走路径P1
-P2 约束：规则格式 = 合法 AND 规则名 = 已存在 AND 覆盖选项 = 是 → 走路径P2
-P3 约束：规则格式 = 合法 AND 规则名 = 已存在 AND 覆盖选项 = 否 → 走路径P3
-P4 约束：规则格式 = 非法 → 走路径P4（其余因子无关）
-```
-
-**全量组合结果**（约束过滤后，每条路径取典型值）：
-
-| 组合编号 | 规则名称 | 规则格式 | 覆盖选项 | 走路径 | 预期结果 |
-|---------|---------|---------|---------|--------|---------|
-| C-01 | rule_new | 合法 | — | P1 | 创建成功 |
-| C-02 | rule_exist | 合法 | 是 | P2 | 覆盖成功 |
-| C-03 | rule_exist | 合法 | 否 | P3 | 操作取消 |
-| C-04 | 任意 | 非法 | — | P4 | 提示格式错误 |
-
-### 第四步：路径触发数据分配
-
-**为每条路径分配前置条件和触发输入数据**：路径枚举确定了"走哪条路"，本步骤确定"用什么数据进入该路径"。
-
-```
-分配原则：
-1. 前置条件（C）：描述进入该路径所需的系统状态（如 "规则 rule_exist 已存在"）
-2. 触发输入数据（A）：实际配置或操作的参数值（如 "规则名=rule_exist, 格式=合法"）
-3. 预期结果（E）：路径走完后的可观测状态变化
-4. 每条路径至少一条用例；高风险路径可选2~3条不同典型值
-```
-
-**路径触发数据分配表**：
-
-| 路径ID | 前置条件（C） | 触发输入（A） | 预期结果（E） |
-|--------|-------------|-------------|-------------|
-| P-01 | 无同名规则 rule_new | 规则名=rule_new, 格式=src_ip=<IP_ADDRESS> | 规则创建成功，列表出现 rule_new |
-| P-02 | 已存在规则 rule_exist | 规则名=rule_exist, 覆盖=是 | 覆盖成功，规则内容更新 |
-| P-03 | 已存在规则 rule_exist | 规则名=rule_exist, 覆盖=否 | 操作取消，规则内容不变 |
-| P-04 | 无约束 | 规则格式=非法格式 "abc" | 提示"格式错误"，规则未创建 |
-
-**覆盖策略决策**：
-
-| 特性类型 | 策略 | 说明 |
-|---------|------|------|
-| 复杂高风险（核心业务流程） | **全组合**：每条路径 × 各路径的所有数据组合 | 充分覆盖 |
-| 普通功能（日常配置流程） | **BA组合**：每条路径取有效等价类代表值 + 无效各一条 | 平衡效率 |
-| 简单流程（≤2个分支） | **典型值**：每条路径各取一个代表值 | 节省成本 |
-
-**本用例决策**：BA组合（普通配置流程）
-
-```
-最终用例集 = C-01（P-01正常创建）+ C-02（P-02覆盖保存）+ C-03（P-03取消）+ C-04（P-04格式错误）
-覆盖策略说明：每条路径各取一个代表值，P-01覆盖正常，P-02/P-03覆盖条件分支，P-04覆盖异常
-```
-
-### 第五步：物理用例输出
-
-每个最终组合生成一行物理用例，**C→预置条件、A→测试步骤、E→预期结果**：
+### Path Enumeration
 
 ```markdown
-| 三级目录 | 四级目录 | 五级目录 | 用例名称* | 用例编号 | 用例级别* | 组网描述* | 组网约束 | 预置条件 | 测试步骤* | 预期结果* | 首次创建版本* | 最后变更版本 | 关键词 | 测试类型* | 是否自动化* |
-|---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|------------|------------|--------|---------|----------|
-| 日志中心 | 日志管理 | 日志过滤配置 | 正常创建日志过滤规则 | PC-FLT-RUL-001 | P1 | 单台防火墙 | | 防火墙已正常启动；无同名过滤规则 | 1.进入日志过滤规则配置页面<br>2.点击"新建规则"<br>3.输入规则名=rule_new, 条件=src_ip=<IP_ADDRESS><br>4.点击"确定"<br>5.查看规则列表 | 1.显示规则列表<br>2.显示规则配置表单<br>3.表单接受输入<br>4.提示"规则创建成功"<br>5.rule_new 显示在列表中 | V60R001C01 | | 日志过滤,规则创建 | 功能 | 否 |
-| 日志中心 | 日志管理 | 日志过滤配置 | 覆盖已有日志过滤规则 | PC-FLT-RUL-002 | P1 | 单台防火墙 | | 防火墙已正常启动；存在同名规则 rule_exist | 1.进入日志过滤规则配置页面<br>2.点击"新建规则"<br>3.输入规则名=rule_exist，新条件参数<br>4.点击"确定"<br>5.系统询问是否覆盖，选择"是" | 1.显示规则列表<br>2.显示规则配置表单<br>3.表单接受输入<br>4.弹出覆盖确认对话框<br>5.提示"覆盖成功"，规则内容更新 | V60R001C01 | | 日志过滤,规则覆盖 | 功能 | 否 |
+| path_id | node_sequence | branch_reason | coverage_goal | confirmation_gap_refs | fact_status |
+|---------|---------------|---------------|---------------|-----------------------|-------------|
+| PATH-01 | START→PRE1→AO1→D1(Y)→AO2→OBS2→END | 主路径 | main-flow | — | confirmed |
+| PATH-02 | START→PRE1→AO1→D1(N)→OBS1→END | 失败分支 | branch | GAP-001 | needs-confirmation |
 ```
 
-## 输出目录结构
-
-```
-.output/design/<module>/<sub-module>/
-├── ppdcs-profile.md      # P-Process 特征详情（含流程图）
-├── design-process.md      # 五步设计过程（因子表+流程图+路径枚举+组合分析+覆盖策略）
-└── physical-cases.md      # 物理用例列表
-```
-
-### ppdcs-profile.md 内容
+### Trigger Data & Data Overlay
 
 ```markdown
-# PPDCS 特征详情
-
-- **主特征**：P-Process
-- **判定依据**：<从 .output/m-analysis/ppdcs-annotation.md 引用>
-- **辅特征**：<如有>
-- **流程节点数**：N
-- **判断分支数**：M
-- **预估路径数**：K
+| path_id | trigger_node_id | factor_ref | td_ref | value_set | data_overlay_set | status |
+|---------|-----------------|------------|-------|-----------|------------------|--------|
+| PATH-01 | AO1 | FAC-001 | TD-001 | `valid-a` | OVL-01 | ready |
+| PATH-02 | D1 | FAC-002 | TD-002 | `[待确认]` | OVL-02 | needs-confirmation |
 ```
-
-## 优先级分配规则
-
-| 路径类型 | 优先级 |
-|---------|--------|
-| 主路径（最常用的正常路径） | P0~P1 |
-| 关键分支路径 | P1~P2 |
-| 异常/错误路径 | P2~P3 |
-| 边界条件路径 | P3 |
-| 极端/罕见路径 | P4 |
-
-## 复杂度管理
-
-- 节点数 > 15：建议拆分为主流程 + 子流程
-- 路径数 > 20：使用分支覆盖作为最低要求，选择性执行路径覆盖
-- 循环路径：取 0 次、1 次、N 次三种场景
 
 ## Gotchas
 
-- 必须使用标准 Mermaid flowchart 语法，确保可渲染
-- 隐式的异常路径也要建模（如超时、网络断开）
-- 循环需要设定终止条件
-- 路径描述中注明经过哪些判断分支的哪个方向
-- **P-Process vs S-State 区分**：流程不可回退 = Process；可回退 = State
+- 不得只读 `design-plan.md` 而忽略 `design-planner-reasoning.md`
+- 不得把 `confirmation_gap_refs`、`uncertain_facts`、`TD.status=needs-confirmation` 吞掉
+- `P-Process` 的“异常路径”只能来自已确认需求、HLD 或明确 reasoning，不得脑补隐含失败流
+- 决策节点写不清时，必须标记 `[待确认]`，而不是把“默认成功”当成事实
+- 同一 LC 若同时存在强 `S-State` 信号，需在设计上下文中写明为何仍按流程法建模
 
 ## 验收标准
 
-- [ ] 流程图使用 Mermaid flowchart 语法且可渲染
-- [ ] 所有判断分支均被路径枚举覆盖（分支覆盖）
-- [ ] 第一步因子-取值表含因子类型和等价类
-- [ ] 第二步路径枚举表包含标准四列：路径ID/分支序列/覆盖的功能节点/路径类型
-- [ ] 第二步每个判断节点的每个方向各对应一条路径
-- [ ] 第三步组合约束以"IF...THEN...（走路径PX）"格式表述
-- [ ] 第四步路径触发数据分配表包含：路径ID/前置条件/触发输入/预期结果
-- [ ] 第四步覆盖策略决策有明确理由（全组合/BA组合/典型值）
-- [ ] 物理用例以表格输出（16列），C→预置条件、A→测试步骤、E→预期结果映射正确
-- [ ] `ppdcs-profile.md` 已创建
-- [ ] 设计过程文档写入 `.output/design/<module>/<sub>/`
+- [ ] 同时消费 `design-plan.md` 与 `design-planner-reasoning.md`
+- [ ] 流程图输出 Mermaid `flowchart`
+- [ ] 存在节点清单、路径枚举表、覆盖策略、路径触发数据/叠加表
+- [ ] 路径表保留 `scenario_chain_refs / confirmation_gap_refs / fact_status`
+- [ ] `TD.status=needs-confirmation` 未被静默定值
+- [ ] 物理用例字段骨架与 `state-design` 一致
+- [ ] 输出采用 `design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`

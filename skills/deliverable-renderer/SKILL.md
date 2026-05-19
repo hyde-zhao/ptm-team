@@ -1,9 +1,10 @@
 ---
 name: deliverable-renderer
 description: >-
-  将 MFQ 分析和用例设计的中间产物渲染为最终交付文档。
+  将 MFQ 分析、完整 PPDCS 设计过程和覆盖结果渲染为最终交付物，
+  只输出测试方案和测试用例两份 Markdown。
   触发词包括：生成交付物、输出文档、测试方案、测试用例文档。
-  适用场景：MFQ 分析的最后一步（delivery 阶段）。
+  适用场景：MFQ 分析的 delivery 阶段。
 argument-hint: "特性名称"
 user-invokable: true
 status: active
@@ -11,150 +12,120 @@ status: active
 
 ## 目标
 
-读取 `.output/` 目录下的所有中间产物，
-渲染输出两个最终交付文档：`xx特性测试方案.md` 和 `xx特性测试用例.md`。
+读取 `analysis/`、`design/ppdcs/`、`design/pc/`、`analysis/coverage/` 产物，输出 delivery 闭环：
+
+1. `<特性名>特性测试方案.md`
+2. `<特性名>特性测试用例.md`
+
+渲染时必须：
+
+- 消费 `design/ppdcs/` 和 `design/pc/` 的**每 LC 单文件过程工件**，不能只看最终 PC；
+- 保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status`；
+- 当上游存在 `topology_ref` 时，在测试方案的场景章节中保留对应组网引用与产物路径。
 
 ## 适用范围
 
 - 适用阶段：MFQ 的 delivery 阶段
-- 输入：`.output/` 下所有中间产物
-- 输出：`.output/delivery/` 目录下的交付文档
+- 输入：`analysis/integration/`、`analysis/coverage/`、`design/ppdcs/`、`design/pc/`
+- 输出：`delivery/`
 
 ## 前置条件
 
-- [ ] 覆盖检查已通过（`coverage/` 目录下报告存在且覆盖率达标）
-- [ ] 所有设计过程文档已完成
+- [ ] 覆盖报告已生成
+- [ ] `logic-cases.md`、`test-data.md` 已存在
+- [ ] `design/ppdcs/` 与 `design/pc/` 下各 LC 单文件已存在
+- [ ] 上游已保留 trace / gap / fact_status 字段
 
-## 交付物 1：`<特性名>特性测试方案.md`
+## 必须消费的输入契约
 
-### 文档结构
+### 1. 覆盖与整合层
 
-```markdown
-# <特性名> 特性测试方案
+| 来源 | 必收字段 | 用途 |
+|------|----------|------|
+| `coverage-summary.md` / `requirement-coverage.md` / `test-point-coverage.md` | 覆盖统计、`requirement_gaps`, `test_point_gaps`, `feature_tags`, `trace_refs`, `fact_status` | 方案文档中的覆盖章节 |
+| `all-test-points.md` | `TP-ID`, `关联SR`, `scenario_refs`, `action_source_refs`, `factor_refs`, `trace_refs`, `fact_status` | 测试点分析表 |
+| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `关联SR`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则` | 交付主骨架 |
+| `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `trace_refs`, `confirmation_gap_refs`, `status` | 设计过程与数据回链 |
 
-## 1. 特性概述
-（从 Web 搜索/MCP/用户资料获取的特性技术描述）
+### 2. STORY-06 / STORY-07 设计层（必须全量消费）
 
-## 2. 应用场景分析
-（从 .output/scenarios/confirmed-scenarios.md 渲染）
+| 来源 | 必收字段 | 用途 |
+|------|----------|------|
+| `design/ppdcs/<basename>.md` | 推荐方法、图/规则/等价类/组合/状态迁移、覆盖策略、触发数据、`trace_refs`, `scenario_refs`, `action_source_refs`, `confirmation_gap_refs`, `fact_status` | 渲染完整 PPDCS 设计过程 |
+| `design/pc/<basename>.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status` | 渲染最终物理用例 |
 
-### 2.1 场景列表
-| 编号 | 场景名称 | 分类 | 描述 |
+> 若某 PC 缺少 `feature_tags` 或某 LC 无法回链到 `requirement_ids / trace_refs`，renderer 必须在交付物中显式暴露缺口，不得自行脑补。
 
-### 2.2 场景详情
-（每个场景的详细描述）
+## 执行流程
 
-## 3. 需求分析
-（从 .output/feature-input/raw-requirements.md 渲染）
+### 步骤 1：装配交付基线
 
-### 3.1 系统需求列表
-| SR编号 | 所属模块 | SR名称 | 描述 |
+1. 读取覆盖报告；
+2. 读取 `analysis/integration/logic-cases.md`、`analysis/integration/test-data.md`；
+3. 枚举 `design/ppdcs/*.md` 与 `design/pc/*.md`；
+4. 按相同 basename 建立 `LC → PPDCS过程 → PC` 的完整映射；
+5. 为每个 PC 汇总可直接进入交付文档的字段。
 
-### 3.2 目录结构
-（三~五级目录树）
+### 步骤 2：渲染 `<特性名>特性测试方案.md`
 
-## 4. M 分析 — 功能测试点
-（从 .output/m-analysis/test-points.md 渲染）
+测试方案至少包含：
 
-### 4.1 测试点按模块分布
-（按四/五级目录组织的测试点表）
+1. 特性概述
+2. 应用场景分析
+   - 若存在 Topology，列出 `topology_ref` 与 `analysis/scenarios/<scene-id>/topology.{mmd,yaml}` 引用
+3. 需求分析
+4. M 分析
+5. F 分析
+6. Q 分析
+7. 测试点整合
+8. 覆盖率报告
 
-## 5. F 分析 — 耦合测试点
-（从 f-analysis/ 渲染）
+覆盖章节必须区分：
 
-### 5.1 特性内耦合
-### 5.2 特性间耦合
-### 5.3 耦合测试点列表
+- 需求层覆盖
+- 测试点层覆盖
+- 未覆盖项 / `needs-confirmation` 项
 
-## 6. Q 分析 — 质量属性测试点
-（从 q-analysis/ 渲染）
+### 步骤 3：渲染 `<特性名>特性测试用例.md`
 
-### 6.1 HTSM 相关性评估表
-### 6.2 质量测试点列表
+按 **四级目录（H2）→ 五级目录（H3）→ 逻辑用例（H4）** 组织。
 
-## 7. 测试点整合
-（从 integration/ 渲染）
+每个 LC 必须同时渲染：
 
-### 7.1 测试点整合表
-### 7.2 逻辑用例列表
-### 7.3 设计方法分配表
+1. `design/ppdcs/<basename>.md` 的推荐上下文与完整过程
+2. `design/pc/<basename>.md` 的最终 PC 表
 
-## 8. 覆盖率报告
-（从 coverage/ 渲染）
+按设计 Skill 分类保留过程内容：
 
-### 8.1 需求覆盖率
-### 8.2 测试点覆盖率
-```
+| 设计 Skill | 必渲染内容 |
+|------------|------------|
+| `process-design` | 流程图、节点清单、路径枚举、覆盖策略、触发数据 |
+| `state-design` | 状态图、状态/迁移表、守卫条件、路径选择、迁移数据 |
+| `parameter-design` | factor catalog、规则表、判定结构、data row |
+| `data-design` | factor catalog、等价类/边界值表、独立性检查、data row |
+| `combination-design` | factor catalog、约束表、压缩策略、组合表、pair coverage checklist / fallback 记录 |
 
-## 交付物 2：`<特性名>特性测试用例.md`
+## 输出文件
 
-### 文档结构
-
-```markdown
-# <特性名> 特性测试用例
-
-## 测试点分析表
-（汇总 .output/integration/all-test-points.md 的内容，含覆盖判定）
-
-| 编号 | 所属模块 | 子模块 | 描述 | 关联SR | 覆盖判定 | 归属LC |
-|------|---------|--------|------|--------|---------|--------|
-
----
-
-## <四级目录：模块名>
-
-### <五级目录：子模块名>
-
-#### LC-001: <逻辑用例标题>
-
-##### 设计方法：数据组合法
-
-**第一步：等价类划分表**
-（从 .output/design/<module>/<sub>/design-process.md 提取）
-
-**第二步：数据组合分析表**
-（从 .output/design/<module>/<sub>/design-process.md 提取）
-
-**第三步：逻辑用例设计**
-（逻辑用例详情）
-
-**第四步：物理用例**
-
-| 三级目录 | 四级目录 | 五级目录 | 用例名称* | 用例编号 | 用例级别* | 组网描述* | 组网约束 | 预置条件 | 测试步骤* | 预期结果* | 首次创建版本* | 最后变更版本 | 关键词 | 测试类型* | 是否自动化* |
-|---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|------------|------------|--------|---------|----------|
-| 日志中心 | 配置管理 | 日志服务器配置 | 新建日志服务器 | PC-001 | P1 | 单台防火墙直连日志服务器 | | 防火墙已启动，管理员已登录 | 1.进入日志服务器配置页面<br>2.点击新建<br>3.输入IP和端口<br>4.点击确定 | 1.显示配置页面<br>2.弹出新建表单<br>3.表单接受输入<br>4.提示创建成功 | V60R001C01 | | 日志服务器,配置 | 功能 | 否 |
-
----
-
-（下一个逻辑用例...）
-```
-
-### 按五级目录组织
-
-文档结构遵循目录层级：
-- H2（##）：四级目录（模块）
-- H3（###）：五级目录（子模块）
-- H4（####）：逻辑用例
-- H5（#####）：设计步骤
+| 文件 | 内容 |
+|------|------|
+| `<特性名>特性测试方案.md` | 覆盖测试方案、场景、分析与覆盖摘要 |
+| `<特性名>特性测试用例.md` | 按 LC 组织的完整设计过程 + PC |
 
 ## 渲染规则
 
-1. **不丢失信息**：所有中间产物的内容必须完整体现在交付物中
-2. **格式统一**：表格、标题、列表的格式保持一致
-3. **追踪可查**：保留 SR→TP→LC→TD→PC 的编号链
-4. **字段完整**：物理用例以表格输出，必填列：用例名称、用例级别、组网描述、测试步骤、预期结果、首次创建版本、测试类型、是否自动化
+1. **不丢过程**：必须带出 STORY-06 / STORY-07 完整设计过程
+2. **不丢字段**：不得删掉 trace / gap / fact_status；若存在 `topology_ref`，不得在场景章节中丢失
+3. **不扩展交付文件**：`delivery/` 只输出测试方案和测试用例两份 Markdown
 
 ## Gotchas
 
-- 测试方案和测试用例是两个独立文档，不要合并
-- 测试用例文档按五级目录组织，每个逻辑用例包含完整的四步设计过程
-- Mermaid 图（流程图、状态图）需要原样保留在文档中
-- 大型特性的文档可能很长，不要截断
+- `feature_tags` 若缺失，应在交付中列为 gap，而不是用模块名临时替代
+- `fact_status=needs-confirmation` 的 LC / PC 条目必须原样进入交付物
 
 ## 验收标准
 
-- [ ] `<特性名>特性测试方案.md` 包含 8 个章节
-- [ ] `<特性名>特性测试用例.md` 按五级目录组织
-- [ ] 每个逻辑用例包含完整四步设计过程
-- [ ] 物理用例以表格输出，含 16 列（三级目录~是否自动化），必填列不为空
-- [ ] 交付文档写入 `.output/delivery/`
+- [ ] 只输出测试方案、测试用例两份 Markdown
+- [ ] 测试用例文档消费 STORY-06 / STORY-07 的完整过程文档，而非仅最终 PC
+- [ ] 交付物保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status`
+- [ ] 不生成工具分析表或 `case-index.yaml`

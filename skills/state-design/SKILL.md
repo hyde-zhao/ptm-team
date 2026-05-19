@@ -1,10 +1,10 @@
 ---
 name: state-design
 description: >-
-  S-State 状态图法用例设计：五步完成状态图建模→状态路径枚举→路径→LC→迁移触发数据→物理用例。
-  基于 PPDCS 中 S-State 特征：对象有多状态可互转，存在状态生命周期。
+  S-State 状态图法用例设计：消费 design-plan + design-planner-reasoning +
+  LC/TD trace，输出状态图、状态/迁移表、守卫条件、迁移路径选择、数据叠加与物理用例。
   触发词包括：状态图、状态机、状态迁移、S-State。
-  适用场景：MFQ 设计阶段，PPDCS 特征为 S-State 的逻辑用例。
+  适用场景：MFQ design 阶段，已确认主方法为 S-State 的逻辑用例。
 argument-hint: "逻辑用例 ID（如 LC-003）"
 user-invokable: true
 status: active
@@ -12,220 +12,286 @@ status: active
 
 ## 目标
 
-对设计计划中 PPDCS 特征为 **S-State** 的逻辑用例，执行五步设计过程，
-建模状态图→枚举状态路径（含守卫条件）→路径→LC→迁移触发数据→输出物理用例。
+对设计计划中推荐为 **S-State** 的逻辑用例，输出完整状态链工件：
 
-## 理论基础
-
-S-State 是 PPDCS 五特征之一：
-> 被测对象有多种状态，状态间可双向迁移（区别于 P-Process 的单向流程），
-> 存在状态生命周期，事件驱动状态转换。
-
-**识别条件**：对象有"启用/禁用"、"创建/销毁"、"运行/暂停/停止"等多状态，
-且状态间存在回退能力。
-
-**关键区分**：P-Process vs S-State — 流程能否回退？不能=Process，可以=State
-
-**建模工具**：状态图（stateDiagram）/ 状态转换表
+1. 消费 `design-plan.md` 与 `design-planner-reasoning.md`；
+2. 回链 `logic-cases.md`、`test-data.md`、`confirmed-scenarios.md`；
+3. 生成状态图、状态清单、迁移表、迁移路径选择、守卫条件与触发数据叠加；
+4. 在保留 `needs-confirmation` / `confirmation_gap_refs` 的前提下输出物理用例。
 
 ## 适用范围
 
+> 统一输出规则：本 Skill 的方法过程写入 `design/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
+
+
 - 适用阶段：MFQ 的 design 阶段
-- 输入：`.output/integration/design-plan.md`（PPDCS=S-State 的 LC）
-- 输出：`.output/design/<module>/<sub-module>/` 目录下的设计文件
+- 输入：
+  - `analysis/integration/design-plan.md`
+  - `analysis/plan/design-planner-reasoning.md`
+  - `analysis/integration/logic-cases.md`
+  - `analysis/integration/test-data.md`
+  - `analysis/scenarios/confirmed-scenarios.md`
+  - `process/REQUIREMENTS.md` / `process/HLD.md`（仅作为状态边界与术语基线）
+- 输出：`design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
 
 ## 前置条件
 
-- [ ] 设计计划已确认
-- [ ] 当前逻辑用例的 PPDCS 特征为 S-State
+- [ ] 设计计划已确认，且目标 LC 的 `设计Skill = state-design`
+- [ ] `design-planner-reasoning.md` 中存在对应 LC 的 reasoning
+- [ ] LC / TD 中保留状态相关 trace、guard 缺口与 `fact_status`
+- [ ] 场景链中能回链到对象生命周期、预期状态或状态迁移线索
+- [ ] 若状态集合不稳定，准备以 `needs-confirmation` 显式保留，而不是伪造状态机
 
-## 五步用例设计过程
+## 必须消费的输入契约
 
-读取 `test-point-integrator` 输出的逻辑用例（含因子-取值表和动作路径），执行以下五步：
+### 1. STORY-05 下游契约
 
-### 第一步：测试数据（因子-取值表补全）
+| 来源 | 必收字段 | 用途 |
+|------|----------|------|
+| `design-plan.md` | `LC-ID`, `逻辑用例标题`, `PPDCS特征`, `推荐方法`, `设计Skill`, `主信号`, `候选特征`, `排除摘要`, `关键trace`, `待确认事项` | 确认 LC 应进入 `state-design` |
+| `design-planner-reasoning.md` | `recommended_feature`, `recommended_method`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `scenario_refs`, `scenario_chain_refs`, `td_refs`, `test_object_refs`, `factor_refs`, `uncertain_facts` | 解释为何采用状态图法，并保留未确认事实 |
 
-从整合阶段的因子-取值表出发，提取状态因子（当前状态、触发事件、守卫条件）并补充类型和等价类：
+### 2. STORY-04 / 上游场景与 trace 契约
 
-```markdown
-| 因子 | 取值 | 类型 | 等价类 |
-|------|------|------|--------|
-| 当前状态 | 未配置 | 环境状态 | 有效 |
-| 当前状态 | 已配置 | 环境状态 | 有效 |
-| 当前状态 | 已启用 | 环境状态 | 有效 |
-| 当前状态 | 已禁用 | 环境状态 | 有效 |
-| 触发事件 | 创建服务器 | 参数 | 有效 |
-| 触发事件 | 启用服务器 | 参数 | 有效 |
-| 触发事件 | 禁用服务器 | 参数 | 有效 |
-| 触发事件 | 删除服务器 | 参数 | 有效 |
-| 触发事件 | 修改配置 | 参数 | 有效 |
-| IP地址 | <IP_ADDRESS>（合法） | 参数 | 有效（守卫条件） |
-| IP地址 | 256.0.0.1（非法） | 参数 | 无效（守卫失败） |
+| 来源 | 必收字段 | 用途 |
+|------|----------|------|
+| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则`, `关联SR` | 识别状态主体、迁移动作与 trace 链 |
+| `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `source_section`, `scenario_refs`, `action_source_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | 分析守卫条件、迁移触发数据与非法迁移 |
+| `confirmed-scenarios.md` | `precondition_operations`, `atomic_operations`, `observation_points`, `expected_state`, `minimal_logic_chain`, `data_overlay_slots`, `Action Source`, `Knowledge Reference`, `confirmation_gaps` | 推导稳定状态、迁移与观察点 |
+
+> 若某状态、迁移方向或守卫条件仅能从模糊表述猜测：
+> - 不得脑补；
+> - 写 `[待确认]`；
+> - 保留 `confirmation_gap_refs` 与 `fact_status=needs-confirmation`。
+
+## 执行流程
+
+### 步骤 1：锁定目标 LC 与状态上下文
+
+1. 从 `design-plan.md` 选出 `设计Skill = state-design` 的 LC。
+2. 读取 reasoning 中的：
+   - `primary_signal`
+   - `candidate_features`
+   - `exclusion_reasons`
+   - `fact_status`
+   - `uncertain_facts`
+3. 若 reasoning 里 `P-Process` 仍是强候选，必须在设计过程文档中保留区分理由。
+
+### 步骤 2：建立状态/迁移模型
+
+状态必须来自**对象稳定状态**，不是瞬时动作。
+
+- `expected_state` / 观察点 → 状态候选
+- `atomic_operations` / 事件 → 迁移动作
+- `preconditions` / TD 取值 → 守卫条件
+- `E` 中的保持/拒绝/回退 → 非法迁移或状态保持
+
+**状态最少字段**：
+
+| 字段 | 说明 |
+|------|------|
+| `state_id` | 状态编号 |
+| `state_name` | 状态名称 |
+| `entry_conditions` | 进入条件 |
+| `exit_observations` | 离开状态时的观察点 |
+| `trace_refs` | 对应 trace |
+| `confirmation_gap_refs` | 未确认状态语义 |
+| `fact_status` | `confirmed / needs-confirmation` |
+
+**迁移最少字段**：
+
+| 字段 | 说明 |
+|------|------|
+| `transition_id` | 迁移编号 |
+| `from` | 起始状态 |
+| `to` | 目标状态；未知写 `[待确认]` |
+| `event` | 触发事件 / 动作 |
+| `guard` | 守卫条件 |
+| `effect` | 迁移后可观测结果 |
+| `trace_refs` | 关键 trace |
+| `confirmation_gap_refs` | 未确认守卫 / 目标态 |
+| `fact_status` | `confirmed / needs-confirmation` |
+
+图示优先使用 Mermaid `stateDiagram-v2`。
+
+### 步骤 3：生成迁移表与路径选择
+
+至少输出：
+
+1. 合法迁移表；
+2. 已确认的非法迁移 / 守卫失败场景；
+3. 迁移路径选择结果。
+
+**迁移路径最小集合**：
+
+| 路径类型 | 说明 |
+|---------|------|
+| 主生命周期路径 | 典型正常状态流 |
+| 关键回退路径 | 状态可逆 / 恢复链 |
+| 边界迁移路径 | 关键守卫边界触发 |
+| 非法迁移路径 | 需求已定义或可由合法迁移矩阵直接判定 |
+
+**迁移路径表最少字段**：
+
+| 字段 | 说明 |
+|------|------|
+| `state_path_id` | 路径编号 |
+| `transition_sequence` | 迁移序列 |
+| `path_type` | 生命周期 / 回退 / 边界 / 非法 |
+| `guard_summary` | 路径涉及的守卫 |
+| `scenario_chain_refs` | PRE/AO/Observation |
+| `trace_refs` | 关键 trace |
+| `confirmation_gap_refs` | 未确认路径部分 |
+| `fact_status` | `confirmed / needs-confirmation` |
+
+### 步骤 4：分析守卫条件与数据叠加
+
+以 `test-data.md` 为准，为每条迁移或迁移路径挂接数据：
+
+1. 找到影响状态进入/退出的 `factor_ref`；
+2. 将 `value_set` 映射到迁移的 `guard` 或 `event`；
+3. 输出合法迁移数据与守卫失败数据；
+4. `TD.status=needs-confirmation` 时，只能保留 `[待确认]`。
+
+**迁移数据/叠加表最少字段**：
+
+| 字段 | 说明 |
+|------|------|
+| `state_path_id` | 关联路径 |
+| `transition_id` | 关联迁移 |
+| `factor_ref` | 因子引用 |
+| `td_ref` | 测试数据引用 |
+| `value_set` | 取值；未确认保留 `[待确认]` |
+| `guard_expectation` | 守卫通过 / 失败预期 |
+| `data_overlay_set` | 迁移级数据集编号 |
+| `confirmation_gap_refs` | 来自 TD / reasoning / scenario 的缺口 |
+| `status` | `ready / needs-confirmation` |
+
+### 步骤 5：定义覆盖策略
+
+覆盖策略必须区分“合法迁移完整性”和“非法迁移代表性”：
+
+- 主生命周期路径：必须覆盖
+- 关键回退路径：若对象支持回退，必须覆盖
+- 边界守卫路径：每个关键守卫至少 1 条通过 / 失败样例
+- 非法迁移：只覆盖需求已定义或能直接从合法矩阵推导出的代表性非法迁移
+
+若无法确认某状态是否存在、某迁移是否允许，必须：
+
+- 不生成伪确定路径；
+- 在 `design/ppdcs/<basename>.md` 单列 `[待确认]`；
+- 维持 `fact_status=needs-confirmation`。
+
+### 步骤 6：生成物理用例
+
+PC 由 `覆盖策略选中的 state_path × data_overlay_set` 生成。
+
+**与 `process-design` 共用的物理用例骨架**：
+
+| 字段 | 说明 |
+|------|------|
+| `physical_case_id` | 物理用例编号 |
+| `logic_case_id` | 所属 LC |
+| `requirement_ids` | 关联需求 / SR |
+| `feature_tags` | 功能分类标签 |
+| `case_title` | 用例标题 |
+| `priority` | 优先级 |
+| `preconditions` | 前置条件 |
+| `test_steps` | 步骤 |
+| `expected_results` | 预期结果 |
+| `graph_ref` | `state_path_id` |
+| `coverage_goal` | 迁移路径覆盖目标 |
+| `trigger_data` | 守卫/触发数据摘要 |
+| `trace_refs` | trace 链 |
+| `scenario_refs` | 来源场景 |
+| `scenario_chain_refs` | PRE/AO 引用 |
+| `action_source_refs` | 动作源 |
+| `confirmation_gap_refs` | 未确认事实 |
+| `fact_status` | `confirmed / needs-confirmation` |
+
+> 若 PC 依赖未确认状态名、迁移方向或守卫条件，`test_steps / expected_results / trigger_data` 必须保留 `[待确认]`。
+
+## 输出文件结构
+
+```text
+design/ppdcs/<basename>.md
+design/pc/<basename>.md
 ```
 
-### 第二步：状态路径枚举
+### `design/ppdcs/<basename>.md`
 
-**S-State 的动作路径来自状态图的迁移路径**，先用 Mermaid stateDiagram 建模，然后枚举覆盖路径：
+至少包含：
+
+- `recommended_feature / recommended_method / design_skill`
+- `primary_signal`
+- `candidate_features`
+- `exclusion_reasons`
+- `fact_status`
+- `test_object_refs / factor_refs`
+- Design Context（来自 `design-plan + reasoning`）
+- State Model（Mermaid + 状态清单）
+- Transition Table
+- State Path Selection
+- Guard Conditions & Data Overlay
+- PC Derivation Summary
+- Uncertain Facts / Confirmation Gaps
+
+### `design/pc/<basename>.md`
+
+只输出最终 PC，但每条 PC 必须回链：
+
+- `graph_ref`
+- `trace_refs`
+- `scenario_refs`
+- `scenario_chain_refs`
+- `confirmation_gap_refs`
+- `fact_status`
+
+## 输出格式骨架
+
+### State Model
 
 ```mermaid
 stateDiagram-v2
-    [*] --> 未配置
-    未配置 --> 已配置: 创建日志服务器（守卫：IP/端口有效）
-    已配置 --> 已启用: 启用日志服务器
-    已配置 --> 未配置: 删除日志服务器
-    已启用 --> 已禁用: 禁用日志服务器
-    已启用 --> 已配置: 修改配置（需重启）
-    已禁用 --> 已启用: 重新启用
-    已禁用 --> 未配置: 删除日志服务器
-    已启用 --> [*]: 系统重置
+    [*] --> S0
+    S0 --> S1: T1 / guard-ok
+    S1 --> S2: T2 / activate
+    S2 --> S1: T3 / rollback
+    S1 --> [*]
 ```
 
-**状态转换表**（合法 + 非法）：
-
-| 序号 | 当前状态 | 事件/动作 | 守卫条件 | 目标状态 | 转换类型 |
-|------|---------|----------|---------|---------|---------|
-| T1 | 未配置 | 创建日志服务器 | IP/端口有效 | 已配置 | 合法 |
-| T2 | 已配置 | 启用日志服务器 | — | 已启用 | 合法 |
-| T3 | 已配置 | 删除日志服务器 | — | 未配置 | 合法 |
-| T4 | 已启用 | 禁用日志服务器 | — | 已禁用 | 合法 |
-| T5 | 已启用 | 修改配置 | 需重启 | 已配置 | 合法 |
-| T6 | 已禁用 | 重新启用 | — | 已启用 | 合法 |
-| T7 | 已禁用 | 删除日志服务器 | — | 未配置 | 合法 |
-| T8 | 未配置 | 启用日志服务器 | 无配置 | — | **非法** |
-| T9 | 未配置 | 禁用日志服务器 | 无配置 | — | **非法** |
-
-**状态路径枚举表**（标准化格式，包含守卫条件列）：
-
-| 路径编号 | 路径描述 | 转换序列 | 路径类型 | 守卫条件 |
-|---------|---------|---------|---------|---------|
-| SP1 | 完整生命周期 | T1→T2→T4→T6→T7 | 主路径（全周期） | T1: IP/端口有效 |
-| SP2 | 创建后修改再启用 | T1→T5→T2 | 分支路径 | T1: IP/端口有效；T5: 需重启 |
-| SP3 | 非法启用（未配置） | T8 | 负面路径 | 守卫失败：无配置不允许启用 |
-| SP4 | 非法禁用（未配置） | T9 | 负面路径 | 守卫失败：无配置不允许禁用 |
-| SP5 | 创建时IP非法 | T1（守卫失败） | 负面路径 | T1: IP格式无效→状态不变 |
-
-### 第三步：数据组合分析
-
-**S-State 组合策略**：每条状态路径选取对应的数据，合法转换充分覆盖，非法转换各取一条：
-
-**组合约束分析**（守卫条件即约束）：
-
-```
-T1 约束：IP/端口格式有效 → 创建成功；IP格式无效 → 守卫失败，不转换
-T5 约束：修改后需重启生效，状态先回到"已配置"，重启后才到"已启用"
-T8/T9：非法迁移，系统应拒绝操作并保持当前状态
-```
-
-**全量组合结果**（每条路径×关键守卫条件）：
-
-| 组合编号 | 走路径 | IP地址 | 触发事件序列 | 预期结果 | 覆盖转换 |
-|---------|--------|--------|------------|---------|---------|
-| C-01 | SP1 | <IP_ADDRESS> | 创建→启用→禁用→重启→删除 | 各步骤状态正确迁移 | T1,T2,T4,T6,T7 |
-| C-02 | SP2 | <IP_ADDRESS> | 创建→修改→启用 | 状态：已配置→已配置→已启用 | T1,T5,T2 |
-| C-03 | SP3 | — | 未配置时直接启用 | 系统拒绝，提示"请先配置服务器" | T8（非法） |
-| C-04 | SP4 | — | 未配置时直接禁用 | 系统拒绝，提示"请先配置服务器" | T9（非法） |
-| C-05 | T1 | 256.0.0.1 | 创建（非法IP） | 守卫失败，状态不变；提示"IP格式不合法" | T1守卫失败 |
-
-### 第四步：迁移触发事件+数据分配
-
-**为每条状态路径分配触发事件序列和配套数据**：状态路径确定了"经历哪些状态迁移"，本步骤确定"用什么事件触发这些迁移、配套什么数据"。
-
-```
-分配原则：
-1. 触发事件序列（A）：按路径中的迁移序列，逐一指定触发该迁移的操作（如 "创建服务器→启用→禁用"）
-2. 配套数据（C/A）：每个触发事件需要的具体参数值（如 IP=<IP_ADDRESS>, 端口=514）
-3. 守卫条件验证（E）：确认守卫条件是否满足，记录期望的目标状态
-4. 非法路径的预期：系统拒绝迁移，状态维持不变
-```
-
-**状态路径触发事件分配表**：
-
-| 路径编号 | 触发事件序列 | 配套数据 | 守卫条件验证 |
-|---------|------------|---------|------------|
-| SP1 | 创建→启用→禁用→重启→删除 | IP=<IP_ADDRESS>, 端口=514 | T1守卫：IP有效→通过 |
-| SP2 | 创建→修改配置→启用 | IP=<IP_ADDRESS>, 修改端口为1514 | T1守卫通过；T5需重启确认 |
-| SP3 | （未配置状态）直接启用 | — | 守卫失败：无配置项 |
-| SP4 | （未配置状态）直接禁用 | — | 守卫失败：无配置项 |
-| SP5 | 创建服务器（非法IP） | IP=256.0.0.1 | T1守卫失败：IP格式非法 |
-
-**S-State 覆盖策略**：全组合（所有合法转换 + 所有非法转换均需覆盖）
-
-```
-最终用例集 = SP1~SP5
-决策理由：状态机的状态完整性至关重要，每条合法/非法转换均需验证，
-          守卫条件失败场景也不可遗漏
-```
-
-### 第五步：物理用例输出
+### Transition Table
 
 ```markdown
-| 三级目录 | 四级目录 | 五级目录 | 用例名称* | 用例编号 | 用例级别* | 组网描述* | 组网约束 | 预置条件 | 测试步骤* | 预期结果* | 首次创建版本* | 最后变更版本 | 关键词 | 测试类型* | 是否自动化* |
-|---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|------------|------------|--------|---------|----------|
-| 日志中心 | 日志服务器 | 服务器管理 | 日志服务器完整生命周期 | PC-SRV-STA-001 | P1 | 单台防火墙直连日志服务器 | | 防火墙已正常启动；无已配置的日志服务器 | 1.创建日志服务器 IP=<IP_ADDRESS>:514<br>2.启用日志服务器<br>3.禁用日志服务器<br>4.重新启用日志服务器<br>5.删除日志服务器 | 1.状态变为"已配置"<br>2.状态变为"已启用"<br>3.状态变为"已禁用"<br>4.状态变为"已启用"<br>5.状态变为"未配置" | V60R001C01 | | 状态机,生命周期 | 功能 | 否 |
-| 日志中心 | 日志服务器 | 服务器管理 | 未配置状态下非法启用服务器 | PC-SRV-STA-003 | P2 | 单台防火墙 | | 防火墙已正常启动；无已配置的日志服务器 | 1.进入日志服务器管理页面<br>2.点击"启用"按钮（当前无服务器） | 1.显示管理页面，无服务器条目<br>2.系统提示"请先配置服务器后再启用"，操作被拒绝，页面状态不变 | V60R001C01 | | 状态机,非法迁移 | 功能 | 否 |
+| transition_id | from | to | event | guard | effect | confirmation_gap_refs | fact_status |
+|---------------|------|----|-------|-------|--------|-----------------------|-------------|
+| T1 | S0 | S1 | create | valid-input | 状态进入 S1 | — | confirmed |
+| T2 | S1 | S2 | activate | `[待确认]` | 状态进入 S2 | GAP-003 | needs-confirmation |
 ```
 
-## 输出目录结构
-
-```
-.output/design/<module>/<sub-module>/
-├── ppdcs-profile.md      # S-State 特征详情（含状态图、转换表统计）
-├── design-process.md      # 五步设计过程（因子表+状态图+路径枚举+组合+覆盖策略）
-└── physical-cases.md      # 物理用例列表
-```
-
-### ppdcs-profile.md 内容
+### Guard Conditions & Data Overlay
 
 ```markdown
-# PPDCS 特征详情
-
-- **主特征**：S-State
-- **判定依据**：<对象有多状态可双向迁移>
-- **辅特征**：<如有>
-- **状态数**：N
-- **合法转换数**：M
-- **非法转换数**：K
-- **预估路径数**：L
+| state_path_id | transition_id | factor_ref | td_ref | value_set | guard_expectation | data_overlay_set | status |
+|---------------|---------------|------------|-------|-----------|-------------------|------------------|--------|
+| SP-01 | T1 | FAC-001 | TD-001 | `valid-a` | pass | OVL-01 | ready |
+| SP-02 | T2 | FAC-002 | TD-002 | `[待确认]` | fail | OVL-02 | needs-confirmation |
 ```
-
-## 优先级分配规则
-
-| 路径类型 | 优先级 |
-|---------|--------|
-| 完整生命周期路径 | P0~P1 |
-| 基本合法转换 | P1 |
-| 复合合法转换路径 | P2 |
-| 非法转换（负面测试） | P2~P3 |
-| 状态并发/竞争 | P3~P4 |
-
-## 负面测试生成
-
-自动检测非法转换并生成负面测试用例：
-
-1. 枚举 (状态, 事件) 的全矩阵
-2. 不在合法转换表中的组合 → 非法转换
-3. 每个非法转换生成一个测试用例
-4. 预期结果：系统拒绝操作或保持当前状态
 
 ## Gotchas
 
-- 必须使用标准 Mermaid stateDiagram-v2 语法
-- 注意状态的"可达性"：每个状态都应可从初始状态到达
-- 注意"死状态"：不应存在进入后无法离开的状态（除终止状态外）
-- 并发状态（如果有）需要特殊处理
-- 守卫条件要明确，避免歧义
-- **S-State vs P-Process 区分**：可回退 = State；不可回退 = Process
+- 不得只读 `design-plan.md` 而忽略 `design-planner-reasoning.md`
+- 状态必须是“稳定状态”，不能把瞬时动作直接当状态
+- 非法迁移只能来自需求已定义或合法迁移矩阵直接推导，不能主观扩张
+- `confirmation_gap_refs`、`uncertain_facts`、`TD.status=needs-confirmation` 不能被吞掉
+- 若 `P-Process` 仍是强候选，必须写清“为何此处核心是状态迁移而非步骤流程”
 
 ## 验收标准
 
-- [ ] 第一步因子-取值表包含状态因子（当前状态/触发事件/守卫条件），含类型和等价类
-- [ ] 第二步状态图使用 Mermaid stateDiagram-v2 语法且可渲染
-- [ ] 第二步状态转换表包含所有合法和主要非法转换
-- [ ] 第二步状态路径枚举表包含标准五列：路径编号/路径描述/转换序列/路径类型/守卫条件
-- [ ] 第二步状态路径枚举覆盖所有合法转换 + 所有非法转换
-- [ ] 第三步守卫条件以"IF...THEN...（转换成功/失败）"格式表述
-- [ ] 第四步迁移触发事件+数据分配表包含：路径编号/触发事件序列/配套数据/守卫条件验证
-- [ ] 第四步覆盖策略：全组合（状态机完整性要求）
-- [ ] 物理用例以表格输出（16列），C→预置条件、A→测试步骤、E→预期结果映射正确
-- [ ] `ppdcs-profile.md` 已创建
-- [ ] 设计过程文档写入 `.output/design/<module>/<sub>/`
+- [ ] 同时消费 `design-plan.md` 与 `design-planner-reasoning.md`
+- [ ] 状态图输出 Mermaid `stateDiagram-v2`
+- [ ] 存在状态清单、迁移表、迁移路径选择、守卫条件/数据叠加表
+- [ ] 迁移路径保留 `scenario_chain_refs / confirmation_gap_refs / fact_status`
+- [ ] `TD.status=needs-confirmation` 未被静默定值
+- [ ] 物理用例字段骨架与 `process-design` 一致
+- [ ] 输出采用 `design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`

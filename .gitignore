@@ -222,3 +222,5 @@ tests.tar.gz
 .agents/
 .claude/
 .codex/
+AGENTS.md
+CLAUDE.md

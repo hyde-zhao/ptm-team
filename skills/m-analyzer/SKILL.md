@@ -13,9 +13,10 @@ status: active
 
 ## 目标
 
-基于 feature-parser 输出的结构化需求和已确认的三~五级目录，
+基于 feature-parser 输出的结构化需求、已确认目录以及 STORY-03 产出的
+`Scenario Chain / Action Source / Knowledge Reference / Existing Tool Usage Seed / Tool Abstraction Draft / confirmation_gaps`，
 逐模块/子模块分析功能点，**为每个单功能标注 PPDCS 主特征**，
-生成测试点，确保所有需求和用户场景的功能被完整覆盖。
+生成带 trace chain v6 的 CAE 测试点，并抽取后续设计所需的测试对象与测试因子。
 
 ## 理论基础
 
@@ -40,22 +41,43 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
 ## 适用范围
 
 - 适用阶段：MFQ 分析的 m-analysis 阶段
-- 输入：`.output/feature-input/` + `.output/scenarios/`
-- 输出：`.output/m-analysis/test-points.md` + `.output/m-analysis/ppdcs-annotation.md`
+- 输入：`analysis/feature-input/` + `analysis/scenarios/confirmed-scenarios.md`
+- 输出：
+  - `analysis/m-analysis/test-points.md`
+  - `analysis/m-analysis/ppdcs-annotation.md`
+  - `analysis/m-analysis/test-objects-factors.md`
 
 ## 前置条件
 
-- [ ] `.output/feature-input/raw-requirements.md` 存在
-- [ ] `.output/feature-input/directory-structure.md` 存在（用户已确认）
-- [ ] `.output/scenarios/confirmed-scenarios.md` 存在（用户已确认）
+- [ ] `analysis/feature-input/raw-requirements.md` 存在
+- [ ] `analysis/feature-input/directory-structure.md` 存在（用户已确认）
+- [ ] `analysis/scenarios/confirmed-scenarios.md` 存在（用户已确认）
+- [ ] 若 `confirmation_gaps` 仍存在，已明确哪些 gap 可继续下游透传，哪些必须先回到场景确认
+
+## 场景输入契约（trace chain v6）
+
+M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简述”：
+
+| 上游字段 | 用途 | 缺失处理 |
+|------|------|------|
+| `Scenario Chain` | 生成 TP 的场景上下文与最小逻辑链骨架 | 不得脑补，输出 `[待确认]` 并挂 `confirmation_gap_refs` |
+| `precondition_operations` | 生成 C 条件与前置动作 trace | 缺失时仅保留已确认前置，不得伪造操作 |
+| `atomic_operations` | 生成 A 动作、动作顺序和 `scenario_chain_refs` | 缺失时不得把“功能描述”直接当成可执行动作 |
+| `Action Source` | 关联 `action_source_refs`，识别外部接口/工具依赖 | 若契约不清，仅标记 `unknown/gap` |
+| `Knowledge Reference` | 记录需求/场景依据来源 | `missing/unavailable` 必须保留原状态 |
+| `Existing Tool Usage Seed` | 保留已有工具线索供后续 F/Q/Integrator 使用 | 没有则留空，不做默认映射 |
+| `Tool Abstraction Draft` | 标记能力缺口背景 | 仅引用已确认草案 |
+| `confirmation_gaps` | 显式透传不确定事实 | 不得静默吞掉 |
 
 ## 执行流程
 
 ### 步骤 1：加载输入
 
-1. 读取 `.output/feature-input/raw-requirements.md` 获取需求条目列表
-2. 读取 `.output/feature-input/directory-structure.md` 获取目录层级
-3. 读取 `.output/scenarios/confirmed-scenarios.md` 获取应用场景
+1. 读取 `analysis/feature-input/raw-requirements.md` 获取需求条目列表
+2. 读取 `analysis/feature-input/directory-structure.md` 获取目录层级
+3. 读取 `analysis/scenarios/confirmed-scenarios.md` 获取已确认场景链、动作源、知识引用与 gap
+4. 校验每个场景是否包含 `Scenario Chain / Action Source / Knowledge Reference`
+5. 对影响 CAE 落地的未确认事实建立 `confirmation_gap_refs`，不做隐式默认
 
 ### 步骤 2：逐模块功能分析
 
@@ -63,8 +85,8 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
 
 对每个子模块：
 1. 提取该子模块关联的需求条目
-2. 提取该子模块关联的应用场景
-3. 分析功能点：该子模块需要实现哪些功能
+2. 提取该子模块关联的 `scenario_refs`
+3. 从 `minimal_logic_chain + precondition_operations + atomic_operations` 提取该子模块的功能点
 4. 对每个功能点，考虑以下维度生成测试点：
    - **正常功能**：功能按预期工作
    - **参数边界**：输入参数的有效/无效边界
@@ -72,7 +94,38 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
    - **默认值**：默认配置下的行为
    - **交互影响**：与同模块内其他功能的交互
 
-### 步骤 3：PPDCS 特征标注（v2 新增）
+### 步骤 3：测试对象 / 测试因子提取
+
+先提取测试对象，再提取测试因子：
+
+1. **测试对象提取优先级**：`C（Condition） → A（Action） → E（Effect）`
+2. 每个对象至少记录：
+
+| 字段 | 说明 |
+|------|------|
+| `object_id` | 对象编号 |
+| `object_name` | 对象名称 |
+| `object_type` | 配置对象 / 运行态对象 / 接口对象 / 观测对象 |
+| `observation_targets` | 如何判断对象状态变化 |
+| `scenario_refs` | 来源场景 |
+| `action_source_refs` | 关联动作源 |
+
+3. 每个因子至少记录：
+
+| 字段 | 说明 |
+|------|------|
+| `factor_id` | 因子编号 |
+| `factor_name` | 因子名称 |
+| `source_section` | `precondition / condition / action-input / observation` |
+| `data_domain` | 取值范围 / 枚举 / 阈值 |
+| `related_object_id` | 关联对象 |
+| `scenario_refs` | 来源场景 |
+| `confirmation_gap_refs` | 若取值边界未确认 |
+
+4. 典型因子：`IP地址 / 接口类型 / 协议类型 / 状态值 / 数量阈值`
+5. 无法确认对象或因子边界时，输出 `[待确认]` 并保留 gap，不得自行补齐
+
+### 步骤 4：PPDCS 特征标注（v2 新增）
 
 **对每个五级目录节点（单功能），分析其内在逻辑特征并标注 PPDCS 主特征**：
 
@@ -89,7 +142,7 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
   4. 记录判定依据
 ```
 
-### 步骤 4：测试点标注（CAE 三元组格式）
+### 步骤 5：测试点标注（CAE 三元组 + trace chain v6）
 
 每个测试点必须包含 **CAE 三元组**（条件/动作/预期），在什么条件下（C），完成什么操作（A），发生什么结果（E）：
 
@@ -102,29 +155,40 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
 | A 动作 | 可执行的测试操作，包含操作对象和内容（复合动作用"→"连接） | 尝试新建第6台日志服务器，点击"确定" |
 | E 预期 | 可观测的预期行为或系统响应（多个预期用"；"分隔） | 系统提示"超出最大服务器数量限制"；新建失败；服务器列表条目数不变 |
 | 关联需求 | 需求编号列表 | SR-001, SR-003 |
-| 关联场景 | 场景编号列表 | SCN-XXX-001 |
+| `scenario_refs` | 场景编号列表 | SCN-XXX-001 |
+| `scenario_chain_refs` | `PRE-* / AO-* / minimal_logic_chain` 引用 | PRE-01, AO-02 |
+| `action_source_refs` | 外部动作源引用 | AS-001 |
+| `knowledge_refs` | 支撑该 TP 的知识引用 | KR-001 |
+| `confirmation_gap_refs` | 上游未确认事实引用 | GAP-001 |
+| `trace_refs` | 汇总 `requirement_refs / scenario_refs / action_source_refs / knowledge_refs` | 结构化 trace |
+| `test_object_refs` | 关联测试对象 | OBJ-001 |
+| `factor_refs` | 关联测试因子 | FAC-001, FAC-002 |
 | 来源 | M 分析 | M |
 | 测试类型建议 | 功能/边界/异常/默认 | 边界 |
+| `fact_status` | `confirmed / needs-confirmation` | confirmed |
 
 **CAE 字段约束**：
 - C 必须是可验证的前置状态，禁止模糊表述（如"正常情况下"）
 - A 必须是可执行的操作，不能是"验证..."等描述性文字
 - E 必须是可观测的结果，包含观测点和期望值
 - **E="待定" 容错规则（Q1 default）**：预期结果尚不明确时（如依赖硬件规格、待确认的产品行为），E 可填 `"待定"`，但必须追加批注 `[待定原因: <描述>]`；进入用例设计阶段前须补全。空值不允许。
+- 若 A 依赖 `Action Source` 但契约不完整，A 只能写已确认部分，并在 `confirmation_gap_refs` 中注明缺口
+- 若 `Knowledge Reference` 为 `missing/unavailable`，仅记录状态，不得伪造理论依据
 
-### 步骤 5：覆盖初检
+### 步骤 6：覆盖初检
 
 1. **需求覆盖**：检查每条 SR 至少关联 1 个测试点
 2. **场景覆盖**：检查每个场景的关键功能点至少关联 1 个测试点
-3. **输出未覆盖项**：标记为 `⚠️ 待补充`
+3. **动作源覆盖**：每个被引用的 `action_source_ref` 至少落到 1 个 TP 或显式标记为 `未形成测试点`
+4. **输出未覆盖项**：标记为 `⚠️ 待补充`
 
-### 步骤 6：输出
+### 步骤 7：输出
 
-> 追踪链：SR（需求）→ TP(C/A/E + PPDCS标注) → LC（逻辑用例）→ 组合方案 → PC（物理用例）
+> 追踪链：`SR → Scenario Chain → Action Source / Knowledge Reference → TP(CAE + PPDCS + object/factor) → LC → Test Data → PC`
 
-写入两个文件：
+写入以下文件：
 
-**`.output/m-analysis/test-points.md`**：按**四级目录（H2）→ 五级目录（H3）**分节输出，每节标注 PPDCS 主特征，测试点以 CAE 格式呈现：
+**`analysis/m-analysis/test-points.md`**：按**四级目录（H2）→ 五级目录（H3）**分节输出，每节标注 PPDCS 主特征，测试点以 CAE 格式呈现：
 
 ```markdown
 # <特性名> — M 分析测试点
@@ -140,23 +204,22 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
 ### <五级目录名称（子模块）>
 > PPDCS 主特征：P-Parameter | 辅特征：D-Data
 
-| TP-ID | C 条件 | A 动作 | E 预期 | 关联需求 | 来源 | 测试类型 |
-|-------|--------|--------|--------|---------|------|---------|
-| TP-M-CFG-SRV-001 | 系统无已配置的日志服务器；管理员已登录 | 在新建表单输入IP=<IP_ADDRESS>、端口=514、协议=UDP，点击"确定" | 服务器创建成功；服务器列表新增该条目；状态显示为"已配置" | SR-001 | M | 功能 |
-| TP-M-CFG-SRV-002 | 系统已配置5台日志服务器（已达上限） | 尝试新建第6台日志服务器，点击"确定" | 系统提示"超出最大服务器数量限制"；新建失败；服务器列表条目数不变 | SR-002 | M | 边界 |
-| TP-M-CFG-SRV-003 | 管理员已登录 | 在IP字段输入非法格式"256.0.0.1"，点击"确定" | 系统提示"IP格式不合法"；配置未保存 | SR-001 | M | 异常 |
+| TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `test_object_refs` | `factor_refs` | 来源 | 测试类型 |
+|-------|--------|--------|--------|-----------------|----------------------|--------------------|---------------|------|---------|
+| TP-M-CFG-SRV-001 | 系统无已配置的日志服务器；管理员已登录 | 在新建表单输入IP=<IP_ADDRESS>、端口=514、协议=UDP，点击"确定" | 服务器创建成功；服务器列表新增该条目；状态显示为"已配置" | SCN-LOG-001 | AS-001 | OBJ-LOG-SERVER | FAC-IP,FAC-PORT,FAC-PROTO | M | 功能 |
+| TP-M-CFG-SRV-002 | 系统已配置5台日志服务器（已达上限） | 尝试新建第6台日志服务器，点击"确定" | 系统提示"超出最大服务器数量限制"；新建失败；服务器列表条目数不变 | SCN-LOG-001 | AS-001 | OBJ-LOG-SERVER | FAC-SERVER-COUNT | M | 边界 |
 
 ### <五级目录名称（子模块2）>
 > PPDCS 主特征：P-Process
 
-| TP-ID | C 条件 | A 动作 | E 预期 | 关联需求 | 来源 | 测试类型 |
-|-------|--------|--------|--------|---------|------|---------|
-| ... | ... | ... | ... | ... | M | ... |
+| TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `test_object_refs` | `factor_refs` | 来源 | 测试类型 |
+|-------|--------|--------|--------|-----------------|----------------------|--------------------|---------------|------|---------|
+| ... | ... | ... | ... | ... | ... | ... | ... | M | ... |
 ```
 
 > ⚠️ **完整性要求**：目录结构中每个五级目录节点必须有至少一个测试点，不允许跳过。若某节点无需求支撑，需标注 `⚠️ 无对应测试点 — 原因：<说明>`。
 
-**`.output/m-analysis/ppdcs-annotation.md`**（v2 新增）：
+**`analysis/m-analysis/ppdcs-annotation.md`**：
 
 ```markdown
 # <特性名> — PPDCS 特征标注表
@@ -182,6 +245,25 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
 | 日志查询 | D-Data | C-Combination | 查询条件有取值范围，多条件需组合 |
 ```
 
+**`analysis/m-analysis/test-objects-factors.md`**：
+
+```markdown
+# <特性名> — 测试对象与测试因子
+
+## Test Objects
+
+| object_id | object_name | object_type | observation_targets | scenario_refs | action_source_refs |
+|-----------|-------------|-------------|---------------------|---------------|--------------------|
+| OBJ-LOG-SERVER | 日志服务器 | 配置对象 | 列表条目、状态字段、告警信息 | SCN-LOG-001 | AS-001 |
+
+## Test Factors
+
+| factor_id | factor_name | source_section | data_domain | related_object_id | scenario_refs | confirmation_gap_refs |
+|-----------|-------------|----------------|-------------|-------------------|---------------|-----------------------|
+| FAC-IP | IP地址 | action-input | IPv4合法/非法边界 | OBJ-LOG-SERVER | SCN-LOG-001 | — |
+| FAC-SERVER-COUNT | 服务器数量 | condition | 0 / 1~4 / 5(上限) / >5[待确认] | OBJ-LOG-SERVER | SCN-LOG-001 | GAP-001 |
+```
+
 ## 测试点生成原则
 
 1. **一个功能点至少一个测试点**
@@ -197,6 +279,8 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
 - 不要在 M 分析阶段引入耦合测试点（F 分析职责）
 - PPDCS 标注时注意区分 Process 和 State 的双向性差异
 - 一个子模块可能有混合特征，此时标注主特征+辅特征
+- 不得把 `confirmation_gaps` 当作已确认事实
+- Action Source 只引用上游已建模对象，不重新命名为新的字段体系
 
 ## 验收标准
 
@@ -204,8 +288,9 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
 - [ ] 每个测试点包含完整的 CAE 三字段（C/A/E 均不为空、不模糊）
 - [ ] C 字段为可验证状态，A 字段为可执行操作，E 字段为可观测结果
 - [ ] E="待定" 必须附批注 `[待定原因: <描述>]`；空 E 字段不允许
+- [ ] 每个 TP 包含 `scenario_refs / action_source_refs / test_object_refs / factor_refs / trace_refs`
+- [ ] 未确认事实通过 `confirmation_gap_refs` 显式透传
 - [ ] 输出文件按**四级目录（H2）→ 五级目录（H3）**分节，每节标注 PPDCS 主特征
 - [ ] **每个五级目录节点均有 PPDCS 主特征标注和判定依据**
 - [ ] 需求覆盖初检已执行，未覆盖项已标记
-- [ ] 输出 `test-points.md` 和 `ppdcs-annotation.md`
-- [ ] `.output/doc/STATE.yaml` 更新为 m-analysis 完成
+- [ ] 输出 `test-points.md`、`ppdcs-annotation.md`、`test-objects-factors.md`
