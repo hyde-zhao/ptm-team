@@ -13,7 +13,7 @@ status: active
 ## 目标
 
 从三个数据源收集耦合关系，构建内存图模型，分析当前特性与其他特性/模块的交互点，
-生成带 trace chain v6 的耦合测试点，并对耦合场景涉及的现有工具/动作源进行覆盖性评估。
+生成带 trace chain v6 的耦合测试点，并对耦合场景涉及的现有工具/atomic-ops 进行覆盖性评估。
 新发现的耦合点经用户确认后可回写到耦合矩阵。
 
 ## 适用范围
@@ -59,7 +59,7 @@ python scripts/excel_coupling_tool.py query "analysis/f-analysis/coupling-graph.
 - 场景处理逻辑中依次经过的功能模块 → 顺序耦合
 - 场景异常路径涉及的故障隔离 → 容错耦合
 - 场景数据在模块间的传递 → 数据耦合
-- 不同原子操作共享同一 `action_source_ref` 或同一测试对象/因子 → 接口/资源耦合
+- 不同原子操作共享同一 `action_source_ref`（atomic-ops `op_id`）或同一测试对象/因子 → 接口/资源耦合
 
 ### 源 3：代码依赖（首版简化）
 
@@ -141,7 +141,7 @@ python scripts/excel_coupling_tool.py query "analysis/f-analysis/coupling-graph.
 | 耦合强度 | strong / normal / weak |
 | `scenario_refs` | 来源场景 |
 | `scenario_chain_refs` | 涉及的 PRE / AO / 最小逻辑链节点 |
-| `action_source_refs` | 关联动作源 |
+| `action_source_refs` | 关联 atomic-ops `op_id` |
 | `knowledge_refs` | 支撑耦合判断的知识引用 |
 | `confirmation_gap_refs` | 未确认事实引用 |
 | `test_object_refs` | 被影响对象 |
@@ -153,11 +153,11 @@ python scripts/excel_coupling_tool.py query "analysis/f-analysis/coupling-graph.
 - C：包含触发耦合交互的前置状态和环境条件（含耦合目标的前置状态）
 - A：操作当前特性（触发耦合效果），不得直接操作耦合目标
 - E：包含耦合目标的可观测行为；E="待定" 时须附批注 `[待定原因: <如"被耦合目标行为规格待确认">]`
-- 如耦合判断依赖 `Knowledge Reference=missing/unavailable` 或 `Action Source=gap/unknown`，必须保留原状态并标记 `fact_status=needs-confirmation`
+- 如耦合判断依赖 `Knowledge Reference=missing/unavailable` 或 `atomic-ops=gap/unknown`，必须保留原状态并标记 `fact_status=needs-confirmation`
 
 ### 步骤 7：工具覆盖评估（Story-04 新增）
 
-对每个耦合测试点，评估现有工具/动作源是否能够：
+对每个耦合测试点，评估现有工具/atomic-ops 是否能够：
 
 1. 触发耦合前置与主动作
 2. 观察耦合目标状态
@@ -174,7 +174,7 @@ python scripts/excel_coupling_tool.py query "analysis/f-analysis/coupling-graph.
 | `main_usage` | 主要用法 |
 | `purpose` | 在当前耦合场景中的用途 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 依赖的动作源 |
+| `action_source_refs` | 依赖的 atomic-ops `op_id` |
 | `covered_objects` | 已覆盖对象 |
 | `covered_factors` | 已覆盖因子 |
 | `status` | `ready / partial / needs-confirmation` |
@@ -195,7 +195,7 @@ python scripts/excel_coupling_tool.py query "analysis/f-analysis/coupling-graph.
 | `io_behavior_matrix` | 不同输入/输出条件下的处理逻辑 |
 | `output_contract` | 输出内容与观察点契约 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 关联动作源 |
+| `action_source_refs` | 关联 atomic-ops `op_id` |
 | `factor_refs` | 关联因子 |
 | `status` | `gap / needs-confirmation` |
 
@@ -217,7 +217,7 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "analysis/f-
 
 ## 输出文件
 
-> 追踪链：`SR → Scenario Chain → Action Source / Knowledge Reference → TP-F(CAE + coupling trace) → LC → Test Data → PC`
+> 追踪链：`SR → Scenario Chain → atomic-ops / Knowledge Reference → TP-F(CAE + coupling trace) → LC → Test Data → PC`
 
 | 文件 | 说明 |
 |------|------|
@@ -238,7 +238,7 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "analysis/f-
 
 | TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `factor_refs` | 来源 | 耦合强度 |
 |-------|--------|--------|--------|-----------------|----------------------|---------------|------|---------|
-| TP-F-CFG-BCK-001 | 日志归并功能已开启；日志服务器已配置 | 删除已配置的日志服务器 | 日志归并功能不受影响；归并日志继续正常记录 | SCN-LOG-001 | AS-DEL-001 | FAC-SERVER-STATE | matrix-baseline | strong |
+| TP-F-CFG-BCK-001 | 日志归并功能已开启；日志服务器已配置 | 删除已配置的日志服务器 | 日志归并功能不受影响；归并日志继续正常记录 | SCN-LOG-001 | fw_delete_log_server | FAC-SERVER-STATE | matrix-baseline | strong |
 ```
 
 **`tool-analysis.md` 输出格式**：
@@ -250,13 +250,13 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "analysis/f-
 
 | tool_id | tool_name | main_usage | purpose | scenario_refs | action_source_refs | covered_objects | covered_factors | status |
 |---------|-----------|------------|---------|---------------|--------------------|-----------------|-----------------|--------|
-| TOOL-001 | log-cli | `log-cli server delete --id ...` | 删除日志服务器以触发耦合 | SCN-LOG-001 | AS-DEL-001 | OBJ-LOG-SERVER | FAC-SERVER-ID | ready |
+| TOOL-001 | log-cli | `log-cli server delete --id ...` | 删除日志服务器以触发耦合 | SCN-LOG-001 | fw_delete_log_server | OBJ-LOG-SERVER | FAC-SERVER-ID | ready |
 
 ## Tool Capability Gap
 
 | tool_id | tool_name | covered_objects | covered_factors | missing_ops | proposed_interface | function_desc | io_behavior_matrix | output_contract | scenario_refs | action_source_refs | factor_refs | status |
 |---------|-----------|-----------------|-----------------|-------------|--------------------|---------------|--------------------|-----------------|---------------|--------------------|-------------|--------|
-| GAP-TOOL-001 | traffic-injector | OBJ-PEER-ALARM | FAC-ALARM-TYPE,FAC-ALARM-TIMELINE | 观测对端告警联动 | CLI: `traffic-injector observe --target ...` | 输出耦合告警状态与时间线 | 目标可达→返回告警状态与时间线；目标不可达→返回不可观测原因与错误码 | stdout/json + return code + alarm timeline | SCN-LOG-001 | AS-OBS-001 | FAC-ALARM-TYPE,FAC-ALARM-TIMELINE | gap |
+| GAP-TOOL-001 | traffic-injector | OBJ-PEER-ALARM | FAC-ALARM-TYPE,FAC-ALARM-TIMELINE | 观测对端告警联动 | CLI: `traffic-injector observe --target ...` | 输出耦合告警状态与时间线 | 目标可达→返回告警状态与时间线；目标不可达→返回不可观测原因与错误码 | stdout/json + return code + alarm timeline | SCN-LOG-001 | fw_observe_peer_alarm | FAC-ALARM-TYPE,FAC-ALARM-TIMELINE | gap |
 ```
 
 ## 耦合分析维度
@@ -282,7 +282,7 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "analysis/f-
 - 场景耦合推理可能产生误报，需用户确认
 - 不要漏掉"反向耦合"：A→B 存在时检查 B→A
 - `confirmation_gaps` 影响耦合成立性时，允许输出候选 TP，但不能包装成已确认耦合
-- 工具评估只基于已给定 Action Source / Existing Tool Usage Seed / Tool Draft，不能自行发明现有工具能力
+- 工具评估只基于已给定 atomic-ops / Existing Tool Usage Seed / Tool Draft，不能自行发明现有工具能力
 
 ## 验收标准
 

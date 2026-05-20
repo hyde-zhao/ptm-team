@@ -38,7 +38,7 @@
 | 目录 | 内容 |
 |---|---|
 | `analysis/feature-input/` | 结构化需求与三~五级目录 |
-| `analysis/scenarios/` | Scenario Chain、Topology、Action Source、Knowledge Reference |
+| `analysis/scenarios/` | Scenario Chain、Topology、atomic-ops、Knowledge Reference |
 | `analysis/m-analysis/` | M 分析测试点、PPDCS 标注、对象与因子 |
 | `analysis/f-analysis/` | 耦合图、耦合测试点 |
 | `analysis/q-analysis/` | 质量属性测试点 |
@@ -72,4 +72,3 @@ design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md
 ```
 
 测试方案是分析过程总结；测试用例是所有测试用例总表。
-

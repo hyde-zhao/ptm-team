@@ -14,7 +14,7 @@ status: active
 
 参考 HTSM（Heuristic Test Strategy Model）的质量属性维度，
 评估当前特性在各质量维度上的相关性，仅对有相关性的维度展开分析，
-生成带 trace chain v6 的质量属性测试点，并评估现有动作源/工具是否能支撑观测与校验。
+生成带 trace chain v6 的质量属性测试点，并评估现有 atomic-ops/工具是否能支撑观测与校验。
 
 ## 适用范围
 
@@ -28,7 +28,7 @@ status: active
 
 - [ ] M 分析已完成（`analysis/m-analysis/test-points.md` 存在）
 - [ ] 场景文档已确认
-- [ ] `Scenario Chain / Action Source / Knowledge Reference / confirmation_gaps` 可读取
+- [ ] `Scenario Chain / atomic-ops / Knowledge Reference / confirmation_gaps` 可读取
 - [ ] 未确认事实已明确哪些可以带 `[待确认]` 下传
 
 ## HTSM 质量属性维度
@@ -62,7 +62,7 @@ status: active
 3. `Knowledge Reference` 中是否有该维度的显式依据
 4. 防火墙设备的通用质量要求
 
-若支撑依据来自 `missing/unavailable` 的知识结果或未确认 Action Source，必须在相关性说明中写明，而不是默认“强相关”。
+若支撑依据来自 `missing/unavailable` 的知识结果或未确认 atomic-ops，必须在相关性说明中写明，而不是默认“强相关”。
 
 ### 步骤 2：展开分析
 
@@ -103,7 +103,7 @@ status: active
 | E 预期 | 可观测的质量属性表现（含量化指标或定性状态）|
 | `scenario_refs` | 来源场景 |
 | `scenario_chain_refs` | 对应 PRE / AO / 最小逻辑链节点 |
-| `action_source_refs` | 涉及的动作源 |
+| `action_source_refs` | 涉及的 atomic-ops `op_id` |
 | `knowledge_refs` | 依据引用 |
 | `confirmation_gap_refs` | 未确认事实 |
 | `test_object_refs` | 关联测试对象 |
@@ -119,7 +119,7 @@ status: active
 
 ### 步骤 4：工具观测能力评估（Story-04 新增）
 
-对每个质量测试点，评估现有动作源/工具是否能够：
+对每个质量测试点，评估现有 atomic-ops/工具是否能够：
 
 1. 施加质量压力或触发场景
 2. 采集质量观测数据
@@ -136,7 +136,7 @@ status: active
 | `main_usage` | 主要用法 |
 | `purpose` | 在质量场景中的用途 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 关联动作源 |
+| `action_source_refs` | 关联 atomic-ops `op_id` |
 | `covered_objects` | 已覆盖对象 |
 | `covered_factors` | 已覆盖因子 |
 | `status` | `ready / partial / needs-confirmation` |
@@ -157,7 +157,7 @@ status: active
 | `io_behavior_matrix` | 输入/输出条件下的处理逻辑 |
 | `output_contract` | 输出内容、阈值、时间序列或状态契约 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 关联动作源 |
+| `action_source_refs` | 关联 atomic-ops `op_id` |
 | `factor_refs` | 关联因子 |
 | `status` | `gap / needs-confirmation` |
 
@@ -165,7 +165,7 @@ status: active
 
 ### 步骤 5：输出
 
-> 追踪链：`SR → Scenario Chain → Action Source / Knowledge Reference → TP-Q(CAE + quality trace) → LC → Test Data → PC`
+> 追踪链：`SR → Scenario Chain → atomic-ops / Knowledge Reference → TP-Q(CAE + quality trace) → LC → Test Data → PC`
 
 写入 `analysis/q-analysis/quality-test-points.md`，按**四级目录（H2）→ 五级目录（H3）**分节，每节内按质量维度组织 CAE 测试点：
 
@@ -190,14 +190,14 @@ status: active
 
 | TP-ID | 质量维度 | 子维度 | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `factor_refs` | 关联模块 |
 |-------|---------|--------|--------|--------|--------|-----------------|----------------------|---------------|---------|
-| TP-Q-REL-001 | 可靠性 | 可恢复性 | 设备处于正常运行状态；日志服务器已配置 | 执行掉电操作，重新上电后等待设备完全启动 | 日志服务器配置自动恢复；日志发送功能恢复正常 | SCN-LOG-REC-001 | AS-POWER-001 | FAC-RECOVERY-TIME | 配置管理 |
-| TP-Q-REL-002 | 可靠性 | 容错性 | 主备双机已配置，均处于正常状态 | 强制主机下线，触发主备切换 | 备机接管成功；日志服务器配置在备机上保持一致；切换期间无配置数据丢失 | SCN-LOG-HA-001 | AS-HA-001 | FAC-SWITCH-TIME | 配置管理 |
+| TP-Q-REL-001 | 可靠性 | 可恢复性 | 设备处于正常运行状态；日志服务器已配置 | 执行掉电操作，重新上电后等待设备完全启动 | 日志服务器配置自动恢复；日志发送功能恢复正常 | SCN-LOG-REC-001 | fw_power_cycle | FAC-RECOVERY-TIME | 配置管理 |
+| TP-Q-REL-002 | 可靠性 | 容错性 | 主备双机已配置，均处于正常状态 | 强制主机下线，触发主备切换 | 备机接管成功；日志服务器配置在备机上保持一致；切换期间无配置数据丢失 | SCN-LOG-HA-001 | fw_trigger_ha_switch | FAC-SWITCH-TIME | 配置管理 |
 
 #### 安全性
 
 | TP-ID | 质量维度 | 子维度 | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `factor_refs` | 关联模块 |
 |-------|---------|--------|--------|--------|--------|-----------------|----------------------|---------------|---------|
-| TP-Q-SEC-001 | 安全性 | 保密性 | 普通操作员账号已登录；存在其他用户配置的日志服务器 | 尝试查看/修改其他用户创建的日志服务器配置 | 系统拒绝访问或仅显示有权限的条目；提示权限不足 | SCN-LOG-SEC-001 | AS-AUTH-001 | FAC-ROLE | 权限管理 |
+| TP-Q-SEC-001 | 安全性 | 保密性 | 普通操作员账号已登录；存在其他用户配置的日志服务器 | 尝试查看/修改其他用户创建的日志服务器配置 | 系统拒绝访问或仅显示有权限的条目；提示权限不足 | SCN-LOG-SEC-001 | fw_check_role_permission | FAC-ROLE | 权限管理 |
 ```
 
 同时写入 **`analysis/q-analysis/tool-analysis.md`**：
@@ -209,13 +209,13 @@ status: active
 
 | tool_id | tool_name | main_usage | purpose | scenario_refs | action_source_refs | covered_objects | covered_factors | status |
 |---------|-----------|------------|---------|---------------|--------------------|-----------------|-----------------|--------|
-| TOOL-Q-001 | perf-cli | `perf-cli sample --metric cpu` | 采集性能指标 | SCN-PERF-001 | AS-PERF-001 | OBJ-DEVICE | FAC-CPU-USAGE | ready |
+| TOOL-Q-001 | perf-cli | `perf-cli sample --metric cpu` | 采集性能指标 | SCN-PERF-001 | fw_collect_perf_metric | OBJ-DEVICE | FAC-CPU-USAGE | ready |
 
 ## Tool Capability Gap
 
 | tool_id | tool_name | covered_objects | covered_factors | missing_ops | proposed_interface | function_desc | io_behavior_matrix | output_contract | scenario_refs | action_source_refs | factor_refs | status |
 |---------|-----------|-----------------|-----------------|-------------|--------------------|---------------|--------------------|-----------------|---------------|--------------------|-------------|--------|
-| GAP-Q-001 | audit-exporter | OBJ-AUDIT-LOG | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | 导出审计时间线 | CLI: `audit-exporter trace --since ...` | 输出审计事件序列与字段完整性 | 指定时间窗且日志可读→返回完整时间线；字段缺失→返回缺失字段清单与失败状态 | stdout/json + field completeness report | SCN-AUDIT-001 | AS-AUDIT-001 | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | gap |
+| GAP-Q-001 | audit-exporter | OBJ-AUDIT-LOG | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | 导出审计时间线 | CLI: `audit-exporter trace --since ...` | 输出审计事件序列与字段完整性 | 指定时间窗且日志可读→返回完整时间线；字段缺失→返回缺失字段清单与失败状态 | stdout/json + field completeness report | SCN-AUDIT-001 | fw_export_audit_timeline | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | gap |
 ```
 
 ## Gotchas

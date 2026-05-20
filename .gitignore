@@ -218,6 +218,12 @@ data/*
 output/*
 tests.tar.gz
 
+# Meta Flow local process and staging directories
+process/
+checkpoints/
+.input/
+delivery/
+
 # Agents
 .agents/
 .claude/

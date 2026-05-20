@@ -14,7 +14,7 @@ status: active
 ## 目标
 
 基于 feature-parser 输出的结构化需求、已确认目录以及 STORY-03 产出的
-`Scenario Chain / Action Source / Knowledge Reference / Existing Tool Usage Seed / Tool Abstraction Draft / confirmation_gaps`，
+`Scenario Chain / atomic-ops / Knowledge Reference / Existing Tool Usage Seed / Tool Abstraction Draft / confirmation_gaps`，
 逐模块/子模块分析功能点，**为每个单功能标注 PPDCS 主特征**，
 生成带 trace chain v6 的 CAE 测试点，并抽取后续设计所需的测试对象与测试因子。
 
@@ -63,7 +63,7 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 | `Scenario Chain` | 生成 TP 的场景上下文与最小逻辑链骨架 | 不得脑补，输出 `[待确认]` 并挂 `confirmation_gap_refs` |
 | `precondition_operations` | 生成 C 条件与前置动作 trace | 缺失时仅保留已确认前置，不得伪造操作 |
 | `atomic_operations` | 生成 A 动作、动作顺序和 `scenario_chain_refs` | 缺失时不得把“功能描述”直接当成可执行动作 |
-| `Action Source` | 关联 `action_source_refs`，识别外部接口/工具依赖 | 若契约不清，仅标记 `unknown/gap` |
+| `atomic-ops` | 关联 `action_source_refs`，识别 atomic-ops `op_id` 依赖 | 若原子操作契约不清，仅标记 `unknown/gap` |
 | `Knowledge Reference` | 记录需求/场景依据来源 | `missing/unavailable` 必须保留原状态 |
 | `Existing Tool Usage Seed` | 保留已有工具线索供后续 F/Q/Integrator 使用 | 没有则留空，不做默认映射 |
 | `Tool Abstraction Draft` | 标记能力缺口背景 | 仅引用已确认草案 |
@@ -75,8 +75,8 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 
 1. 读取 `analysis/feature-input/raw-requirements.md` 获取需求条目列表
 2. 读取 `analysis/feature-input/directory-structure.md` 获取目录层级
-3. 读取 `analysis/scenarios/confirmed-scenarios.md` 获取已确认场景链、动作源、知识引用与 gap
-4. 校验每个场景是否包含 `Scenario Chain / Action Source / Knowledge Reference`
+3. 读取 `analysis/scenarios/confirmed-scenarios.md` 获取已确认场景链、atomic-ops、知识引用与 gap
+4. 校验每个场景是否包含 `Scenario Chain / atomic-ops / Knowledge Reference`
 5. 对影响 CAE 落地的未确认事实建立 `confirmation_gap_refs`，不做隐式默认
 
 ### 步骤 2：逐模块功能分析
@@ -108,7 +108,7 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 | `object_type` | 配置对象 / 运行态对象 / 接口对象 / 观测对象 |
 | `observation_targets` | 如何判断对象状态变化 |
 | `scenario_refs` | 来源场景 |
-| `action_source_refs` | 关联动作源 |
+| `action_source_refs` | 关联 atomic-ops `op_id` |
 
 3. 每个因子至少记录：
 
@@ -157,7 +157,7 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 | 关联需求 | 需求编号列表 | SR-001, SR-003 |
 | `scenario_refs` | 场景编号列表 | SCN-XXX-001 |
 | `scenario_chain_refs` | `PRE-* / AO-* / minimal_logic_chain` 引用 | PRE-01, AO-02 |
-| `action_source_refs` | 外部动作源引用 | AS-001 |
+| `action_source_refs` | atomic-ops `op_id` 引用 | fw_config_policy_route |
 | `knowledge_refs` | 支撑该 TP 的知识引用 | KR-001 |
 | `confirmation_gap_refs` | 上游未确认事实引用 | GAP-001 |
 | `trace_refs` | 汇总 `requirement_refs / scenario_refs / action_source_refs / knowledge_refs` | 结构化 trace |
@@ -172,19 +172,19 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 - A 必须是可执行的操作，不能是"验证..."等描述性文字
 - E 必须是可观测的结果，包含观测点和期望值
 - **E="待定" 容错规则（Q1 default）**：预期结果尚不明确时（如依赖硬件规格、待确认的产品行为），E 可填 `"待定"`，但必须追加批注 `[待定原因: <描述>]`；进入用例设计阶段前须补全。空值不允许。
-- 若 A 依赖 `Action Source` 但契约不完整，A 只能写已确认部分，并在 `confirmation_gap_refs` 中注明缺口
+- 若 A 依赖 atomic-ops 但契约不完整，A 只能写已确认部分，并在 `confirmation_gap_refs` 中注明缺口
 - 若 `Knowledge Reference` 为 `missing/unavailable`，仅记录状态，不得伪造理论依据
 
 ### 步骤 6：覆盖初检
 
 1. **需求覆盖**：检查每条 SR 至少关联 1 个测试点
 2. **场景覆盖**：检查每个场景的关键功能点至少关联 1 个测试点
-3. **动作源覆盖**：每个被引用的 `action_source_ref` 至少落到 1 个 TP 或显式标记为 `未形成测试点`
+3. **atomic-ops 覆盖**：每个被引用的 `action_source_ref`（atomic-ops `op_id`）至少落到 1 个 TP 或显式标记为 `未形成测试点`
 4. **输出未覆盖项**：标记为 `⚠️ 待补充`
 
 ### 步骤 7：输出
 
-> 追踪链：`SR → Scenario Chain → Action Source / Knowledge Reference → TP(CAE + PPDCS + object/factor) → LC → Test Data → PC`
+> 追踪链：`SR → Scenario Chain → atomic-ops / Knowledge Reference → TP(CAE + PPDCS + object/factor) → LC → Test Data → PC`
 
 写入以下文件：
 
@@ -206,8 +206,8 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 
 | TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `test_object_refs` | `factor_refs` | 来源 | 测试类型 |
 |-------|--------|--------|--------|-----------------|----------------------|--------------------|---------------|------|---------|
-| TP-M-CFG-SRV-001 | 系统无已配置的日志服务器；管理员已登录 | 在新建表单输入IP=<IP_ADDRESS>、端口=514、协议=UDP，点击"确定" | 服务器创建成功；服务器列表新增该条目；状态显示为"已配置" | SCN-LOG-001 | AS-001 | OBJ-LOG-SERVER | FAC-IP,FAC-PORT,FAC-PROTO | M | 功能 |
-| TP-M-CFG-SRV-002 | 系统已配置5台日志服务器（已达上限） | 尝试新建第6台日志服务器，点击"确定" | 系统提示"超出最大服务器数量限制"；新建失败；服务器列表条目数不变 | SCN-LOG-001 | AS-001 | OBJ-LOG-SERVER | FAC-SERVER-COUNT | M | 边界 |
+| TP-M-CFG-SRV-001 | 系统无已配置的日志服务器；管理员已登录 | 在新建表单输入IP=<IP_ADDRESS>、端口=514、协议=UDP，点击"确定" | 服务器创建成功；服务器列表新增该条目；状态显示为"已配置" | SCN-LOG-001 | fw_config_log_server | OBJ-LOG-SERVER | FAC-IP,FAC-PORT,FAC-PROTO | M | 功能 |
+| TP-M-CFG-SRV-002 | 系统已配置5台日志服务器（已达上限） | 尝试新建第6台日志服务器，点击"确定" | 系统提示"超出最大服务器数量限制"；新建失败；服务器列表条目数不变 | SCN-LOG-001 | fw_config_log_server | OBJ-LOG-SERVER | FAC-SERVER-COUNT | M | 边界 |
 
 ### <五级目录名称（子模块2）>
 > PPDCS 主特征：P-Process
@@ -254,7 +254,7 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 
 | object_id | object_name | object_type | observation_targets | scenario_refs | action_source_refs |
 |-----------|-------------|-------------|---------------------|---------------|--------------------|
-| OBJ-LOG-SERVER | 日志服务器 | 配置对象 | 列表条目、状态字段、告警信息 | SCN-LOG-001 | AS-001 |
+| OBJ-LOG-SERVER | 日志服务器 | 配置对象 | 列表条目、状态字段、告警信息 | SCN-LOG-001 | fw_config_log_server |
 
 ## Test Factors
 
@@ -280,7 +280,7 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 - PPDCS 标注时注意区分 Process 和 State 的双向性差异
 - 一个子模块可能有混合特征，此时标注主特征+辅特征
 - 不得把 `confirmation_gaps` 当作已确认事实
-- Action Source 只引用上游已建模对象，不重新命名为新的字段体系
+- `action_source_refs` 只引用上游已建模 atomic-ops `op_id`，不重新命名为新的字段体系
 
 ## 验收标准
 

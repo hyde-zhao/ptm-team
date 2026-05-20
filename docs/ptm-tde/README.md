@@ -197,7 +197,7 @@ SR（系统需求）
 步骤  阶段         描述                                  关键 Skill
 ───────────────────────────────────────────────────────────────────
  1.  input         CP01自检 + 特性文件解析 + 三~五级目录生成     checkpoint-manager + feature-parser
- 2.  scenario      应用场景发现 + Topology + CP02确认           scenario-discovery
+ 2.  scenario      场景再发现 + Topology + atomic-ops + CP02自检/确认  scenario-discovery
  3.  m-analysis    单功能拆分 + PPDCS标注 + CAE测试点           m-analyzer
  4.  f-analysis    耦合分析（三源合并）+ CAE耦合测试点           f-analyzer
  5.  q-analysis    质量属性分析 + CAE质量测试点                 q-analyzer
@@ -220,17 +220,30 @@ SR（系统需求）
 
 > **重要**：工具只在以下 3 个关键节点暂停并等待人工确认，未通过确认不会自动推进。
 
-### ① CP02：目录结构与场景确认（步骤 2 结束后）
+### ① CP02：目录结构与场景自检/确认（步骤 2 结束后）
 
 **触发时机**：`scenario-discovery` 完成应用场景分析后  
-**需要确认的内容**：
+**自动自检内容**：
+
+| 自检项 | 说明 |
+|-------|------|
+| 输入类型识别 | 是否区分 raw requirement / functional scenario seed / deployment draft / confirmed artifact |
+| 场景再发现 | functional seed 是否经过头脑风暴、归并、拆分和范围收敛 |
+| Seed-to-Scenario Mapping | 每个 seed 是否映射到部署型场景、排除项或确认缺口 |
+| Topology Catalog | 是否读取 TGFW 组网集合并为每个依赖组网场景绑定 `topology_ref` |
+| atomic-ops | `action_source_ref` 是否直接引用 atomic-ops `op_id`，REST API / CLI / tool-method 是否只作为底层契约 |
+| 缺口分类 | `confirmation_gaps` 是否区分必须先确认与可下传缺口 |
+
+**需要人工确认的内容**：
 
 | 确认项 | 说明 |
 |-------|------|
 | 目录结构 | 三级/四级/五级目录划分是否正确 |
-| 场景完整性 | 列出的典型应用场景是否覆盖你关心的使用方式 |
+| 场景完整性 | 部署、扩容、维护、可靠性、性能、易用性、配置顺序、异常路径是否覆盖你关心的使用方式 |
+| Seed-to-Scenario Mapping | 功能初稿如何重构为部署型场景是否可接受 |
 | Scenario Chain | 每个场景的原子操作、观察点、最小逻辑链是否准确 |
 | Topology | 防火墙 topo、设备/端口/链路是否正确 |
+| atomic-ops | atomic-ops `op_id`、能力状态和调用/观测契约是否正确 |
 | 遗漏场景 | 是否有未列出的重要场景需要补充 |
 
 **通过后**：进入 m-analysis（步骤 3）

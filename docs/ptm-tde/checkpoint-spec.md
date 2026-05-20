@@ -5,7 +5,7 @@
 | CP | 阶段 | 类型 | 文件 |
 |---|---|---|---|
 | CP01 | input | auto | `checkpoints/CP01_input_auto.md` |
-| CP02 | scenario | manual | `checkpoints/CP02_scenario_manual.md` |
+| CP02 | scenario | auto + manual | `checkpoints/CP02_scenario_auto.md` + `checkpoints/CP02_scenario_manual.md` |
 | CP03 | m-analysis | auto | `checkpoints/CP03_m-analysis_auto.md` |
 | CP04 | f-analysis | auto | `checkpoints/CP04_f-analysis_auto.md` |
 | CP05 | q-analysis | auto | `checkpoints/CP05_q-analysis_auto.md` |
@@ -72,3 +72,51 @@ uv run --python 3.11 python skills/checkpoint-manager/scripts/run_checkpoint.py 
 |---|---|
 | `PASS` | 可进入 feature-parser |
 | `BLOCKED` | 不可继续，需补充输入或修复路径 |
+
+## CP02 Scenario 场景自检与确认
+
+CP02 在 `scenario-discovery` 完成后执行。该检查点必须先完成自动场景自检，再进入人工确认。
+
+结果写入：
+
+```text
+checkpoints/CP02_scenario_auto.md
+checkpoints/CP02_scenario_manual.md
+```
+
+## CP02 自动自检项
+
+| # | 检查项 | 通过条件 | 阻断处理 |
+|---|---|---|---|
+| 1 | 输入文档类型识别 | 场景产物明确区分 raw requirement / functional scenario seed / deployment scenario draft / confirmed scenario artifact | 回到 `scenario-discovery` 补输入分类 |
+| 2 | 场景再发现 | functional scenario seed 已经过头脑风暴、重构、归并、拆分和范围收敛 | 禁止把 seed 一对一改写为最终场景 |
+| 3 | Seed-to-Scenario Mapping | 每个 seed 均有映射、排除或缺口记录 | 未映射 seed 必须补齐 |
+| 4 | 范围收敛 | 用户约束进入 `scope_constraints`，排除项进入 `out_of_scope_candidates` | 范围不明时阻断 |
+| 5 | Topology Catalog | 依赖组网的场景均有 `topology_ref`、来源、Mermaid、设备/端口/链路表 | 缺拓扑时阻断 |
+| 6 | TGFW 组网集合 | 存在 `input/TGFW测试组网图集合.md` 时已读取并优先复用 | 未读取时阻断 |
+| 7 | atomic-ops 唯一口径 | `source_type=atomic-ops`，`action_source_ref` 直接引用 atomic-ops `op_id` | 出现 REST API / CLI / tool-method 独立引用类型时阻断 |
+| 8 | 场景链字段完整 | 每个场景包含目标、原理、前置条件、原子操作、观察点、预期状态、最小逻辑链、退出动作 | 缺字段时补齐 |
+| 9 | 正常/异常路径 | 每个场景有正常路径和异常路径；无异常路径时说明理由 | 缺路径时补齐 |
+| 10 | Knowledge Reference 三态 | 保留 `resolved / missing / unavailable` | 混写或缺失时补齐 |
+| 11 | 工具缺口 | 缺失 atomic-ops 或工具能力进入 Tool Abstraction Draft 或 confirmation gaps | 缺口未记录时阻断 |
+| 12 | 缺口分类 | `confirmation_gaps` 区分可下传缺口和必须先确认缺口 | 不分类时不得进入 M 分析 |
+
+## CP02 人工确认项
+
+| 确认项 | 说明 |
+|---|---|
+| 目录结构 | 三级/四级/五级目录是否支撑后续 M/F/Q 分析 |
+| 场景列表 | 部署、扩容、维护、可靠性、性能、易用性、配置顺序、异常路径是否覆盖目标范围 |
+| Seed-to-Scenario Mapping | 功能初稿如何重构为部署型场景是否可接受 |
+| Topology | `topology_ref`、Mermaid、设备/端口/链路是否符合实际组网 |
+| atomic-ops | 每个 `action_source_ref` 是否为真实 atomic-ops `op_id`，能力状态是否合理 |
+| Knowledge Reference | resolved / missing / unavailable 三态是否符合事实 |
+| Confirmation Gaps | 哪些缺口必须先补，哪些可下传到 M/F/Q |
+
+整体结论：
+
+| 状态 | 含义 |
+|---|---|
+| `PASS` | 可进入 M 分析 |
+| `BLOCKED` | 场景事实不足，不可继续 |
+| `WAIVED` | 用户接受风险后放行，并记录风险项 |

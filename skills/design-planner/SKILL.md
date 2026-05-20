@@ -291,7 +291,7 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 | `td_refs` | TD-001, TD-002 |
 | `test_object_refs` | OBJ-001 |
 | `factor_refs` | FAC-001, FAC-002 |
-| `action_source_refs` | AS-001 |
+| `action_source_refs` | fw_config_log_server |
 
 ### 6. Uncertain Facts / Confirmation Gaps
 | ref | 说明 | 影响 |

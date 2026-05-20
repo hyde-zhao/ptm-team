@@ -57,7 +57,7 @@ status: active
 |------|----------|------|
 | `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则`, `关联SR` | 还原 LC 主流程和 trace 链 |
 | `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `source_section`, `scenario_refs`, `action_source_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | 分析路径触发数据与数据叠加 |
-| `confirmed-scenarios.md` | `precondition_operations`, `atomic_operations`, `observation_points`, `expected_state`, `minimal_logic_chain`, `data_overlay_slots`, `Action Source`, `Knowledge Reference`, `confirmation_gaps` | 建图、定节点、识别可叠加数据位置 |
+| `confirmed-scenarios.md` | `precondition_operations`, `atomic_operations`, `observation_points`, `expected_state`, `minimal_logic_chain`, `data_overlay_slots`, `atomic-ops`, `Knowledge Reference`, `confirmation_gaps` | 建图、定节点、识别可叠加数据位置 |
 
 > 若 `design-plan.md`、`design-planner-reasoning.md`、`logic-cases.md` 三者对同一 LC 的主方法结论不一致：
 > - 不得自行裁决；
@@ -186,7 +186,7 @@ PC 由 `覆盖策略选中的 path × data_overlay_set` 生成。
 | `trace_refs` | trace 链 |
 | `scenario_refs` | 来源场景 |
 | `scenario_chain_refs` | PRE/AO 引用 |
-| `action_source_refs` | 动作源 |
+| `action_source_refs` | atomic-ops `op_id` |
 | `confirmation_gap_refs` | 未确认事实 |
 | `fact_status` | `confirmed / needs-confirmation` |
 

@@ -105,7 +105,7 @@ status: active
 | `feature_tags` | 来自 PC / 设计输出的标签 |
 | `trace_refs` | 汇总 trace |
 | `scenario_refs` | 汇总场景 |
-| `action_source_refs` | 汇总动作源 |
+| `action_source_refs` | 汇总 atomic-ops `op_id` |
 | `confirmation_gap_refs` | 未确认事实 |
 | `fact_status` | `confirmed / needs-confirmation` |
 | `coverage_status` | 覆盖结论 |
@@ -134,7 +134,7 @@ status: active
 | `feature_tags` | 关联标签 |
 | `trace_refs` | trace 链 |
 | `scenario_refs` | 场景来源 |
-| `action_source_refs` | 动作源 |
+| `action_source_refs` | atomic-ops `op_id` |
 | `factor_refs` | 因子 |
 | `confirmation_gap_refs` | 未确认事实 |
 | `fact_status` | `confirmed / needs-confirmation` |
@@ -177,8 +177,8 @@ status: active
 
 | requirement_id | tp_ids | logic_case_ids | td_ids | pc_ids | feature_tags | trace_refs | scenario_refs | action_source_refs | confirmation_gap_refs | fact_status | coverage_status |
 |----------------|--------|----------------|--------|--------|--------------|------------|---------------|--------------------|-----------------------|-------------|-----------------|
-| REQ-018 | TP-M-001,TP-F-003 | LC-001 | TD-001,TD-009 | PC-001,PC-002 | coverage,traceability | TR-001,TR-009 | SCN-001 | AS-001 | — | confirmed | covered |
-| REQ-019 | TP-M-010 | LC-004 | TD-014 | — | delivery,feature-tags | TR-020 | SCN-007 | AS-008 | GAP-DEL-01 | needs-confirmation | uncovered |
+| REQ-018 | TP-M-001,TP-F-003 | LC-001 | TD-001,TD-009 | PC-001,PC-002 | coverage,traceability | TR-001,TR-009 | SCN-001 | fw_config_log_server | — | confirmed | covered |
+| REQ-019 | TP-M-010 | LC-004 | TD-014 | — | delivery,feature-tags | TR-020 | SCN-007 | fw_unknown_gap_008 | GAP-DEL-01 | needs-confirmation | uncovered |
 ```
 
 ### `test-point-coverage.md`
@@ -188,8 +188,8 @@ status: active
 
 | tp_id | logic_case_id | physical_case_ids | requirement_ids | feature_tags | trace_refs | scenario_refs | action_source_refs | factor_refs | confirmation_gap_refs | fact_status | coverage_status | notes |
 |------|----------------|-------------------|-----------------|--------------|------------|---------------|--------------------|-------------|-----------------------|-------------|-----------------|------|
-| TP-Q-REL-001 | LC-REL-001 | PC-REL-001 | REQ-018 | reliability,recovery | TR-Q-001 | SCN-REL-001 | AS-POWER-001 | FAC-RECOVERY-TIME | — | confirmed | covered-direct | — |
-| TP-F-TOOL-002 | LC-TOOL-003 | — | REQ-027 | tool-analysis | TR-F-010 | SCN-TOOL-001 | AS-OBS-003 | FAC-TIMELINE | GAP-TOOL-02 | needs-confirmation | uncovered | 缺可执行 PC |
+| TP-Q-REL-001 | LC-REL-001 | PC-REL-001 | REQ-018 | reliability,recovery | TR-Q-001 | SCN-REL-001 | fw_power_cycle | FAC-RECOVERY-TIME | — | confirmed | covered-direct | — |
+| TP-F-TOOL-002 | LC-TOOL-003 | — | REQ-027 | tool-analysis | TR-F-010 | SCN-TOOL-001 | fw_observe_timeline | FAC-TIMELINE | GAP-TOOL-02 | needs-confirmation | uncovered | 缺可执行 PC |
 ```
 
 ## 质量门控

@@ -40,7 +40,7 @@ integrator 必须消费并透传以下字段：
 | M/F/Q TP | `trace_refs`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `fact_status` |
 | M 对象/因子 | `object_id`, `factor_id`, `data_domain`, `related_object_id` |
 | F/Q 工具评估 | `Existing Tool Summary`, `Tool Capability Gap` |
-| 场景链 | `minimal_logic_chain`, `Action Source`, `Knowledge Reference`, `confirmation_gaps` |
+| 场景链 | `minimal_logic_chain`, `atomic-ops`, `Knowledge Reference`, `confirmation_gaps` |
 
 ## 执行流程
 
@@ -60,7 +60,7 @@ integrator 必须消费并透传以下字段：
     └── TP-Q-SEC-001 (Q分析 - 安全性)
 ```
 
-归集时不得丢掉上游 trace；同一 TP 被多个场景、动作源或 gap 触达时，取并集。
+归集时不得丢掉上游 trace；同一 TP 被多个场景、atomic-ops 或 gap 触达时，取并集。
 
 ### 步骤 2：覆盖检查
 
@@ -75,7 +75,7 @@ integrator 必须消费并透传以下字段：
 - 每个已确认场景的关键路径至少 1 个测试点
 - `minimal_logic_chain` 中每个关键原子操作至少映射到 1 个 TP 或 1 个显式未覆盖项
 
-**动作源覆盖**：
+**atomic-ops 覆盖**：
 - 每个 `action_source_ref` 至少落到 1 个 TP / LC / TD，或显式标注为 `仅场景存在，未形成测试资产`
 
 **确认缺口覆盖**：
@@ -150,7 +150,7 @@ integrator 必须消费并透传以下字段：
 | `source_tp_ids` | TP-M-CFG-SRV-001, TP-M-CFG-SRV-002 |
 | `scenario_refs` | SCN-LOG-001 |
 | `scenario_chain_refs` | PRE-01, AO-01 |
-| `action_source_refs` | AS-001 |
+| `action_source_refs` | fw_config_log_server |
 | `knowledge_refs` | KR-001 |
 | `confirmation_gap_refs` | GAP-001 |
 | `test_object_refs` | OBJ-LOG-SERVER |
@@ -183,7 +183,7 @@ integrator 必须消费并透传以下字段：
 | `value_set` | 取值 / 边界 / 组合说明 |
 | `source_section` | `condition / action-input / observation / environment` |
 | `scenario_refs` | 来源场景 |
-| `action_source_refs` | 关联动作源 |
+| `action_source_refs` | 关联 atomic-ops `op_id` |
 | `trace_refs` | 继承 LC trace |
 | `confirmation_gap_refs` | 未确认边界 |
 | `status` | `ready / needs-confirmation` |
@@ -204,7 +204,7 @@ integrator 必须消费并透传以下字段：
 | `main_usage` | 已使用工具的主要用法 |
 | `purpose` | 用途 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 关联动作源 |
+| `action_source_refs` | 关联 atomic-ops `op_id` |
 | `factor_refs` | 关联因子 |
 | `covered_objects` | 保留上游原始覆盖对象字段 |
 | `covered_object_refs` | `covered_objects` 的统一别名 |
@@ -231,8 +231,8 @@ integrator 必须消费并透传以下字段：
 
 | SR | `scenario_refs` | TP-IDs | LC-ID | TD-IDs | `action_source_refs` | 覆盖状态 |
 |----|-----------------|--------|-------|--------|----------------------|---------|
-| SR-001 | SCN-LOG-001 | TP-M-CFG-SRV-001, TP-M-CFG-SRV-003 | LC-CFG-SRV-001 | TD-CFG-SRV-001, TD-CFG-SRV-002 | AS-001 | ✅ |
-| SR-002 | SCN-LOG-001 | TP-M-CFG-SRV-002 | LC-CFG-SRV-001 | TD-CFG-SRV-003 | AS-001 | ✅ |
+| SR-001 | SCN-LOG-001 | TP-M-CFG-SRV-001, TP-M-CFG-SRV-003 | LC-CFG-SRV-001 | TD-CFG-SRV-001, TD-CFG-SRV-002 | fw_config_log_server | ✅ |
+| SR-002 | SCN-LOG-001 | TP-M-CFG-SRV-002 | LC-CFG-SRV-001 | TD-CFG-SRV-003 | fw_config_log_server | ✅ |
 
 ### 步骤 8：输出
 
@@ -268,8 +268,8 @@ integrator 必须消费并透传以下字段：
 
 | TP-ID | C 条件 | A 动作 | E 预期 | 来源 | `scenario_refs` | `action_source_refs` | `factor_refs` | 归属LC |
 |-------|--------|--------|--------|------|-----------------|----------------------|---------------|--------|
-| TP-M-CFG-SRV-001 | 无服务器；合法参数 | 新建表单填写参数，点击确定 | 创建成功；列表新增条目 | M | SCN-LOG-001 | AS-001 | FAC-IP,FAC-PORT | LC-CFG-SRV-001 |
-| TP-M-CFG-SRV-002 | 已配置5台（上限） | 新建第6台，点击确定 | 提示超出上限；创建失败 | M | SCN-LOG-001 | AS-001 | FAC-SERVER-COUNT | LC-CFG-SRV-001 |
+| TP-M-CFG-SRV-001 | 无服务器；合法参数 | 新建表单填写参数，点击确定 | 创建成功；列表新增条目 | M | SCN-LOG-001 | fw_config_log_server | FAC-IP,FAC-PORT | LC-CFG-SRV-001 |
+| TP-M-CFG-SRV-002 | 已配置5台（上限） | 新建第6台，点击确定 | 提示超出上限；创建失败 | M | SCN-LOG-001 | fw_config_log_server | FAC-SERVER-COUNT | LC-CFG-SRV-001 |
 ```
 
 ### test-data.md
@@ -279,8 +279,8 @@ integrator 必须消费并透传以下字段：
 
 | TD-ID | logic_case_id | factor_ref | value_set | scenario_refs | action_source_refs | confirmation_gap_refs | status |
 |-------|---------------|------------|-----------|---------------|--------------------|-----------------------|--------|
-| TD-CFG-SRV-001 | LC-CFG-SRV-001 | FAC-IP | `<IP_ADDRESS>` / `256.0.0.1` | SCN-LOG-001 | AS-001 | — | ready |
-| TD-CFG-SRV-002 | LC-CFG-SRV-001 | FAC-SERVER-COUNT | `0 / 5 / >5[待确认]` | SCN-LOG-001 | AS-001 | GAP-001 | needs-confirmation |
+| TD-CFG-SRV-001 | LC-CFG-SRV-001 | FAC-IP | `<IP_ADDRESS>` / `256.0.0.1` | SCN-LOG-001 | fw_config_log_server | — | ready |
+| TD-CFG-SRV-002 | LC-CFG-SRV-001 | FAC-SERVER-COUNT | `0 / 5 / >5[待确认]` | SCN-LOG-001 | fw_config_log_server | GAP-001 | needs-confirmation |
 ```
 
 ### tool-analysis.md
@@ -290,8 +290,8 @@ integrator 必须消费并透传以下字段：
 
 | tool_entry_id | tool_id | tool_kind | tool_name | main_usage | purpose | scenario_refs | action_source_refs | factor_refs | covered_objects | covered_object_refs | covered_factors | covered_factor_refs | proposed_interface | interface_contract | function_desc | io_behavior_matrix | output_contract | status |
 |---------------|---------|-----------|-----------|------------|---------|---------------|--------------------|-------------|-----------------|---------------------|-----------------|---------------------|--------------------|--------------------|---------------|--------------------|-----------------|--------|
-| TOOL-001 | TOOL-001 | existing-tool | log-cli | `log-cli server add/delete` | 配置日志服务器 | SCN-LOG-001 | AS-001 | FAC-IP,FAC-PORT | OBJ-LOG-SERVER | OBJ-LOG-SERVER | FAC-IP,FAC-PORT | FAC-IP,FAC-PORT | — | `log-cli server <subcommand>` | 已覆盖新增/删除/查询 | — | stdout/json + return code | ready |
-| GAP-TOOL-001 | GAP-TOOL-001 | tool-gap | audit-exporter | — | 导出审计时间线 | SCN-AUDIT-001 | AS-AUDIT-001 | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | OBJ-AUDIT-LOG | OBJ-AUDIT-LOG | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | `audit-exporter trace --since ...` | `audit-exporter trace --since ...` | 补齐审计观测能力 | 指定时间窗且日志可读→返回完整时间线；字段缺失→返回缺失字段清单与失败状态 | stdout/json + timeline report | gap |
+| TOOL-001 | TOOL-001 | existing-tool | log-cli | `log-cli server add/delete` | 配置日志服务器 | SCN-LOG-001 | fw_config_log_server | FAC-IP,FAC-PORT | OBJ-LOG-SERVER | OBJ-LOG-SERVER | FAC-IP,FAC-PORT | FAC-IP,FAC-PORT | — | `log-cli server <subcommand>` | 已覆盖新增/删除/查询 | — | stdout/json + return code | ready |
+| GAP-TOOL-001 | GAP-TOOL-001 | tool-gap | audit-exporter | — | 导出审计时间线 | SCN-AUDIT-001 | fw_export_audit_timeline | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | OBJ-AUDIT-LOG | OBJ-AUDIT-LOG | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | `audit-exporter trace --since ...` | `audit-exporter trace --since ...` | 补齐审计观测能力 | 指定时间窗且日志可读→返回完整时间线；字段缺失→返回缺失字段清单与失败状态 | stdout/json + timeline report | gap |
 ```
 
 ## Gotchas
