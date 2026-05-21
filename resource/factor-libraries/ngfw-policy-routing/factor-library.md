@@ -12,6 +12,7 @@
 | 业务流量因子 | 粗粒度 `FAC-FLOW-PROFILE` | `TRAFFIC_MATCHING` 因子组 | 将流量层级、IP 匹配、服务匹配、应用匹配和预期命中结果拆开，支持功能正向/反向样本 |
 | 配置非法 vs 功能反向 | 混用 valid/invalid | 分离 `rejected_config_samples` 与 `negative_function` | 非法配置不能作为功能用例前置；功能反向流量是可执行但预期不命中的输入 |
 | 报文输入 vs 规则配置 | `FAC-PKT-*` 同时承载功能流量和配置非法样本 | `FAC-PKT-*` 只承载运行时报文输入；`FAC-PR-RULE-*` 承载配置字段合法性 | 防止 `accepted config samples = n/a` 被误判为缺失配置覆盖 |
+| 接口能力 vs 真实端口 | 把 `DUT.port1` / `TG.port1` 当成接口因子值 | 接口类型和接口能力可作为因子；真实端口和 link 实例只在 `topology_bindings` 中出现 | 防止项目拓扑实例污染公共因子库 |
 | 项目归档 | 项目内主库 | 公共 resource 主库 + 项目 lock/binding/proposal | 公共库可跨项目复用，项目内只记录消费结果 |
 
 ## 因子总览
@@ -113,10 +114,31 @@
 | C-RUNTIME-VS-CONFIG-001 | `owner_object == OBJ-PR-TRAFFIC and factor_id starts_with FAC-PKT-` | config_test not_applicable | forbid config accepted/rejected | 报文运行时输入不参与配置合法性覆盖 |
 | C-RULE-CONFIG-001 | source/destination/service 配置字段做 config_test | owner_object OBJ-PR-RULE | forbid owner_object OBJ-PR-TRAFFIC | 规则配置字段合法性由规则对象因子承载 |
 
+## 拓扑实例边界
+
+本库可以描述策略路由设计需要的接口类型、接口能力和出口选择模式：
+
+- `FAC-L3-NH-IF-TYPE` 描述下一跳关联接口类型；
+- `FAC-L3-OUTIF-TYPE` 描述出接口接口类型；
+- `FAC-L3-IF-CAPABILITY` 描述三层转发接口能力；
+- capability matrix 可约束不同出口模式下允许的接口能力。
+
+本库不得描述项目真实组网实例：
+
+| 禁止写入公共因子的对象 | 正确去向 |
+|---|---|
+| `DUT.port1`、`DUT.port2`、`TG.port1` | LC `topology_bindings.device_id/port_id` |
+| `DUT.port1<->TG.port1`、`LINK-PR-001` | LC `topology_bindings.link_id` |
+| 某项目拓扑图中的真实入口/出口端口 | `analysis/scenarios/confirmed-scenarios.md` 和 PC 物化字段 |
+
+真实端口不能作为 `values`、`sample_id`、`materialization` 示例或公共因子组成员。若用例需要指定入口/出口端口，`ptm-tde` 应先在 CAE 中引用 `topology_role_refs`，再由 integration 阶段从已确认场景生成 `topology_bindings`。
+
 ## 消费规则
 
 - `ptm-tde` 通过项目 lock 固定本库版本，并通过 `factor_bindings` 把 `factor_id`、`sample_id`、`usage_context` 和物化阶段传递给下游 Skill。
+- `topology_bindings` 与 `factor_bindings` 并行存在；真实设备、端口和链路只通过 `topology_bindings` 传递。
 - M/LC/TD 阶段优先保留 `sample_id` 或表达式，PC 阶段再物化确定值。
 - 配置拒绝样本只能用于配置反向用例；功能反向样本是可执行但预期不命中或走反向路径的业务输入。
 - `FAC-PKT-*` 的 `config_test=not_applicable` 是明确职责声明，不是配置覆盖缺失；配置字段覆盖应查找 `FAC-PR-RULE-*` 或其他配置对象因子。
+- PC 中若出现 `DUT.port1`、`TG.port1` 或 link 实例，必须能回链到 LC `topology_bindings` 和 `analysis/scenarios/confirmed-scenarios.md`；不得把这些实例补写为因子值或候选样本。
 - 新因子先作为项目候选提案进入 `analysis/factor-usage/candidate-factor-proposals.yaml`，不得由项目运行直接写回本库。

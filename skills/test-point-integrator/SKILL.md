@@ -28,7 +28,8 @@ status: active
 - [ ] M 分析完成（`analysis/m-analysis/test-points.md` 存在）
 - [ ] F 分析完成（`analysis/f-analysis/coupling-test-points.md` 存在）
 - [ ] Q 分析完成（`analysis/q-analysis/quality-test-points.md` 存在）
-- [ ] 上游 TP 已包含 `trace_refs / scenario_refs / action_source_refs / test_object_refs / factor_refs`
+- [ ] `analysis/scenarios/confirmed-scenarios.md` 存在，且包含已确认 TOPO / 组网实例或明确标记无组网约束
+- [ ] 上游 TP 已包含 `trace_refs / scenario_refs / action_source_refs / test_object_refs / factor_refs / topology_refs / topology_role_refs`
 - [ ] 上游工具评估文件存在，或明确标记为“无工具分析结果”
 
 ## 输入契约（Story-04）
@@ -37,10 +38,18 @@ integrator 必须消费并透传以下字段：
 
 | 来源 | 必收字段 |
 |------|----------|
-| M/F/Q TP | `trace_refs`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `fact_status` |
+| M/F/Q TP | `trace_refs`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `topology_refs`, `topology_role_refs`, `topology_binding_status`, `topology_gap_refs`, `fact_status` |
 | M 对象/因子 | `object_id`, `factor_id`, `data_domain`, `related_object_id` |
 | F/Q 工具评估 | `Existing Tool Summary`, `Tool Capability Gap` |
-| 场景链 | `minimal_logic_chain`, `atomic-ops`, `Knowledge Reference`, `confirmation_gaps` |
+| 场景链 | `minimal_logic_chain`, `atomic-ops`, `Knowledge Reference`, `confirmation_gaps`, `TOPO` / 组网实例 |
+
+## 三层绑定边界
+
+- **测试因子**：业务/配置/数据/报文取值，继续由 `factor_bindings` 作为主契约承载。
+- **拓扑角色**：测试逻辑位置，来自 TP 的 `topology_role_refs`，例如 `MATCH_INGRESS_IF`。
+- **真实组网对象**：confirmed-scenarios.md 中已确认的 TOPO 实例，integrator 只能从该文件绑定，不得从裸端口文本猜测。
+
+`DUT.port1`、`TG.port1`、link 实例不得进入 LC 因子-取值表或 TD `value_set`。若上游 TP 混入裸端口，必须保留为拓扑待确认缺口，不得继承为测试因子。
 
 ## 执行流程
 
@@ -115,6 +124,33 @@ integrator 必须消费并透传以下字段：
 - `test_object_refs`
 - `factor_refs`
 - `trace_refs`
+- `topology_refs`
+- `topology_role_refs`
+- `topology_binding_status`
+- `topology_gap_refs`
+
+### 步骤 3.5：组网绑定（来自 confirmed-scenarios.md）
+
+每个 LC 必须固定输出 **组网绑定（来自 confirmed-scenarios.md）** 章节，绑定规则如下：
+
+1. 从合并后的 TP `topology_role_refs` 收集本 LC 涉及的拓扑角色。
+2. 按 `scenario_refs + topology_refs + topology_role_refs` 回查 `analysis/scenarios/confirmed-scenarios.md` 中的 TOPO / 组网实例。
+3. 为每个角色生成 `topology_bindings`，至少包含：
+
+| 字段 | 说明 |
+|------|------|
+| `topology_binding_id` | LC 内唯一绑定编号 |
+| `topology_role_ref` | 逻辑角色，如 `MATCH_INGRESS_IF` |
+| `role_expression` | CAE 角色占位，如 `{{topo_role:MATCH_INGRESS_IF}}` |
+| `topology_ref` | confirmed-scenarios.md 中 TOPO 实例引用 |
+| `bound_object` | 真实组网对象，仅来自 confirmed-scenarios.md |
+| `binding_source` | 回链位置，如 `confirmed-scenarios.md#TOPO-FLOW-001` |
+| `binding_status` | `confirmed / needs-confirmation / unbound` |
+| `confirmation_gap_refs` | 不唯一、缺失或冲突时的 gap |
+
+4. 能唯一回链时，`binding_status=confirmed`，并在动作路径中使用“角色 + 绑定说明”，例如 `{{topo_role:MATCH_INGRESS_IF}}（绑定 TOPO-FLOW-001:DUT.port1）`。
+5. 无法唯一绑定、绑定缺失或上游出现裸端口但无法回链时，保留 `binding_status=needs-confirmation`，把缺口并入 LC `confirmation_gap_refs` 与 `topology_gap_refs`。
+6. 动作路径不得继承裸端口作为无来源文本；必须写角色占位和绑定说明，或写 `[拓扑绑定待确认: <gap_ref>]`。
 
 ### 步骤 4：逻辑用例结构化输出
 
@@ -143,6 +179,13 @@ integrator 必须消费并透传以下字段：
 - 路径 P1（唯一路径 / P-Parameter 时通常只有一条）：
   进入配置页面 → 填写参数 → 点击确定 → 观测响应和列表
 
+**组网绑定（来自 confirmed-scenarios.md）**：
+
+| topology_binding_id | topology_role_ref | role_expression | topology_ref | bound_object | binding_source | binding_status | confirmation_gap_refs |
+|---------------------|-------------------|-----------------|--------------|--------------|----------------|----------------|-----------------------|
+| TB-LC-001-01 | MATCH_INGRESS_IF | `{{topo_role:MATCH_INGRESS_IF}}` | TOPO-FLOW-001 | DUT.port1 | `confirmed-scenarios.md#TOPO-FLOW-001` | confirmed | — |
+| TB-LC-001-02 | DUT_EGRESS_IF | `{{topo_role:DUT_EGRESS_IF}}` | TOPO-FLOW-001 | DUT.port2 | `confirmed-scenarios.md#TOPO-FLOW-001` | confirmed | — |
+
 **trace refs**：
 
 | 字段 | 内容 |
@@ -155,6 +198,10 @@ integrator 必须消费并透传以下字段：
 | `confirmation_gap_refs` | GAP-001 |
 | `test_object_refs` | OBJ-LOG-SERVER |
 | `factor_refs` | FAC-IP, FAC-SERVER-COUNT |
+| `topology_role_refs` | MATCH_INGRESS_IF, DUT_EGRESS_IF |
+| `topology_refs` | TOPO-FLOW-001 |
+| `topology_bindings` | TB-LC-001-01, TB-LC-001-02 |
+| `topology_gap_refs` | GAP-TOPO-001 |
 
 **覆盖测试点**：
 
@@ -241,7 +288,7 @@ integrator 必须消费并透传以下字段：
 | 文件 | 内容 |
 |------|------|
 | `all-test-points.md` | M+F+Q 按四/五级目录归集的全量 CAE 测试点 |
-| `logic-cases.md` | 逻辑用例（按四/五级目录分节，含因子-取值表+动作路径+覆盖TP） |
+| `logic-cases.md` | 逻辑用例（按四/五级目录分节，含因子-取值表+组网绑定+动作路径+覆盖TP） |
 | `test-data.md` | TD 清单（含 factor/value/trace/gap） |
 | `tool-analysis.md` | 归并后的 Existing Tool Summary + Tool Capability Gap（renderer 别名已对齐） |
 | `coverage-matrix.md` | `SR→Scenario→TP→LC→TD` 的追踪矩阵 |
@@ -266,10 +313,10 @@ integrator 必须消费并透传以下字段：
 
 ### <五级目录>
 
-| TP-ID | C 条件 | A 动作 | E 预期 | 来源 | `scenario_refs` | `action_source_refs` | `factor_refs` | 归属LC |
-|-------|--------|--------|--------|------|-----------------|----------------------|---------------|--------|
-| TP-M-CFG-SRV-001 | 无服务器；合法参数 | 新建表单填写参数，点击确定 | 创建成功；列表新增条目 | M | SCN-LOG-001 | fw_config_log_server | FAC-IP,FAC-PORT | LC-CFG-SRV-001 |
-| TP-M-CFG-SRV-002 | 已配置5台（上限） | 新建第6台，点击确定 | 提示超出上限；创建失败 | M | SCN-LOG-001 | fw_config_log_server | FAC-SERVER-COUNT | LC-CFG-SRV-001 |
+| TP-ID | C 条件 | A 动作 | E 预期 | 来源 | `scenario_refs` | `action_source_refs` | `factor_refs` | `topology_role_refs` | `topology_refs` | `topology_binding_status` | `topology_gap_refs` | 归属LC |
+|-------|--------|--------|--------|------|-----------------|----------------------|---------------|----------------------|-----------------|---------------------------|---------------------|--------|
+| TP-M-CFG-SRV-001 | 无服务器；合法参数 | 新建表单填写参数，点击确定 | 创建成功；列表新增条目 | M | SCN-LOG-001 | fw_config_log_server | FAC-IP,FAC-PORT | — | — | — | — | LC-CFG-SRV-001 |
+| TP-M-FLOW-001 | `{{topo_role:MATCH_INGRESS_IF}}` 进入匹配流量 | 发送 TCP/443 报文 | `{{topo_role:DUT_EGRESS_IF}}` 转发 | M | SCN-FLOW-001 | fw_send_match_traffic | FAC-PROTO,FAC-DST-PORT | MATCH_INGRESS_IF,DUT_EGRESS_IF | TOPO-FLOW-001 | confirmed | — | LC-FLOW-001 |
 ```
 
 ### test-data.md
@@ -302,6 +349,13 @@ integrator 必须消费并透传以下字段：
 - 生成 LC 和 TD 时必须保留 `usage_context` 与 `sample_id`，不得在 integration 阶段提前物化随机表达式。
 - 配置样本和功能样本分开合并；`rejected_config_samples` 不得作为功能用例前置。
 
+## 拓扑绑定补充契约
+
+- integrator 必须消费并透传上游 `topology_refs / topology_role_refs / topology_binding_status / topology_gap_refs`。
+- `topology_bindings` 是与 `factor_bindings` 并行的主契约；不得把拓扑角色或真实组网对象写入 `factor_bindings`。
+- `topology_bindings` 只能绑定到 `analysis/scenarios/confirmed-scenarios.md` 的 TOPO 实例；无法唯一绑定时保留 `needs-confirmation`，并写入 `confirmation_gap_refs`。
+- LC 动作路径必须使用拓扑角色和绑定说明，不得输出无来源裸端口。
+
 ## Gotchas
 
 - 覆盖检查必须是逐条语义对比，不能只看编号关联
@@ -310,14 +364,19 @@ integrator 必须消费并透传以下字段：
 - Q 分析的测试点可能适用于多个模块，需在每个相关模块都有体现
 - integrator 不得吞掉 `confirmation_gap_refs`
 - 工具分析只做归并和字段对齐，不补写上游没有给出的接口/行为
+- 组网绑定只来自 confirmed-scenarios.md；不要用端口命名习惯或场景标题推断 DUT/TG 真实接口
+- 裸端口不是 LC 因子值；发现后应转成 topology gap，而不是放入因子-取值表
 
 ## 验收标准
 
 - [ ] M+F+Q 测试点全部归集且无遗漏
 - [ ] 需求覆盖率 = 100%（所有 SR 至少 1 个 TP）
 - [ ] 每个逻辑用例包含：测试逻辑描述 + 因子-取值表 + 动作路径 + 覆盖测试点明细
-- [ ] 每个 LC 保留 `source_tp_ids / scenario_refs / action_source_refs / factor_bindings / factor_refs / trace_refs`
+- [ ] 每个逻辑用例固定包含 `组网绑定（来自 confirmed-scenarios.md）` 章节；无组网约束时显式写 `无`
+- [ ] 每个 LC 保留 `source_tp_ids / scenario_refs / action_source_refs / factor_bindings / factor_refs / topology_bindings / topology_role_refs / topology_refs / trace_refs`
 - [ ] 每个 TD 保留 `factor_ref / scenario_refs / action_source_refs / confirmation_gap_refs`
+- [ ] 无法唯一绑定的拓扑角色保留 `needs-confirmation` 与 `confirmation_gap_refs`
+- [ ] LC 因子-取值表和 TD `value_set` 不包含 `DUT.port*`、`TG.port*` 或 link 实例
 - [ ] 输出按四/五级目录分节，每个五级目录至少有 1 个逻辑用例
 - [ ] 合并判定表含优先级列和规则编号（规则0~规则3）
 - [ ] 规则优先级明确：规则3 > 规则2 > 规则1

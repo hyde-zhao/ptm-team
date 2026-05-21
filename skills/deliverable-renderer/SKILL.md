@@ -20,8 +20,8 @@ status: active
 渲染时必须：
 
 - 消费 `design/ppdcs/` 和 `design/pc/` 的**每 LC 单文件过程工件**，不能只看最终 PC；
-- 保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status`；
-- 当上游存在 `topology_ref` 时，在测试方案的场景章节中保留对应组网引用与产物路径。
+- 保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status`；
+- 当上游存在 `topology_ref` 时，在测试方案的场景章节中保留对应组网引用与产物路径，并在测试用例中保留角色到真实设备/端口/链路的绑定来源。
 
 ## 适用范围
 
@@ -33,8 +33,9 @@ status: active
 
 - [ ] 覆盖报告已生成
 - [ ] `logic-cases.md`、`test-data.md` 已存在
+- [ ] `analysis/scenarios/confirmed-scenarios.md` 已存在；依赖组网的 LC 已有 `topology_bindings`
 - [ ] `design/ppdcs/` 与 `design/pc/` 下各 LC 单文件已存在
-- [ ] 上游已保留 trace / gap / fact_status 字段
+- [ ] 上游已保留 trace / gap / topology / fact_status 字段
 
 ## 必须消费的输入契约
 
@@ -43,18 +44,20 @@ status: active
 | 来源 | 必收字段 | 用途 |
 |------|----------|------|
 | `coverage-summary.md` / `requirement-coverage.md` / `test-point-coverage.md` | 覆盖统计、`requirement_gaps`, `test_point_gaps`, `feature_tags`, `trace_refs`, `fact_status` | 方案文档中的覆盖章节 |
-| `all-test-points.md` | `TP-ID`, `关联SR`, `scenario_refs`, `action_source_refs`, `factor_refs`, `trace_refs`, `fact_status` | 测试点分析表 |
-| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `关联SR`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则` | 交付主骨架 |
-| `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `trace_refs`, `confirmation_gap_refs`, `status` | 设计过程与数据回链 |
+| `analysis/scenarios/confirmed-scenarios.md` | `scenario_id`, `topology_ref`, `topology_role`, `device_id`, `port_id`, `link_id`, `source`, `fact_status` | 方案场景章节和真实组网来源 |
+| `all-test-points.md` | `TP-ID`, `关联SR`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `trace_refs`, `fact_status` | 测试点分析表 |
+| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `关联SR`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_binding_status`, `trace_refs`, `confirmation_gap_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则` | 交付主骨架与拓扑绑定表 |
+| `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `topology_binding_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | 设计过程与数据回链 |
 
 ### 2. STORY-06 / STORY-07 设计层（必须全量消费）
 
 | 来源 | 必收字段 | 用途 |
 |------|----------|------|
-| `design/ppdcs/<basename>.md` | 推荐方法、图/规则/等价类/组合/状态迁移、覆盖策略、触发数据、`trace_refs`, `scenario_refs`, `action_source_refs`, `confirmation_gap_refs`, `fact_status` | 渲染完整 PPDCS 设计过程 |
-| `design/pc/<basename>.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status` | 渲染最终物理用例 |
+| `design/ppdcs/<basename>.md` | 推荐方法、图/规则/等价类/组合/状态迁移、覆盖策略、触发数据、`topology_role_refs`, `topology_binding_refs`, `trace_refs`, `scenario_refs`, `action_source_refs`, `confirmation_gap_refs`, `fact_status` | 渲染完整 PPDCS 设计过程 |
+| `design/pc/<basename>.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status` | 渲染最终物理用例 |
 
 > 若某 PC 缺少 `feature_tags` 或某 LC 无法回链到 `requirement_ids / trace_refs`，renderer 必须在交付物中显式暴露缺口，不得自行脑补。
+> 若某 PC 使用真实端口但无法回链到 LC `topology_bindings` 和 `confirmed-scenarios.md`，renderer 必须保留为 `needs-confirmation`，不得把该端口展示为因子或确认事实。
 
 ## 执行流程
 
@@ -64,7 +67,8 @@ status: active
 2. 读取 `analysis/integration/logic-cases.md`、`analysis/integration/test-data.md`；
 3. 枚举 `design/ppdcs/*.md` 与 `design/pc/*.md`；
 4. 按相同 basename 建立 `LC → PPDCS过程 → PC` 的完整映射；
-5. 为每个 PC 汇总可直接进入交付文档的字段。
+5. 建立 `topology_role_refs → topology_bindings → PC materialization` 的回链；
+6. 为每个 PC 汇总可直接进入交付文档的字段。
 
 ### 步骤 2：渲染 `<特性名>特性测试方案.md`
 
@@ -73,6 +77,7 @@ status: active
 1. 特性概述
 2. 应用场景分析
    - 若存在 Topology，列出 `topology_ref` 与 `analysis/scenarios/<scene-id>/topology.{mmd,yaml}` 引用
+   - 列出 `topology_role`、真实设备/端口/链路绑定、`source`、`fact_status`，并标明未确认绑定
 3. 需求分析
 4. M 分析
 5. F 分析
@@ -85,6 +90,7 @@ status: active
 - 需求层覆盖
 - 测试点层覆盖
 - 未覆盖项 / `needs-confirmation` 项
+- topology binding gaps / 未确认真实组网对象
 
 ### 步骤 3：渲染 `<特性名>特性测试用例.md`
 
@@ -94,6 +100,7 @@ status: active
 
 1. `design/ppdcs/<basename>.md` 的推荐上下文与完整过程
 2. `design/pc/<basename>.md` 的最终 PC 表
+3. `topology_role_refs → topology_bindings → PC materialization` 绑定表
 
 按设计 Skill 分类保留过程内容：
 
@@ -115,8 +122,10 @@ status: active
 ## 渲染规则
 
 1. **不丢过程**：必须带出 STORY-06 / STORY-07 完整设计过程
-2. **不丢字段**：不得删掉 trace / gap / fact_status；若存在 `topology_ref`，不得在场景章节中丢失
+2. **不丢字段**：不得删掉 trace / gap / topology / fact_status；若存在 `topology_ref`，不得在场景章节中丢失
 3. **不扩展交付文件**：`delivery/` 只输出测试方案和测试用例两份 Markdown
+4. **不混淆对象**：测试因子、拓扑角色和真实组网对象分开展示；`DUT.port1`、`TG.port1`、link 实例不得进入“因子-取值表”。
+5. **不提升状态**：`fact_status=needs-confirmation` 或 `topology_binding_status=needs-confirmation` 的条目必须原样进入交付物，不能因已生成 PC 改为 confirmed。
 
 ## 公共因子库补充契约
 
@@ -124,15 +133,25 @@ status: active
 - 小节至少包含公共库 `library_id / version / checksum`、关键 factor groups、配置/功能样本策略、物化策略。
 - 最终物理用例展示 `materialized_value`；随机样本必须记录 deterministic seed。
 - `factor_bindings` 是主契约，`factor_refs` 仅作兼容摘要。
+- 接口类型、接口能力可以作为因子或约束展示；真实 `DUT.port1` / `TG.port1` / link 实例只能展示在拓扑绑定小节或 PC 组网字段，不能展示为公共因子值。
+
+## 拓扑绑定补充契约
+
+- deliverable-renderer 必须读取 LC / PC 中的 `topology_bindings`，并在交付物中保留 `topology_role / device_id / port_id / link_id / source / fact_status`。
+- 测试方案的场景章节展示来源链：`confirmed-scenarios.md -> topology_ref/topology.yaml -> LC topology_bindings -> PC materialization`。
+- 测试用例总表的组网描述和组网约束可展示真实端口，但必须标注来源；若 `fact_status` 或 `topology_binding_status` 为 `needs-confirmation`，交付物必须显式暴露确认缺口。
+- “因子库与样本策略”小节只展示公共测试因子和样本策略，不得混入真实端口、真实链路或项目专属 topology instance。
 
 ## Gotchas
 
 - `feature_tags` 若缺失，应在交付中列为 gap，而不是用模块名临时替代
 - `fact_status=needs-confirmation` 的 LC / PC 条目必须原样进入交付物
+- `DUT.port1`、`TG.port1` 和 link 实例是 topology materialization，不是 factor materialization
 
 ## 验收标准
 
 - [ ] 只输出测试方案、测试用例两份 Markdown
 - [ ] 测试用例文档消费 STORY-06 / STORY-07 的完整过程文档，而非仅最终 PC
-- [ ] 交付物保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `confirmation_gap_refs`, `fact_status`
+- [ ] 交付物保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status`
+- [ ] 交付物不把真实端口、真实链路或 `DUT.port1` / `TG.port1` 展示为因子
 - [ ] 不生成工具分析表或 `case-index.yaml`

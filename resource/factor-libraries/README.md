@@ -55,6 +55,20 @@ resource/factor-libraries/
 | 状态因子 | 业务状态对象 | 描述启用、不可达、恢复、同步等状态变化 | `FAC-L3-REACHABILITY`、`FAC-HA-SYNC-STATE` |
 | oracle 因子 | 被验证对象 | 描述预期结果，不作为输入配置 | `FAC-EXPECTED-MATCH-RESULT`、`FAC-L3-EXPECTED-FWD-PATH` |
 
+### 与拓扑实例的边界
+
+接口类型、接口能力、出口模式、链路能力等可复用概念可以建模为公共因子或约束；项目中的真实设备、真实端口和真实 link 实例不是公共因子。
+
+| 对象 | 是否可进入公共因子库 | 原因 | 示例 |
+|---|---|---|---|
+| 接口类型 | 可以 | 跨项目可复用，适合作为值域或能力矩阵 | physical、sub-interface、aggregate、tunnel |
+| 接口能力 | 可以 | 可复用约束或 capability matrix | l3-capable、not-l3-capable |
+| 出口选择模式 | 可以 | 可复用业务变量 | next-hop、out-interface |
+| 真实设备端口 | 不可以 | 项目拓扑实例，只能来自已确认场景 | `DUT.port1`、`TG.port1` |
+| 真实链路实例 | 不可以 | 项目组网实例，不能跨项目复用 | `DUT.port1<->TG.port1`、`LINK-WAN-01` |
+
+真实组网对象必须通过 `topology_role_refs -> topology_bindings -> PC materialization` 链路流转；不得写入公共因子 `values`、`sample_id`、样例值或 `factor_group`。
+
 ## 生产流程
 
 公共因子库生产采用固定闭环。生产阶段的目标不是直接生成测试用例，而是把可复用变量、值域、样本和约束沉淀为公共知识：
@@ -99,9 +113,10 @@ resource/factor-libraries/
 2. 项目初始化：读取 `index.yaml` 和目标库主文件，生成项目 `analysis/factor-usage/factor-library-lock.yaml`，锁定库版本和 checksum。
 3. M / LC / TD 阶段：使用 `factor_id`、`factor_group`、`sample_id` 和 `usage_profiles` 组织测试设计，不急于物化具体值。
 4. 下游 Skill 绑定：在 `analysis/factor-usage/factor-bindings.md` 记录每个测试点使用了哪些因子、样本、约束和 oracle。
-5. PC 阶段：根据 `expr`、`materialized_value` 或 `materialization` 把样本转成具体配置、流量、状态或断言。
-6. 覆盖核查：根据因子组和约束检查是否覆盖 required factors、正向/反向样本、状态变化和 oracle。
-7. 候选回流：项目发现新因子或新值域时，只写入 `candidate-factor-proposals.yaml`，由公共库维护者评审后归档。
+5. 拓扑并行绑定：真实设备、端口和链路不进入 `factor-bindings.md`；它们由 LC `topology_bindings` 从 `analysis/scenarios/confirmed-scenarios.md` 绑定。
+6. PC 阶段：根据 `expr`、`materialized_value` 或 `materialization` 把因子样本转成具体配置、流量、状态或断言；根据 `topology_bindings` 把拓扑角色物化为真实设备、端口和链路。
+7. 覆盖核查：根据因子组和约束检查是否覆盖 required factors、正向/反向样本、状态变化和 oracle；根据 `topology_bindings` 检查 PC 真实端口是否可回链。
+8. 候选回流：项目发现新因子或新值域时，只写入 `candidate-factor-proposals.yaml`，由公共库维护者评审后归档。
 
 消费时的职责边界如下：
 
@@ -115,6 +130,8 @@ resource/factor-libraries/
 | `config_test: not_applicable` | 跳过配置合法性覆盖检查 | 只参与功能、状态或 oracle 设计 |
 
 例如 `FAC-PKT-SRC-IP` 是报文运行时输入，`accepted config samples = n/a` 或 `config_test: not_applicable` 表示它不进入配置字段合法性分析；配置源 IP 合法性应由 `FAC-PR-RULE-SRC-IP` 承载。
+
+`DUT.port1`、`TG.port1`、`DUT.port1<->TG.port1` 这类对象不属于上述任何输入类型；它们不是样本，也不是因子值，只能作为拓扑绑定结果进入 PC 的组网描述、组网约束或测试步骤。
 
 ## 关联关系
 
@@ -176,3 +193,13 @@ analysis/factor-usage/
 ```
 
 `factor-library-lock.yaml` 锁定公共库版本和 checksum；`factor-bindings.md` 是下游 Skill 的正式输入；`candidate-factor-proposals.yaml` 是回流公共库的唯一项目级入口。
+
+项目若需要记录真实组网对象，使用场景与拓扑绑定产物：
+
+```text
+analysis/scenarios/confirmed-scenarios.md
+analysis/integration/logic-cases.md  # topology_bindings
+design/pc/<basename>.md              # PC materialization
+```
+
+`factor_bindings` 与 `topology_bindings` 是并行契约：前者服务公共测试因子，后者服务真实组网对象，不得互相替代。

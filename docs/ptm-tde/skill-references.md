@@ -18,23 +18,25 @@
 | checkpoint | `checkpoint-manager` | 执行 CP01 input 自检和检查点记录，确认需求文件、特性名、原子操作、topo、耦合矩阵和输出目录可用。 |
 | input | `feature-parser` | 解析特性需求文件，提取结构化需求并生成三至五级目录结构。 |
 | scenario | `scenario-discovery` | 重新发现部署型场景，生成 Scenario Chain、Operation Path、Topology、atomic-ops、Knowledge Reference 和确认缺口。 |
-| m-analysis | `m-analyzer` | 执行 M 分析；提取测试因子前先读取公共因子库，复用 active 因子，输出 factor bindings、扩展建议和候选提案。 |
+| m-analysis | `m-analyzer` | 执行 M 分析；提取测试因子前先读取公共因子库，复用 active 因子，输出 factor bindings、扩展建议和候选提案；CAE 只引用 `topology_role_refs`，不写真实端口。 |
 | f-analysis | `f-analyzer` | 执行 F 分析，合并耦合矩阵、场景耦合和可选代码依赖，生成 CAE 耦合测试点。 |
 | q-analysis | `q-analyzer` | 执行 Q 分析，基于 HTSM 质量属性维度生成 CAE 质量测试点和工具覆盖评估。 |
-| integration | `test-point-integrator` | 整合 M/F/Q 测试点，消费 `factor_bindings`，生成逻辑用例、测试数据、工具分析归并和覆盖关系。 |
-| plan | `design-planner` | 根据 LC、测试数据、CAE 信号和公共因子库的 `domain_model / usage_profiles / constraints` 推荐 PPDCS 设计方法，并输出推断过程。 |
-| design-ppdcs | `design-ppdcs-analyzer` | 协调 PPDCS 逻辑设计，按 LC 统一收敛 PPDCS 设计过程文件和 PC 文件。 |
+| integration | `test-point-integrator` | 整合 M/F/Q 测试点，消费 `factor_bindings`，从 `confirmed-scenarios.md` 生成 LC `topology_bindings`，输出逻辑用例、测试数据、工具分析归并和覆盖关系。 |
+| plan | `design-planner` | 根据 LC、测试数据、CAE 信号、公共因子库约束和 `topology_binding_status` 推荐 PPDCS 设计方法，并输出推断过程。 |
+| design-ppdcs | `design-ppdcs-analyzer` | 协调 PPDCS 逻辑设计，按 LC 统一收敛 PPDCS 设计过程文件和 PC 文件，并要求 PC 真实端口回链到 LC `topology_bindings`。 |
 | design-ppdcs / design-pc | `process-design` | 针对 P-Process 类型 LC 执行流程图法设计，输出流程模型、路径枚举、触发数据和物理用例。 |
 | design-ppdcs / design-pc | `parameter-design` | 针对 P-Parameter 类型 LC 执行参数规则设计，输出规则提取、判定结构、参数组和物理用例。 |
 | design-ppdcs / design-pc | `data-design` | 针对 D-Data 类型 LC 执行等价类与边界值设计，输出值域、等价类、边界选点和物理用例。 |
 | design-ppdcs / design-pc | `combination-design` | 针对 C-Combination 类型 LC 执行组合设计，输出因子值域、约束、组合压缩策略和物理用例。 |
 | design-ppdcs / design-pc | `state-design` | 针对 S-State 类型 LC 执行状态图设计，输出状态模型、迁移表、守卫条件和物理用例。 |
-| coverage | `coverage-verifier` | 执行 SR 到 LC 到 PC、TP 到 PC 的双层覆盖验证，并校验 lock 指定公共库中的 active 因子和必测样本覆盖。 |
-| delivery | `deliverable-renderer` | 汇总分析、设计和覆盖结果，生成最终测试方案和测试用例总表，并输出因子库版本、快照和样本策略摘要。 |
+| coverage | `coverage-verifier` | 执行 SR 到 LC 到 PC、TP 到 PC 的双层覆盖验证，校验公共库因子覆盖，并校验 PC 真实端口能回链到 LC `topology_bindings` 与 `confirmed-scenarios.md`。 |
+| delivery | `deliverable-renderer` | 汇总分析、设计和覆盖结果，生成最终测试方案和测试用例总表，输出因子库版本、样本策略摘要，并保留 `topology_bindings / topology_role / source / fact_status`。 |
 
 ## 公共 Resource 关联
 
 `ptm-tde` 不私有化因子库。公共因子库归档在仓库级 `resource/factor-libraries/`，组件关联由 `resource/component-resource-links.yaml` 声明。安装 `ptm-tde` agent 时，ptm-team 安装器同步安装关联的 `required` / `recommended` factor libraries；卸载时按 `installed_for` 引用关系删除或保留资源。
+
+接口类型、接口能力、配置字段、流量属性和 oracle 可以作为公共因子；真实 `DUT.port1`、`TG.port1` 和 link 实例不是公共因子，必须通过 `topology_role_refs -> topology_bindings -> PC materialization` 链路流转。`topology_bindings` 不替代 `factor_bindings`，两者由不同 Skill 并行消费和校验。
 
 ## 交付后回查 Skill
 

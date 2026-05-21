@@ -94,14 +94,15 @@ checkpoints/CP02_scenario_manual.md
 | 4 | 范围收敛 | 用户约束进入 `scope_constraints`，排除项进入 `out_of_scope_candidates` | 范围不明时阻断 |
 | 5 | Topology Catalog | 依赖组网的场景均有 `topology_ref`、来源、Mermaid、设备/端口/链路表 | 缺拓扑时阻断 |
 | 6 | TGFW 组网集合 | 存在 `input/TGFW测试组网图集合.md` 时已读取并优先复用 | 未读取时阻断 |
-| 7 | atomic-ops 唯一口径 | `source_type=atomic-ops`，`action_source_ref` 直接引用 atomic-ops `op_id` | 出现 REST API / CLI / tool-method 独立引用类型时阻断 |
-| 8 | 场景链字段完整 | 每个场景包含目标、原理、前置条件、原子操作、观察点、预期状态、最小逻辑链、退出动作 | 缺字段时补齐 |
-| 9 | 正常路径可追溯 | `normal_path` 包含 `step_id / sub_step_ids / operation / necessity / description`，且 `necessity` 仅使用 `必要 / 可选 / 至少选择一项` | 缺字段或取值不规范时补齐 |
-| 10 | 选择语义保留 | `至少选择一项` 步骤列出可选子步骤；`minimal_logic_chain` 未把可选步骤或选择组写成必做链路 | 选择语义丢失时补齐 |
-| 11 | 异常路径可追溯 | 每条异常路径包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling`，且 `related_normal_steps` 可解析或说明来源 | 缺少异常追溯时补齐 |
-| 12 | Knowledge Reference 三态 | 保留 `resolved / missing / unavailable` | 混写或缺失时补齐 |
-| 13 | 工具缺口 | 缺失 atomic-ops 或工具能力进入 Tool Abstraction Draft 或 confirmation gaps | 缺口未记录时阻断 |
-| 14 | 缺口分类 | `confirmation_gaps` 区分可下传缺口和必须先确认缺口 | 不分类时不得进入 M 分析 |
+| 7 | Confirmed Scenarios | `confirmed-scenarios.md` 保留 `scenario_id / topology_ref / topology_role / device_id / port_id / link_id / source / fact_status` | 无确认基线时不得生成真实端口绑定 |
+| 8 | atomic-ops 唯一口径 | `source_type=atomic-ops`，`action_source_ref` 直接引用 atomic-ops `op_id` | 出现 REST API / CLI / tool-method 独立引用类型时阻断 |
+| 9 | 场景链字段完整 | 每个场景包含目标、原理、前置条件、原子操作、观察点、预期状态、最小逻辑链、退出动作 | 缺字段时补齐 |
+| 10 | 正常路径可追溯 | `normal_path` 包含 `step_id / sub_step_ids / operation / necessity / description`，且 `necessity` 仅使用 `必要 / 可选 / 至少选择一项` | 缺字段或取值不规范时补齐 |
+| 11 | 选择语义保留 | `至少选择一项` 步骤列出可选子步骤；`minimal_logic_chain` 未把可选步骤或选择组写成必做链路 | 选择语义丢失时补齐 |
+| 12 | 异常路径可追溯 | 每条异常路径包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling`，且 `related_normal_steps` 可解析或说明来源 | 缺少异常追溯时补齐 |
+| 13 | Knowledge Reference 三态 | 保留 `resolved / missing / unavailable` | 混写或缺失时补齐 |
+| 14 | 工具缺口 | 缺失 atomic-ops 或工具能力进入 Tool Abstraction Draft 或 confirmation gaps | 缺口未记录时阻断 |
+| 15 | 缺口分类 | `confirmation_gaps` 区分可下传缺口和必须先确认缺口 | 不分类时不得进入 M 分析 |
 
 ## CP02 人工确认项
 
@@ -112,6 +113,7 @@ checkpoints/CP02_scenario_manual.md
 | Seed-to-Scenario Mapping | 功能初稿如何重构为部署型场景是否可接受 |
 | Operation Path | 正常路径的大步骤、子步骤、必要性和选择组是否符合真实操作流程 |
 | Topology | `topology_ref`、Mermaid、设备/端口/链路是否符合实际组网 |
+| Topology Bindings Source | 真实端口来源、角色名称和 `fact_status` 是否可作为后续 LC 绑定基线 |
 | atomic-ops | 每个 `action_source_ref` 是否为真实 atomic-ops `op_id`，能力状态是否合理 |
 | Abnormal Path | 异常项是否追溯到具体正常步骤、子步骤、前置条件、环境故障或退出动作 |
 | Knowledge Reference | resolved / missing / unavailable 三态是否符合事实 |
@@ -124,3 +126,18 @@ checkpoints/CP02_scenario_manual.md
 | `PASS` | 可进入 M 分析 |
 | `BLOCKED` | 场景事实不足，不可继续 |
 | `WAIVED` | 用户接受风险后放行，并记录风险项 |
+
+## 跨阶段拓扑绑定检查
+
+以下检查贯穿 CP03、CP06、CP10、CP11 和 CP12，用于保证测试因子、拓扑角色和真实组网对象分层。
+
+| 检查点 | 阶段 | 检查项 | 通过条件 | 阻断处理 |
+|---|---|---|---|---|
+| CP03 | m-analysis | CAE topology role | M 输出只包含 `topology_role_refs`，不包含 `DUT.port1`、`TG.port1` 或真实 link 实例作为 factor value | 回到 M 分析，拆出 topology role |
+| CP06 | integration | LC topology bindings | LC `topology_bindings` 从 `confirmed-scenarios.md` 绑定真实 `device_id / port_id / link_id`，并保留 `source / fact_status` | 无法绑定时写 `needs-confirmation` 和 `topology_gap_refs` |
+| CP08/CP09 | design-ppdcs | PPDCS 消费绑定 | 设计过程引用 `topology_binding_refs`，不重新发明真实端口 | 缺绑定引用时补齐或回退 LC |
+| CP10 | design-pc | PC materialization | PC 中所有真实设备、端口、链路均能回链到 LC `topology_bindings` 和 `confirmed-scenarios.md` | 无回链时不得标记 confirmed |
+| CP11 | coverage | 覆盖状态保持 | 覆盖统计不把 `topology_binding_status=needs-confirmation` 或 `fact_status=needs-confirmation` 提升为 confirmed | 输出 topology binding gap |
+| CP12 | delivery | 交付字段保留 | 交付物保留 `topology_bindings / topology_role / source / fact_status`，并且真实端口不进入因子取值表 | 渲染前修正字段或列出阻断项 |
+
+公共因子校验与拓扑绑定校验并行存在：`factor_bindings` 仍用于公共因子与样本覆盖，`topology_bindings` 只用于真实组网对象回链。

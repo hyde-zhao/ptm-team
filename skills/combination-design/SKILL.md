@@ -45,7 +45,7 @@ C-Combination 是 PPDCS 五特征之一：
 |------|----------|------|
 | `design-plan.md` | `LC-ID`, `PPDCS特征`, `设计Skill`, `主信号`, `候选特征`, `排除摘要`, `待确认事项` | 确认 LC 已进入 `combination-design` |
 | `design-planner-reasoning.md` | `recommended_feature`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `factor_refs`, `uncertain facts` | 判断为何需要组合压缩，而不是 Parameter / Data |
-| `logic-cases.md` | `动作路径`, `因子-取值表`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 形成 factor catalog 与叠加位置 |
+| `logic-cases.md` | `动作路径`, `因子-取值表`, `topology_bindings`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 形成 factor catalog、拓扑绑定目录与叠加位置 |
 | `test-data.md` | `TD-ID`, `factor_ref`, `value_set`, `status`, `confirmation_gap_refs` | 提取各因子取值集与待确认边界 |
 
 ## 前置条件
@@ -83,7 +83,22 @@ C-Combination 是 PPDCS 五特征之一：
 全组合数 = 各因子取值数乘积
 ```
 
+同步输出 **topology binding catalog**，但默认不参与全组合数、Pairwise 或正交阵列：
+
+```markdown
+| topology_binding_id | topology_role | role_usage | bound_topology_object | source_ref | fact_status | promotion_to_factor |
+|---------------------|---------------|------------|------------------------|------------|-------------|---------------------|
+| TB-LC-005-01 | DEFAULT_INGRESS_PATH | 默认入方向路径 | DUT.port1 | TOPO-001 | confirmed | no |
+| TB-LC-005-02 | MIRROR_OBSERVE_PATH | 旁路观察路径 | DUT.port2 | TOPO-001 | needs-confirmation | no |
+```
+
 若全组合数 ≤ 12 且无复杂约束，可降级为全组合；否则进入压缩策略。
+
+拓扑角色边界：
+- 默认 `topology_role` 不进入 factor catalog、Pairwise / 正交 / 全组合的因子集合，真实端口、link、TOPO 实例绝不作为组合因子值；
+- `DUT.port*`、`TG.port*`、link/TOPO 实例只能在 `topology_bindings` 或 PC 物化阶段出现，并必须保留来源与 `fact_status`；
+- 只有测试目标明确要求比较多 TOPO 或多接口角色差异时，才允许将 `topology_role` 升级为组合因子；升级时必须记录 `promotion_reason / objective_ref / source_refs / fact_status`；
+- 即使 `topology_role` 被升级为组合因子，也只能使用逻辑角色值（如 ingress/egress/client/server），不得使用真实端口名作为取值。
 
 ### 第二步：因子值域与约束建模
 
@@ -167,6 +182,11 @@ C-Combination 是 PPDCS 五特征之一：
 | C-02 | 4 | restAPI | 并发 | tls | TD-003,TD-007 | CT-02 | needs-confirmation |
 ```
 
+组合生成守则：
+- Pairwise 覆盖目标只统计业务/配置/数据类因子；默认不统计 `topology_role` 与 `bound_topology_object`；
+- 若启用拓扑角色组合，应在 pair coverage checklist 中单列拓扑角色因子对，并说明为何该覆盖是测试目标必要条件；
+- 过滤约束不得把真实端口写成因子取值，应通过 `topology_binding_ref` 指向 LC 绑定。
+
 ### 第五步：实际取值 data row 分配、LC 叠加与物理用例输出
 
 在组合框架上分配实际业务值，并映射到 LC：
@@ -225,6 +245,7 @@ design/pc/<basename>.md
 - 生成组合前必须先按公共库约束过滤无效组合。
 - 配置组合和功能组合分开处理；禁止把配置拒绝样本带入功能组合。
 - 优先使用 `factor_bindings` 形成 factor catalog；`factor_refs` 仅作兼容摘要。
+- `factor_bindings` 不承载真实端口；拓扑角色和端口物化通过 LC `topology_bindings` 旁路保留，不替换公共因子库规则。
 
 ## Gotchas
 
@@ -233,6 +254,7 @@ design/pc/<basename>.md
 - 外部工具不可用时，必须显式写出 fallback；不能沉默失败
 - manual fallback 无法证明覆盖完整时，必须保留 `uncovered_pairs` 和 `needs-confirmation`
 - 无效值通常单独验证，不与无效值彼此组合
+- 常见误用：把 `DUT.port1 / TG.port2` 当成 Pairwise 取值。真实端口是 PC 物化目标，不是组合因子值。
 
 ## 验收标准
 
@@ -244,3 +266,4 @@ design/pc/<basename>.md
 - [ ] 第四步已输出组合结果和 pair coverage checklist；存在缺口时已保留 `uncovered_pairs`
 - [ ] 第五步已输出 data row 分配，并明确 `LC + combo/data_row = PC`
 - [ ] `needs-confirmation` / `confirmation_gap_refs` 未被静默折叠
+- [ ] 默认 Pairwise 未纳入 `topology_role`；若纳入，已记录明确测试目标和升级原因；真实端口未作为组合因子值

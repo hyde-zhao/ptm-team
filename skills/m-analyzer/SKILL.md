@@ -38,6 +38,13 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
 - Parameter vs Data → 参数间有业务规则？有 = Parameter，无/独立 = Data
 - Data vs Combination → 因子独立验证够？够 = Data，需组合 = Combination
 
+**MFQ 分层概念（强制）**：
+- **测试因子**：只表示业务取值、配置取值、数据取值或报文取值，例如协议类型、端口号取值、状态枚举、阈值、字段值。
+- **拓扑角色**：只表示测试逻辑位置，例如匹配流量入口、DUT 出口、流量发生端、观测端；CAE 中可写成 `{{topo_role:MATCH_INGRESS_IF}}`。
+- **真实组网对象**：只表示 `analysis/scenarios/confirmed-scenarios.md` 中已确认的 TOPO 实例，例如具体 DUT/TG/接口/link 绑定。
+
+测试因子、拓扑角色、真实组网对象必须分层输出。禁止把 `DUT.port1`、`TG.port1`、link 实例或任何真实端口写成 factor value。
+
 ## 适用范围
 
 - 适用阶段：MFQ 分析的 m-analysis 阶段
@@ -68,6 +75,7 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 | `Existing Tool Usage Seed` | 保留已有工具线索供后续 F/Q/Integrator 使用 | 没有则留空，不做默认映射 |
 | `Tool Abstraction Draft` | 标记能力缺口背景 | 仅引用已确认草案 |
 | `confirmation_gaps` | 显式透传不确定事实 | 不得静默吞掉 |
+| `TOPO` / 组网实例 | 为 CAE 拓扑角色提供可回链的真实绑定依据 | 只能引用 confirmed-scenarios.md 中已确认实例；缺失或不唯一时写入 `topology_gap_refs` |
 
 ## 执行流程
 
@@ -76,8 +84,10 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 1. 读取 `analysis/feature-input/raw-requirements.md` 获取需求条目列表
 2. 读取 `analysis/feature-input/directory-structure.md` 获取目录层级
 3. 读取 `analysis/scenarios/confirmed-scenarios.md` 获取已确认场景链、atomic-ops、知识引用与 gap
-4. 校验每个场景是否包含 `Scenario Chain / atomic-ops / Knowledge Reference`
-5. 对影响 CAE 落地的未确认事实建立 `confirmation_gap_refs`，不做隐式默认
+4. 读取 confirmed-scenarios.md 中的 TOPO / 组网实例，建立 `scenario_ref -> topology_refs -> topology_role_refs` 的可追溯索引
+5. 校验每个场景是否包含 `Scenario Chain / atomic-ops / Knowledge Reference`
+6. 对影响 CAE 落地的未确认事实建立 `confirmation_gap_refs`，不做隐式默认
+7. 对影响 CAE 拓扑落地的缺口建立 `topology_gap_refs`，不把真实端口降级写入测试因子
 
 ### 步骤 2：逐模块功能分析
 
@@ -94,9 +104,9 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
    - **默认值**：默认配置下的行为
    - **交互影响**：与同模块内其他功能的交互
 
-### 步骤 3：测试对象 / 测试因子提取
+### 步骤 3：测试对象 / 测试因子 / 拓扑角色提取
 
-先提取测试对象，再提取测试因子：
+先提取测试对象，再提取测试因子，最后提取拓扑角色约束：
 
 1. **测试对象提取优先级**：`C（Condition） → A（Action） → E（Effect）`
 2. 每个对象至少记录：
@@ -122,8 +132,23 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 | `scenario_refs` | 来源场景 |
 | `confirmation_gap_refs` | 若取值边界未确认 |
 
-4. 典型因子：`IP地址 / 接口类型 / 协议类型 / 状态值 / 数量阈值`
-5. 无法确认对象或因子边界时，输出 `[待确认]` 并保留 gap，不得自行补齐
+4. 典型因子：`IP地址 / 协议类型 / 报文字段值 / 状态值 / 数量阈值 / 配置项取值`
+5. 因子取值只能来自业务、配置、数据、报文取值；接口角色、设备角色、物理端口、link 实例不得作为 `data_domain / value_set / factor_bindings.expr`
+6. 无法确认对象或因子边界时，输出 `[待确认]` 并保留 gap，不得自行补齐
+
+拓扑角色至少记录：
+
+| 字段 | 说明 |
+|------|------|
+| `topology_role_ref` | 角色编号或占位符，如 `MATCH_INGRESS_IF` |
+| `role_name` | 测试逻辑位置名称 |
+| `role_expression` | CAE 中使用的角色占位，如 `{{topo_role:MATCH_INGRESS_IF}}` |
+| `scenario_refs` | 来源场景 |
+| `topology_refs` | confirmed-scenarios.md 中 TOPO 实例引用 |
+| `topology_binding_status` | `confirmed / needs-confirmation / unbound` |
+| `topology_gap_refs` | 绑定缺口或不唯一引用 |
+
+CAE 中允许使用 `{{topo_role:MATCH_INGRESS_IF}}`、`{{topo_role:DUT_EGRESS_IF}}` 等角色占位。若 CAE 必须出现真实端口或链路，必须能通过 `topology_refs` 回链到 confirmed-scenarios.md；无法回链时该 TP 的 `fact_status=needs-confirmation`，并写入 `topology_gap_refs`。
 
 ### 步骤 4：PPDCS 特征标注（v2 新增）
 
@@ -163,6 +188,10 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 | `trace_refs` | 汇总 `requirement_refs / scenario_refs / action_source_refs / knowledge_refs` | 结构化 trace |
 | `test_object_refs` | 关联测试对象 | OBJ-001 |
 | `factor_refs` | 关联测试因子 | FAC-001, FAC-002 |
+| `topology_refs` | 关联 confirmed-scenarios.md TOPO 实例 | TOPO-001 |
+| `topology_role_refs` | 关联拓扑角色 | MATCH_INGRESS_IF, DUT_EGRESS_IF |
+| `topology_binding_status` | 拓扑绑定状态 | confirmed / needs-confirmation / unbound |
+| `topology_gap_refs` | 拓扑绑定缺口 | GAP-TOPO-001 |
 | 来源 | M 分析 | M |
 | 测试类型建议 | 功能/边界/异常/默认 | 边界 |
 | `fact_status` | `confirmed / needs-confirmation` | confirmed |
@@ -174,6 +203,8 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 - **E="待定" 容错规则（Q1 default）**：预期结果尚不明确时（如依赖硬件规格、待确认的产品行为），E 可填 `"待定"`，但必须追加批注 `[待定原因: <描述>]`；进入用例设计阶段前须补全。空值不允许。
 - 若 A 依赖 atomic-ops 但契约不完整，A 只能写已确认部分，并在 `confirmation_gap_refs` 中注明缺口
 - 若 `Knowledge Reference` 为 `missing/unavailable`，仅记录状态，不得伪造理论依据
+- C/A/E 涉及接口位置时必须优先写拓扑角色占位和逻辑含义，例如 `{{topo_role:MATCH_INGRESS_IF}}`；不得把 `DUT.port1` / `TG.port1` / link 实例写成因子值
+- C/A/E 出现真实端口时，必须同时写 `topology_refs` 并能回链 confirmed-scenarios.md；无法回链时 `topology_binding_status=needs-confirmation` 且 `fact_status=needs-confirmation`
 
 ### 步骤 6：覆盖初检
 
@@ -204,17 +235,17 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 ### <五级目录名称（子模块）>
 > PPDCS 主特征：P-Parameter | 辅特征：D-Data
 
-| TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `test_object_refs` | `factor_refs` | 来源 | 测试类型 |
-|-------|--------|--------|--------|-----------------|----------------------|--------------------|---------------|------|---------|
-| TP-M-CFG-SRV-001 | 系统无已配置的日志服务器；管理员已登录 | 在新建表单输入IP=<IP_ADDRESS>、端口=514、协议=UDP，点击"确定" | 服务器创建成功；服务器列表新增该条目；状态显示为"已配置" | SCN-LOG-001 | fw_config_log_server | OBJ-LOG-SERVER | FAC-IP,FAC-PORT,FAC-PROTO | M | 功能 |
-| TP-M-CFG-SRV-002 | 系统已配置5台日志服务器（已达上限） | 尝试新建第6台日志服务器，点击"确定" | 系统提示"超出最大服务器数量限制"；新建失败；服务器列表条目数不变 | SCN-LOG-001 | fw_config_log_server | OBJ-LOG-SERVER | FAC-SERVER-COUNT | M | 边界 |
+| TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `test_object_refs` | `factor_refs` | `topology_role_refs` | `topology_refs` | `topology_binding_status` | `topology_gap_refs` | 来源 | 测试类型 |
+|-------|--------|--------|--------|-----------------|----------------------|--------------------|---------------|----------------------|-----------------|---------------------------|---------------------|------|---------|
+| TP-M-CFG-SRV-001 | 系统无已配置的日志服务器；管理员已登录 | 在新建表单输入IP=<IP_ADDRESS>、端口=514、协议=UDP，点击"确定" | 服务器创建成功；服务器列表新增该条目；状态显示为"已配置" | SCN-LOG-001 | fw_config_log_server | OBJ-LOG-SERVER | FAC-IP,FAC-PORT,FAC-PROTO | — | — | — | — | M | 功能 |
+| TP-M-FLOW-001 | 流量从 `{{topo_role:MATCH_INGRESS_IF}}` 进入；策略已启用 | 发送协议=TCP、目的端口=443 的匹配报文 | 报文从 `{{topo_role:DUT_EGRESS_IF}}` 转发；命中计数+1 | SCN-FLOW-001 | fw_send_match_traffic | OBJ-POLICY | FAC-PROTO,FAC-DST-PORT | MATCH_INGRESS_IF,DUT_EGRESS_IF | TOPO-FLOW-001 | confirmed | — | M | 功能 |
 
 ### <五级目录名称（子模块2）>
 > PPDCS 主特征：P-Process
 
-| TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `test_object_refs` | `factor_refs` | 来源 | 测试类型 |
-|-------|--------|--------|--------|-----------------|----------------------|--------------------|---------------|------|---------|
-| ... | ... | ... | ... | ... | ... | ... | ... | M | ... |
+| TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `test_object_refs` | `factor_refs` | `topology_role_refs` | `topology_refs` | `topology_binding_status` | `topology_gap_refs` | 来源 | 测试类型 |
+|-------|--------|--------|--------|-----------------|----------------------|--------------------|---------------|----------------------|-----------------|---------------------------|---------------------|------|---------|
+| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | M | ... |
 ```
 
 > ⚠️ **完整性要求**：目录结构中每个五级目录节点必须有至少一个测试点，不允许跳过。若某节点无需求支撑，需标注 `⚠️ 无对应测试点 — 原因：<说明>`。
@@ -262,6 +293,13 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 |-----------|-------------|----------------|-------------|-------------------|---------------|-----------------------|
 | FAC-IP | IP地址 | action-input | IPv4合法/非法边界 | OBJ-LOG-SERVER | SCN-LOG-001 | — |
 | FAC-SERVER-COUNT | 服务器数量 | condition | 0 / 1~4 / 5(上限) / >5[待确认] | OBJ-LOG-SERVER | SCN-LOG-001 | GAP-001 |
+
+## Topology Roles
+
+| topology_role_ref | role_name | role_expression | scenario_refs | topology_refs | topology_binding_status | topology_gap_refs |
+|-------------------|-----------|-----------------|---------------|---------------|-------------------------|-------------------|
+| MATCH_INGRESS_IF | 匹配流量入口 | `{{topo_role:MATCH_INGRESS_IF}}` | SCN-FLOW-001 | TOPO-FLOW-001 | confirmed | — |
+| DUT_EGRESS_IF | DUT 转发出口 | `{{topo_role:DUT_EGRESS_IF}}` | SCN-FLOW-001 | TOPO-FLOW-001 | confirmed | — |
 ```
 
 ## 测试点生成原则
@@ -280,8 +318,15 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 - 项目运行不得直接修改公共主库；公共库归档和更新只能回流到 `resource/factor-libraries/`。
 - CAE 中使用 `{{TF:FAC-ID|role=<role>|usage=<usage_context>|sample=<sample_id>}}`；下游主契约是 `factor_bindings`，`factor_refs` 只保留为兼容摘要。
 - `factor_bindings` 至少包含 `library_id / factor_id_or_group_id / role / binding_mode / usage_context / sample_id / expr / materialized_stage / gap`。
-- 禁止把 atomic-ops、`scenario_refs`、`knowledge_refs`、`confirmation_gap_refs` 当成测试因子。
+- 禁止把 atomic-ops、`scenario_refs`、`knowledge_refs`、`confirmation_gap_refs`、拓扑角色、真实端口、DUT/TG 实例或 link 实例当成测试因子。
 - 必须输出 `analysis/factor-usage/factor-resolution-report.md`；如有未命中或需扩展内容，必须输出 `candidate-factor-proposals.yaml`。
+
+## 拓扑绑定补充契约
+
+- M 分析只产出拓扑角色约束和已能回链的 TOPO 引用，不负责最终唯一绑定；最终绑定由 integrator 根据 confirmed-scenarios.md 收敛。
+- TP 必须透传 `topology_refs / topology_role_refs / topology_binding_status / topology_gap_refs`。
+- `topology_role_refs` 只能表达逻辑位置约束，不得进入 `factor_bindings`。
+- 若上游只给出裸端口且无法回链 confirmed-scenarios.md，保留原文证据，标记 `topology_binding_status=needs-confirmation` 与 `fact_status=needs-confirmation`。
 
 ## Gotchas
 
@@ -292,6 +337,8 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 - 一个子模块可能有混合特征，此时标注主特征+辅特征
 - 不得把 `confirmation_gaps` 当作已确认事实
 - `action_source_refs` 只引用上游已建模 atomic-ops `op_id`，不重新命名为新的字段体系
+- 拓扑角色不是测试因子；`MATCH_INGRESS_IF` 这类角色只能出现在 `topology_role_refs` 或 CAE 角色占位中
+- 真实端口不是测试因子；出现 `DUT.port1` / `TG.port1` / link 实例时必须回链 confirmed-scenarios.md，否则降级为待确认
 
 ## 验收标准
 
@@ -300,6 +347,9 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 - [ ] C 字段为可验证状态，A 字段为可执行操作，E 字段为可观测结果
 - [ ] E="待定" 必须附批注 `[待定原因: <描述>]`；空 E 字段不允许
 - [ ] 每个 TP 包含 `scenario_refs / action_source_refs / test_object_refs / factor_bindings / factor_refs / trace_refs`
+- [ ] 涉及组网的 TP 包含 `topology_refs / topology_role_refs / topology_binding_status / topology_gap_refs`
+- [ ] `factor_bindings` 中不包含拓扑角色、真实端口、DUT/TG 实例或 link 实例
+- [ ] CAE 中真实端口均可回链 `analysis/scenarios/confirmed-scenarios.md`，否则 `fact_status=needs-confirmation`
 - [ ] 未确认事实通过 `confirmation_gap_refs` 显式透传
 - [ ] 输出文件按**四级目录（H2）→ 五级目录（H3）**分节，每节标注 PPDCS 主特征
 - [ ] **每个五级目录节点均有 PPDCS 主特征标注和判定依据**

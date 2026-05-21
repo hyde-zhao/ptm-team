@@ -49,7 +49,7 @@ design-planner **不得只看 legacy TP 汇总表**，必须同时消费 LC 与 
 
 | 来源 | 必收字段 | 用途 |
 |------|----------|------|
-| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则` | 还原 LC 的主逻辑、场景链、对象/因子与不确定事实 |
+| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_bindings`, `factor_refs`, `topology_bindings`, `topology_role_refs`, `topology_refs`, `topology_gap_refs`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `组网绑定`, `CAE聚合规则` | 还原 LC 的主逻辑、场景链、对象/因子、拓扑约束与不确定事实 |
 | `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `source_section`, `scenario_refs`, `action_source_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | 判断是数据范围、规则依赖、状态守卫还是组合爆炸 |
 | `ppdcs-annotation.md` | 子模块、PPDCS 主特征、辅特征、判定依据 | 作为上游标注基线，不得静默忽略 |
 
@@ -58,6 +58,14 @@ design-planner **不得只看 legacy TP 汇总表**，必须同时消费 LC 与 
 - 在 reasoning 中标记 `[待确认]`；
 - 将缺口写入 `confirmation_gap_refs / uncertain_facts`；
 - 推荐方法可输出，但 `fact_status` 必须降级为 `needs-confirmation`。
+
+## 三层概念与拓扑边界
+
+- **测试因子**：业务/配置/数据/报文取值；PPDCS 推断只从 `factor_bindings`、TD `value_set`、LC 因子-取值表和公共因子库读取因子信号。
+- **拓扑角色**：测试逻辑位置；只作为动作路径、前置条件和环境约束，不得作为 D-Data、C-Combination 或 P-Parameter 的因子信号。
+- **真实组网对象**：confirmed-scenarios.md 的 TOPO 实例；只能通过 LC `topology_bindings` 消费，不得进入 TD `value_set` 或 `factor_bindings.expr`。
+
+若发现 `DUT.port1`、`TG.port1`、link 实例或 `{{topo_role:*}}` 混入因子-取值表、TD `value_set` 或 `factor_bindings`，必须将该 LC 降级为 `needs-confirmation`，并在 reasoning 的 `uncertain_facts` 中记录“拓扑实例混入因子”。
 
 ## PPDCS 匹配规则
 
@@ -92,7 +100,7 @@ design-planner **不得只看 legacy TP 汇总表**，必须同时消费 LC 与 
 ### CAE → PPDCS 推断规则
 
 在逻辑用例的 CAE 结构中，若 PPDCS 特征标注不明确或需要复核，
-从 **LC 动作路径 + LC 因子表 + TD 取值集合 + trace/gap** 推断。
+从 **LC 动作路径 + LC 因子表 + TD 取值集合 + `factor_bindings` + `topology_bindings` + trace/gap** 推断。
 推断按 **A 模式（主权重）→ C 模式（次权重/强信号）→ E 模式（辅助验证）** 三轮进行。
 
 #### A 模式规则（主权重，5条）
@@ -105,6 +113,8 @@ design-planner **不得只看 legacy TP 汇总表**，必须同时消费 LC 与 
 | A4 | 动作路径基本稳定，重点是单参数/单因子范围与合法性 | **D-Data** | 主 |
 | A5 | 动作路径基本稳定，但 TD 显示多独立因子需压缩组合 | **C-Combination** | 主 |
 
+> 拓扑角色只可增强 A1/A2 的路径或状态上下文，不得单独触发 A3/A4/A5。真实接口数量、端口名称或 link 实例不得作为多因子压缩组合信号。
+
 #### C 模式规则（次权重/强信号，4条）
 
 | 规则 | CAE / LC / TD 信号 | 推断 PPDCS | 信号权重 |
@@ -113,6 +123,8 @@ design-planner **不得只看 legacy TP 汇总表**，必须同时消费 LC 与 
 | C2 | C 指向对象当前状态、迁移前置状态或守卫状态 | **S-State** | 次（强信号） |
 | C3 | C / TD 含明确范围、边界、阈值、合法/非法值域 | **D-Data** | 次（强信号） |
 | C4 | C / TD 含 ≥3 独立因子、多维条件并需覆盖交叉取值 | **C-Combination** | 次（强信号） |
+
+> C 模式只扫描测试因子和业务前置。`topology_role_refs`、`topology_bindings.bound_object`、DUT/TG/link 只能作为前置约束，不计入 C4 的独立因子数量。
 
 #### E 模式规则（辅助验证，3条）
 
@@ -166,7 +178,8 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 2. 读取 `analysis/integration/test-data.md` 获取 TD 清单
 3. 读取 `analysis/m-analysis/ppdcs-annotation.md` 获取 PPDCS 特征标注
 4. 建立 `LC → TD → 子模块 → PPDCS标注` 映射
-5. 校验 LC / TD 是否保留 `scenario_refs / scenario_chain_refs / confirmation_gap_refs / factor_refs`
+5. 校验 LC / TD 是否保留 `scenario_refs / scenario_chain_refs / confirmation_gap_refs / factor_bindings / factor_refs`
+6. 校验 LC 是否保留 `topology_bindings / topology_role_refs / topology_refs`；缺失或不唯一时不补绑定，只写入 reasoning gap
 
 ### 步骤 2：逐条匹配
 
@@ -174,7 +187,8 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 1. 查找所属子模块的 PPDCS 主/辅特征（来自 `ppdcs-annotation.md`）
 2. 读取该 LC 的：
    - 动作路径 / `source_tp_ids`
-   - 因子-取值表
+   - 因子-取值表 / `factor_bindings`
+   - 组网绑定 / `topology_bindings`
    - 关联 TD 的 `value_set / source_section / status`
    - `scenario_refs / scenario_chain_refs / action_source_refs / confirmation_gap_refs`
 3. 先记录**标注基线候选**：`annotation-primary / annotation-secondary`
@@ -183,6 +197,7 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
    - 范围/边界主导 → 强化 D-Data
    - 规则依赖/守卫主导 → 强化 P-Parameter 或 S-State
    - 多因子交叉 + 压缩需求 → 强化 C-Combination
+   - 拓扑角色/真实组网对象只记录为前置或动作位置约束，不参与 D-Data/C-Combination/P-Parameter 因子计数
 6. 对五类特征都给出处置结果：
    - `recommended`
    - `candidate-secondary`
@@ -194,6 +209,8 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
    - TD `status=needs-confirmation`
    - `knowledge_refs=missing/unavailable`
    - 上游标注与 CAE/TD 推断冲突
+   - `topology_bindings` 缺失、不唯一或 `binding_status=needs-confirmation`
+   - 拓扑角色、真实端口或 link 实例混入 `factor_bindings / value_set / 因子-取值表`
 10. 将详细 reasoning 写入 `analysis/plan/design-planner-reasoning.md`
 
 ### 步骤 3：生成设计计划表
@@ -290,7 +307,10 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 | `source_tp_ids` | TP-M-001, TP-M-002 |
 | `td_refs` | TD-001, TD-002 |
 | `test_object_refs` | OBJ-001 |
+| `factor_bindings` | FAC-001@config-input, FAC-002@boundary |
 | `factor_refs` | FAC-001, FAC-002 |
+| `topology_role_refs` | MATCH_INGRESS_IF, DUT_EGRESS_IF |
+| `topology_bindings` | TB-LC-001-01, TB-LC-001-02 |
 | `action_source_refs` | fw_config_log_server |
 
 ### 6. Uncertain Facts / Confirmation Gaps
@@ -307,6 +327,15 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 - 多个 driver 因子属于同一 `factor_group` 且存在 `constraints` 时增强 C-Combination 或 P-Parameter 信号。
 - `factor_kind=state` 或 `sample_class=transition_*` 时增强 S-State 信号。
 - 功能用例只命中 `rejected_config_samples` 时，标记为设计错误或不适用，不得继续生成正常功能 PC。
+- `topology_bindings` 与 `factor_bindings` 并行消费；拓扑绑定只提供环境/位置约束，不改变公共因子库契约。
+- 公共因子库不得新增 DUT/TG 真实端口或 link 实例作为因子；发现此类输入时降级 `needs-confirmation`。
+
+## 拓扑绑定补充契约
+
+- design-planner 必须消费 LC `topology_bindings`，用于 reasoning 的前置条件、动作位置和后续 PPDCS/PC 约束。
+- `topology_role_refs` 不得作为 D-Data/C-Combination/P-Parameter 因子信号；例如入口/出口角色不是“接口类型”因子。
+- `topology_bindings.bound_object` 不得参与 TD 取值集合、边界值、Pairwise 或判定表条件。
+- `binding_status=needs-confirmation/unbound` 时，推荐方法可保留，但 `fact_status=needs-confirmation`，并把拓扑缺口写入待确认事项。
 
 ## Gotchas
 
@@ -316,6 +345,7 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 - 混合特征必须写明“主 / 辅 / 排除”三类结果，不能只给模糊推荐
 - 直接设计法应尽量避免，v2 有 5 种方法足以覆盖大部分场景
 - 用户修改方法时需同步更新推荐理由、排除摘要与 reasoning
+- 不要把“入口/出口/链路 A/B”当成组合因子；它们是拓扑约束，除非上游以业务/配置/报文字段形式提供了独立 `factor_bindings`
 
 ## 验收标准
 
@@ -326,7 +356,9 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 - [ ] 设计计划表包含 `主信号 / 候选特征 / 排除摘要 / 关键trace / 待确认事项`
 - [ ] 混合特征以 `主（主）+ 辅（辅）` 格式输出
 - [ ] 每条 LC 的 reasoning 至少包含 `primary_signal / candidate_features / exclusion_reasons / recommended_method`
-- [ ] reasoning 保留 `scenario_refs / scenario_chain_refs / source_tp_ids / td_refs / test_object_refs / factor_bindings / factor_refs`
+- [ ] reasoning 保留 `scenario_refs / scenario_chain_refs / source_tp_ids / td_refs / test_object_refs / factor_bindings / factor_refs / topology_bindings / topology_role_refs / topology_refs`
+- [ ] 拓扑角色只作为约束/前置，不作为 D-Data/C-Combination/P-Parameter 因子信号
+- [ ] 发现拓扑实例混入因子时，LC `fact_status=needs-confirmation` 并记录 uncertain fact
 - [ ] 未确认事实通过 `confirmation_gap_refs / uncertain facts` 显式保留
 - [ ] 详细推断路径写入 `analysis/plan/design-planner-reasoning.md`（不在设计计划表完整展开）
 - [ ] 直接设计法占比 < 5%

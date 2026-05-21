@@ -55,7 +55,7 @@ status: active
 
 | 来源 | 必收字段 | 用途 |
 |------|----------|------|
-| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则`, `关联SR` | 还原 LC 主流程和 trace 链 |
+| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `topology_bindings`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则`, `关联SR` | 还原 LC 主流程、拓扑绑定目录和 trace 链 |
 | `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `source_section`, `scenario_refs`, `action_source_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | 分析路径触发数据与数据叠加 |
 | `confirmed-scenarios.md` | `precondition_operations`, `atomic_operations`, `observation_points`, `expected_state`, `minimal_logic_chain`, `data_overlay_slots`, `atomic-ops`, `Knowledge Reference`, `confirmation_gaps` | 建图、定节点、识别可叠加数据位置 |
 
@@ -63,6 +63,13 @@ status: active
 > - 不得自行裁决；
 > - 在输出中标记 `[待确认]`；
 > - 维持 `fact_status=needs-confirmation`。
+
+## 拓扑绑定边界
+
+- 必须消费 LC 的 `topology_bindings`，并把拓扑角色、真实端口和 TOPO 实例作为路径/PC 的旁路绑定信息处理；
+- 流程节点、路径分支、`factor_refs`、`trigger_data.value_set` 只能使用业务条件、动作输入、观察数据或逻辑拓扑角色，不得把 `DUT.port*`、`TG.port*`、link/TOPO 实例当作 factor value；
+- PC 阶段物化真实端口时，必须记录 `topology_binding_ref / materialized_object / source_ref / fact_status`；
+- 若 LC/TD 中已经把真实组网对象混入因子取值，需移入拓扑绑定目录；来源或绑定关系无法确认时，当前路径或 data overlay 降级为 `needs-confirmation`。
 
 ## 执行流程
 
@@ -148,6 +155,7 @@ status: active
 2. 按 `source_section` 判断其属于前置条件、动作输入还是观察数据；
 3. 仅将与当前路径相关的数据挂到对应节点 / `data_overlay_slots`；
 4. `TD.status=needs-confirmation` 时，不得定值，只能保留 `[待确认]`。
+5. 从 LC `topology_bindings` 解析路径所需的拓扑角色绑定；真实端口只作为 PC 物化目标，不写入 `value_set`。
 
 **路径触发数据/叠加表最少字段**：
 
@@ -183,6 +191,7 @@ PC 由 `覆盖策略选中的 path × data_overlay_set` 生成。
 | `graph_ref` | `path_id` |
 | `coverage_goal` | 路径覆盖目标 |
 | `trigger_data` | 触发数据摘要 |
+| `topology_binding_refs` | PC 物化使用的 LC 拓扑绑定引用；无则写 `—` |
 | `trace_refs` | trace 链 |
 | `scenario_refs` | 来源场景 |
 | `scenario_chain_refs` | PRE/AO 引用 |
@@ -222,6 +231,7 @@ design/pc/<basename>.md
 只输出最终 PC，但每条 PC 必须回链：
 
 - `graph_ref`
+- `topology_binding_refs`（存在真实端口物化时必须填写）
 - `trace_refs`
 - `scenario_refs`
 - `scenario_chain_refs`
@@ -269,6 +279,7 @@ flowchart TD
 - `P-Process` 的“异常路径”只能来自已确认需求、HLD 或明确 reasoning，不得脑补隐含失败流
 - 决策节点写不清时，必须标记 `[待确认]`，而不是把“默认成功”当成事实
 - 同一 LC 若同时存在强 `S-State` 信号，需在设计上下文中写明为何仍按流程法建模
+- 不得把 TOPO 实例或真实端口写成流程分支条件、路径数据或状态值；它们只能通过 `topology_bindings` 旁路进入 PC 物化。
 
 ## 验收标准
 
@@ -279,3 +290,4 @@ flowchart TD
 - [ ] `TD.status=needs-confirmation` 未被静默定值
 - [ ] 物理用例字段骨架与 `state-design` 一致
 - [ ] 输出采用 `design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
+- [ ] 已消费 LC `topology_bindings`；真实端口物化保留来源和 `fact_status`，且未进入 factor/data/state value

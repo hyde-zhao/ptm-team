@@ -31,6 +31,14 @@ status: active
 - [ ] `Scenario Chain / atomic-ops / Knowledge Reference / confirmation_gaps` 可读取
 - [ ] 未确认事实已明确哪些可以带 `[待确认]` 下传
 
+## 拓扑/因子分层 Guardrail
+
+- 保持 trace chain v6、`factor_bindings` 和公共因子库规则；不得用真实组网对象替换逻辑质量因子。
+- `factor_refs`、`factor_bindings`、质量测试因子取值中禁止出现 `DUT.port*`、`TG.port*`、link 或 TOPO 实例。
+- 若质量场景必须引用真实组网对象，必须登记到 `topology_binding_refs` 或 `topology_source`，并保留 `source_ref / fact_status / confirmation_gap_refs`。
+- 若真实组网对象来源、角色绑定或 TOPO 实例语义无法确认，相关相关性结论、TP-Q 或工具缺口必须降级为 `needs-confirmation`。
+- `covered_factors` 只填写逻辑质量因子；真实端口只能作为拓扑绑定或 PC 物化对象，不得混入工具覆盖因子。
+
 ## HTSM 质量属性维度
 
 | 维度 | 子维度 | 说明 |
@@ -87,6 +95,7 @@ status: active
 - `knowledge_refs`
 - `confirmation_gap_refs`
 - `test_object_refs / factor_refs`
+- `topology_binding_refs / topology_source`（仅当质量场景涉及真实端口、link 或 TOPO 实例时填写）
 
 ### 步骤 3：测试点生成（CAE 三元组 + trace chain v6）
 
@@ -108,6 +117,7 @@ status: active
 | `confirmation_gap_refs` | 未确认事实 |
 | `test_object_refs` | 关联测试对象 |
 | `factor_refs` | 关联质量因子 |
+| `topology_binding_refs` | 真实端口、link 或 TOPO 实例的来源绑定；无则写 `—` |
 | `trace_refs` | 汇总 trace |
 | `fact_status` | `confirmed / needs-confirmation` |
 
@@ -116,6 +126,7 @@ status: active
 - A：施加质量压力 / 触发场景（含具体压力值或触发方式）
 - E：可观测的质量属性表现（含量化指标或定性状态）；E="待定" 时须附批注 `[待定原因: <如"可靠性指标待产品定义，MTBF基线未确定">]`
 - 若无法确认观测方式，必须引用对应 `confirmation_gap_refs` 或 `Tool Capability Gap`
+- 若质量测试点依赖 `DUT.port*`、`TG.port*`、link 或 TOPO 实例，必须通过 `topology_binding_refs` 回链来源；不得写入 `factor_refs` 或测试因子取值。
 
 ### 步骤 4：工具观测能力评估（Story-04 新增）
 
@@ -200,6 +211,8 @@ status: active
 | TP-Q-SEC-001 | 安全性 | 保密性 | 普通操作员账号已登录；存在其他用户配置的日志服务器 | 尝试查看/修改其他用户创建的日志服务器配置 | 系统拒绝访问或仅显示有权限的条目；提示权限不足 | SCN-LOG-SEC-001 | fw_check_role_permission | FAC-ROLE | 权限管理 |
 ```
 
+> 若 TP-Q 需要暴露真实端口或 TOPO 实例，在表后附 `topology_binding_refs` 明细表；主表 `factor_refs` 仍只保留逻辑质量因子。
+
 同时写入 **`analysis/q-analysis/tool-analysis.md`**：
 
 ```markdown
@@ -226,6 +239,7 @@ status: active
 - 不要过度展开不相关维度（如可用性对于 CLI 配置型特性可能不适用）
 - 不能把缺失的观测工具默认为“人工可观察”；必须输出 tool gap
 - `Knowledge Reference=missing/unavailable` 时，可继续分析，但必须保留不确定性
+- 不得把 `DUT.port1/TG.port2`、link 或 TOPO 实例写入 `factor_refs / factor_bindings / covered_factors`；真实组网对象必须登记拓扑来源，来源不明则降级 `needs-confirmation`。
 
 ## 验收标准
 
@@ -236,6 +250,7 @@ status: active
 - [ ] C 字段含质量约束基线（规格参数 / 性能基线 / 环境条件）
 - [ ] E="待定" 必须附批注 `[待定原因: <描述>]`；空 E 字段不允许
 - [ ] 每个 TP-Q 包含 `scenario_refs / action_source_refs / factor_refs / trace_refs`
+- [ ] `factor_refs / factor_bindings / covered_factors` 未混入真实端口、link 或 TOPO 实例；涉及真实组网对象时已登记拓扑来源或降级 `needs-confirmation`
 - [ ] 工具观测能力评估输出 `Existing Tool Summary` 和 `Tool Capability Gap`
 - [ ] 未确认事实通过 `confirmation_gap_refs` 显式透传
 - [ ] 输出文件按四/五级目录分节，每节按质量维度组织

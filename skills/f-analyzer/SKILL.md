@@ -30,6 +30,14 @@ status: active
 - [ ] `scripts/excel_coupling_tool.py` 可用
 - [ ] 上游 `confirmation_gaps` 已区分“允许透传”与“必须回退确认”
 
+## 拓扑/因子分层 Guardrail
+
+- 保持 trace chain v6、`factor_bindings` 和公共因子库规则；不得用真实组网对象替换逻辑因子。
+- `factor_refs`、`factor_bindings`、耦合测试因子取值中禁止出现 `DUT.port*`、`TG.port*`、link 或 TOPO 实例。
+- 若场景或耦合边必须引用真实组网对象，必须登记到 `topology_binding_refs` 或 `topology_source`，并保留 `source_ref / fact_status / confirmation_gap_refs`。
+- 若真实组网对象来源、角色绑定或 TOPO 实例语义无法确认，相关耦合边、TP-F 或工具缺口必须降级为 `needs-confirmation`，不得包装成已确认因子。
+- `test_object_refs` 可引用受影响对象编号；真实端口只能作为拓扑绑定或 PC 物化对象，不得混入 `covered_factors`。
+
 ## 三源数据模型
 
 ### 源 1：Excel 矩阵基线（最低基线）
@@ -89,6 +97,7 @@ python scripts/excel_coupling_tool.py query "analysis/f-analysis/coupling-graph.
    - `knowledge_refs`
    - `confirmation_gap_refs`
    - `test_object_refs / factor_refs`
+   - `topology_binding_refs / topology_source`（仅当场景涉及真实端口、link 或 TOPO 实例时填写）
 4. 标注来源为 `scenario-coupling`
 
 ### 步骤 3：代码依赖收集（可选）
@@ -146,6 +155,7 @@ python scripts/excel_coupling_tool.py query "analysis/f-analysis/coupling-graph.
 | `confirmation_gap_refs` | 未确认事实引用 |
 | `test_object_refs` | 被影响对象 |
 | `factor_refs` | 关键耦合因子 |
+| `topology_binding_refs` | 真实端口、link 或 TOPO 实例的来源绑定；无则写 `—` |
 | `trace_refs` | 汇总 trace |
 | `fact_status` | `confirmed / needs-confirmation` |
 
@@ -154,6 +164,7 @@ python scripts/excel_coupling_tool.py query "analysis/f-analysis/coupling-graph.
 - A：操作当前特性（触发耦合效果），不得直接操作耦合目标
 - E：包含耦合目标的可观测行为；E="待定" 时须附批注 `[待定原因: <如"被耦合目标行为规格待确认">]`
 - 如耦合判断依赖 `Knowledge Reference=missing/unavailable` 或 `atomic-ops=gap/unknown`，必须保留原状态并标记 `fact_status=needs-confirmation`
+- 如耦合判断依赖 `DUT.port*`、`TG.port*`、link 或 TOPO 实例，必须通过 `topology_binding_refs` 回链来源；不得写入 `factor_refs`。
 
 ### 步骤 7：工具覆盖评估（Story-04 新增）
 
@@ -241,6 +252,8 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "analysis/f-
 | TP-F-CFG-BCK-001 | 日志归并功能已开启；日志服务器已配置 | 删除已配置的日志服务器 | 日志归并功能不受影响；归并日志继续正常记录 | SCN-LOG-001 | fw_delete_log_server | FAC-SERVER-STATE | matrix-baseline | strong |
 ```
 
+> 若 TP-F 需要暴露真实端口或 TOPO 实例，在表后附 `topology_binding_refs` 明细表；主表 `factor_refs` 仍只保留逻辑因子。
+
 **`tool-analysis.md` 输出格式**：
 
 ```markdown
@@ -283,6 +296,7 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "analysis/f-
 - 不要漏掉"反向耦合"：A→B 存在时检查 B→A
 - `confirmation_gaps` 影响耦合成立性时，允许输出候选 TP，但不能包装成已确认耦合
 - 工具评估只基于已给定 atomic-ops / Existing Tool Usage Seed / Tool Draft，不能自行发明现有工具能力
+- 不得把 `DUT.port1/TG.port2`、link 或 TOPO 实例写入 `factor_refs / factor_bindings / covered_factors`；真实组网对象必须登记拓扑来源，来源不明则降级 `needs-confirmation`。
 
 ## 验收标准
 
@@ -293,6 +307,7 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "analysis/f-
 - [ ] 耦合测试点包含完整 CAE 三字段（C/A/E 均不为空）
 - [ ] E="待定" 必须附批注 `[待定原因: <描述>]`；空 E 字段不允许
 - [ ] 每个 TP-F 包含 `scenario_refs / action_source_refs / factor_refs / trace_refs`
+- [ ] `factor_refs / factor_bindings / covered_factors` 未混入真实端口、link 或 TOPO 实例；涉及真实组网对象时已登记拓扑来源或降级 `needs-confirmation`
 - [ ] 工具评估输出 `Existing Tool Summary` 和 `Tool Capability Gap`
 - [ ] 未确认事实通过 `confirmation_gap_refs` 显式保留
 - [ ] 输出文件按四/五级目录分节，格式符合规范

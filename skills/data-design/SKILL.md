@@ -45,7 +45,7 @@ D-Data 是 PPDCS 五特征之一：
 |------|----------|------|
 | `design-plan.md` | `LC-ID`, `PPDCS特征`, `设计Skill`, `主信号`, `候选特征`, `排除摘要`, `待确认事项` | 确认 LC 已进入 `data-design` |
 | `design-planner-reasoning.md` | `recommended_feature`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `factor_refs`, `uncertain facts` | 判断为什么是 D-Data、哪些事实未确认 |
-| `logic-cases.md` | `动作路径`, `因子-取值表`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 建立 factor catalog 与 LC 叠加位置 |
+| `logic-cases.md` | `动作路径`, `因子-取值表`, `topology_bindings`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 建立 factor catalog、拓扑绑定目录与 LC 叠加位置 |
 | `test-data.md` | `TD-ID`, `factor_ref`, `value_set`, `source_section`, `status`, `confirmation_gap_refs` | 提取取值域、边界、异常值 |
 
 若 reasoning 提示 `candidate-secondary=P-Parameter / C-Combination`：
@@ -67,6 +67,13 @@ D-Data 是 PPDCS 五特征之一：
 3. 若发现交叉约束或规则依赖，必须写明“可能应切换到 `parameter-design` / `combination-design`”。
 4. `design/ppdcs/<basename>.md` 中必须保留 reasoning 的 `uncertain facts` 与当前数据分析结论的映射。
 
+## 拓扑绑定边界
+
+- 必须消费 LC 的 `topology_bindings`，但拓扑绑定不参与等价类划分和边界值分析；
+- `D-Data` 的数据项和值域不得使用 `DUT.port*`、`TG.port*`、link/TOPO 实例；真实组网对象只能作为 `topology_bindings` / PC 物化目标；
+- 逻辑拓扑角色（如 ingress/egress/client/server）可作为绑定维度保留，但不得被当作数据项边界值；
+- 若 TD `value_set` 中出现真实端口或 TOPO 实例，必须移入拓扑绑定记录，并保留 `source_ref / fact_status`；来源不清时对应 data row 降级为 `needs-confirmation`。
+
 ## 五步用例设计过程
 
 ### 第一步：输入对齐 + factor catalog
@@ -85,6 +92,7 @@ D-Data 是 PPDCS 五特征之一：
 - factor catalog 先于等价类划分输出；
 - 每个数据项都要保留 `source_ref` 与 `fact_status`；
 - 值域来自 TD 时必须记录 TD 编号。
+- factor catalog 只收录数据项；真实端口、link 或 TOPO 实例不得作为 `数据项` 或 `值域摘要`，需单列为拓扑绑定旁路信息。
 
 ### 第二步：值域、等价类与边界值识别
 
@@ -144,6 +152,7 @@ D-Data 是 PPDCS 五特征之一：
 - `LC + data_row = PC seed`
 - 无效值一次只变一个，其余保持有效值
 - `needs-confirmation` data row 只能输出 `needs-confirmation` PC
+- PC seed 若需要真实端口，只能从 LC `topology_bindings` 物化，并在过程文档记录 `topology_binding_ref / materialized_object / source_ref / fact_status`。
 
 ### 第五步：物理用例输出
 
@@ -185,6 +194,7 @@ design/pc/<basename>.md
 - 优先使用 `factor_bindings` 中的 `sample_id` 和 `expr` 形成 factor catalog；`factor_refs` 仅作兼容摘要。
 - 配置用例只使用 `accepted_config_samples / rejected_config_samples`；功能用例不得使用 `rejected_config_samples` 作为前置。
 - 表达式样本在 PC 阶段才物化，并记录 `materialized_value` 与 deterministic seed。
+- `factor_bindings` 中的样本表达逻辑数据，不承载真实端口；拓扑物化使用 LC `topology_bindings`，不得替换公共因子库的样本规则。
 
 ## Gotchas
 
@@ -193,6 +203,7 @@ design/pc/<basename>.md
 - 无效值必须隔离；不能把多个无效值压进同一 PC
 - `[待确认]` 边界、默认值、精度要求必须透传
 - 输出不能只剩最终 PC，必须保留等价类、边界策略和分配过程
+- 不得把 TOPO 实例、link 或真实端口当作数据值做等价类/边界值分析；它们只能作为 PC 物化目标。
 
 ## 验收标准
 
@@ -203,3 +214,4 @@ design/pc/<basename>.md
 - [ ] 第四步输出 data row 分配，并明确 `LC + data_row = PC`
 - [ ] `needs-confirmation` 事实未被静默折叠
 - [ ] 物理用例以 16 列表格输出，且可回链到 `TD-ID / factor_id / trace_refs`
+- [ ] 已消费 LC `topology_bindings`；真实端口物化保留来源和 `fact_status`，且未进入数据项值域

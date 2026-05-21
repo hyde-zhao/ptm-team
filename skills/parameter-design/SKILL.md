@@ -47,7 +47,7 @@ P-Parameter 是 PPDCS 五特征之一：
 |------|----------|------|
 | `design-plan.md` | `LC-ID`, `PPDCS特征`, `推荐方法`, `设计Skill`, `主信号`, `候选特征`, `排除摘要`, `关键trace`, `待确认事项` | 确认该 LC 已被推荐给 `parameter-design` |
 | `design-planner-reasoning.md` | `recommended_feature`, `recommended_method`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `factor_refs`, `trace refs`, `uncertain facts` | 读取推荐原因和不确定事实，不得只消费计划表 |
-| `logic-cases.md` | `动作路径`, `因子-取值表`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `trace_refs`, `fact_status` | 形成 factor catalog 与 LC 叠加骨架 |
+| `logic-cases.md` | `动作路径`, `因子-取值表`, `topology_bindings`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `trace_refs`, `fact_status` | 形成 factor catalog、拓扑绑定目录与 LC 叠加骨架 |
 | `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `source_section`, `trace_refs`, `confirmation_gap_refs`, `status` | 提取参数值域、边界值、待确认项 |
 
 若 `design-plan.md` 与 `design-planner-reasoning.md` 不一致：
@@ -87,6 +87,22 @@ P-Parameter 是 PPDCS 五特征之一：
 - 优先使用 `factor_refs`；
 - `factor_refs` 不足时，才从 LC 因子表与 TD `value_set` 补提；
 - factor catalog 必须先于规则抽取产出。
+- factor catalog 只收录 `factor_type=parameter` 的测试因子；拓扑角色和真实组网对象必须放入独立的 topology binding catalog。
+- 真实端口、link 或 TOPO 实例只允许作为 `topology_bindings` / PC 物化目标；若它们出现在 LC 因子取值或 TD `value_set` 中，必须移入绑定目录并保留来源，来源不清时将对应项降级为 `needs-confirmation`。
+
+同步输出 **topology binding catalog**，但不得把其中条目写入判定表参数条件：
+
+```markdown
+| topology_binding_id | topology_role | role_usage | bound_topology_object | source_ref | fact_status | confirmation_gap_refs |
+|---------------------|---------------|------------|------------------------|------------|-------------|------------------------|
+| TB-LC-001-01 | MATCH_INGRESS_IF | 匹配流量入口 | DUT.port1 | TOPO-001 | confirmed | — |
+| TB-LC-001-02 | NON_MATCH_INGRESS_IF | 非匹配流量入口候选 | DUT.port2 | TOPO-001 | needs-confirmation | GAP-TOPO-INGRESS-001 |
+```
+
+说明：
+- `topology_role` 只表达角色语义（如 `MATCH_INGRESS_IF`），默认作为 LC `topology_bindings` 的绑定维度，不得混入参数值域；
+- `bound_topology_object` 只表达已绑定或候选的真实组网对象，不得作为参数值；
+- 判定规则的 `factor_refs` 只能引用 factor catalog 中的测试因子。若需求明确说明“角色差异本身决定业务结果”，也只能引用 `topology_binding_id` 并记录原因，不能引用真实端口。
 
 ### 第二步：参数范围与规则抽取
 
@@ -104,6 +120,7 @@ P-Parameter 是 PPDCS 五特征之一：
 - 约束统一写成 `IF ... THEN ...`；
 - 若存在隐含优先级，必须显式列出 `priority`；
 - 若某值域仅来自 `needs-confirmation` TD，规则也必须带 `needs-confirmation`。
+- 判定规则的 `factor_refs` 只能引用 factor catalog 中的测试因子；拓扑角色或真实端口不得成为规则条件，除非需求明确说明“角色差异本身决定业务结果”，此时仍只能引用 `topology_binding_id` 并记录原因，不能引用真实端口。
 
 ### 第三步：判定结构建模
 
@@ -159,6 +176,11 @@ P-Parameter 是 PPDCS 五特征之一：
 | 日志中心 | 日志管理 | 权限管理 | 管理员修改紧急级别日志[待确认] | PC-LOG-PRM-006 | P2 | 单台防火墙 | | 管理员已登录；存在紧急级别日志 | 1.进入日志管理<br>2.选择紧急级别日志<br>3.执行修改 | 1.预期拒绝；具体错误码[待确认] | V60R001C01 | | 权限,待确认 | 功能 | 否 |
 ```
 
+PC 物化拓扑要求：
+- 若 PC 需要写入真实端口或 TOPO 实例，只能从 LC `topology_bindings` 或上游已确认拓扑来源物化；
+- `design/ppdcs/<basename>.md` 必须记录 `topology_binding_ref / materialized_object / source_ref / fact_status`；
+- 不得把物化后的 `DUT.port*`、`TG.port*`、link/TOPO 实例回填为参数值域或判定表条件。
+
 ## 输出目录结构
 
 ```text
@@ -190,6 +212,7 @@ design/pc/<basename>.md
 - 优先使用 `factor_bindings` 生成判定条件桩；`factor_refs` 仅作兼容摘要。
 - 配置判定使用 accepted/rejected；功能判定使用 hit/miss/fallback/fail，不得混用。
 - 业务流量匹配类用例应使用 oracle 因子表达预期命中结果。
+- `factor_bindings` 保留逻辑因子绑定；拓扑绑定使用 LC `topology_bindings` 旁路表达，不得用真实端口替换公共因子库中的逻辑因子。
 
 ## Gotchas
 
@@ -198,6 +221,7 @@ design/pc/<basename>.md
 - `needs-confirmation`、`confirmation_gap_refs`、`uncertain facts` 不能被吞掉
 - Parameter 关注**确定性规则**；若主要矛盾变为取值范围，应回退 D-Data；若主要矛盾变为组合压缩，应回退 C-Combination
 - `—` / Don't Care 必须说明为什么“不影响结果”
+- 常见误用：把 `DUT.port1/TG.port2` 当作“接口参数值”写入判定表。正确做法是保留逻辑参数或拓扑角色，并在 PC 阶段通过 `topology_bindings` 物化真实端口。
 
 ## 验收标准
 
@@ -208,3 +232,4 @@ design/pc/<basename>.md
 - [ ] 第四步输出规则触发 data row，并明确 `LC + data_row = PC`
 - [ ] 未确认事实保持 `needs-confirmation`，未被静默降噪
 - [ ] 物理用例以 16 列表格输出，且可回链到 `rule_id / td_refs / factor_refs`
+- [ ] factor catalog 只包含测试因子；拓扑角色和真实组网对象已进入 topology binding catalog，真实端口未进入参数值域或判定条件

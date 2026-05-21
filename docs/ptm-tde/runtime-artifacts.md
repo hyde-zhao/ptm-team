@@ -57,6 +57,8 @@ analysis/factor-usage/
 
 `ptm-tde` 不得在项目运行期间直接修改公共主库；候选因子必须通过公共库维护流程回流到 `resource/factor-libraries/_proposals/`。
 
+真实设备、端口和链路不写入 `analysis/factor-usage/`。它们属于拓扑绑定链路，由 `analysis/scenarios/confirmed-scenarios.md`、LC `topology_bindings` 和 PC 物化字段承载。
+
 ## 场景产物字段
 
 `analysis/scenarios/` 下的部署型场景产物必须保留 Scenario Details 与结构化补充两层信息。
@@ -80,6 +82,23 @@ Scenario Details 中每个场景至少包含：
 
 `normal_path.necessity` 只能使用 `必要 / 可选 / 至少选择一项`。异常路径必须通过 `related_normal_steps` 追溯到正常路径的大步骤或子步骤；无法追溯时必须说明异常来源并进入确认缺口或风险说明。
 
+### 确认场景与拓扑绑定基线
+
+`analysis/scenarios/confirmed-scenarios.md` 是真实组网对象的回链基线，至少保留：
+
+| 字段 | 说明 |
+|---|---|
+| `scenario_id` | 已确认场景编号 |
+| `review_status` | 必须为 `confirmed` 才能作为真实端口来源 |
+| `topology_ref` | 关联 `topology.yaml` / `topology.mmd` |
+| `topology_role` | CAE/LC 使用的抽象角色 |
+| `device_id` / `port_id` / `link_id` | 已确认真实组网对象 |
+| `source` | 来源，例如 `confirmed-scenarios`、用户确认的 topology 文件或外部 topo 输入 |
+| `fact_status` | `confirmed / needs-confirmation` |
+| `topology_gap_refs` | 未确认或不可解析对象的缺口编号 |
+
+LC 必须通过 `topology_bindings` 把 `topology_role_refs` 绑定到真实对象；PC 只能消费 LC 绑定表进行物化。
+
 ## 分析产物
 
 | 目录 | 内容 |
@@ -89,7 +108,7 @@ Scenario Details 中每个场景至少包含：
 | `analysis/m-analysis/` | M 分析测试点、PPDCS 标注、对象与因子 |
 | `analysis/f-analysis/` | 耦合图、耦合测试点 |
 | `analysis/q-analysis/` | 质量属性测试点 |
-| `analysis/integration/` | 全量测试点、逻辑用例、测试数据、设计计划输入 |
+| `analysis/integration/` | 全量测试点、逻辑用例、测试数据、设计计划输入；LC 中保留 `factor_bindings` 与 `topology_bindings` |
 | `analysis/plan/` | PPDCS 推断 reasoning |
 | `analysis/factor-usage/` | 公共因子库 lock、binding、候选提案和解析报告 |
 | `analysis/coverage/` | 需求层与测试点层覆盖报告 |
@@ -110,6 +129,20 @@ design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md
 - 同名冲突追加 `-<LC-ID>`；
 - 不创建 `design/<module>/<sub-module>/` 深目录。
 
+### PC 拓扑物化字段
+
+`design/pc/<basename>.md` 中若出现真实组网对象，必须同时保留以下字段：
+
+| 字段 | 说明 |
+|---|---|
+| `topology_binding_refs` | 回链到 LC `topology_bindings.binding_id` |
+| `topology_role` | 角色名，例如 `client`、`dut-ingress`、`dut-egress` |
+| `device_id` / `port_id` / `link_id` | 已物化真实对象 |
+| `source` | 来源基线，必须能回链到 `confirmed-scenarios.md` |
+| `fact_status` | 确认状态，未确认时保留 `needs-confirmation` |
+
+`DUT.port1`、`TG.port1` 或 link 实例不得写入 `factor_bindings`、公共因子 `values` 或公共因子 `sample_id`。
+
 ## 交付产物
 
 `delivery/` 只输出：
@@ -119,4 +152,4 @@ design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md
 <特性名>特性测试用例.md
 ```
 
-测试方案是分析过程总结；测试用例是所有测试用例总表。
+测试方案是分析过程总结；测试用例是所有测试用例总表。交付物必须保留 `topology_bindings / topology_role / source / fact_status`，并把拓扑绑定展示在组网字段或拓扑绑定小节，不得混入因子取值表。

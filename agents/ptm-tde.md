@@ -53,7 +53,7 @@ tools:
   3. m-analysis    公共因子库锁定 + 单功能拆分 + PPDCS特征标注 + CAE测试点 [m-analyzer + CP03]
   4. f-analysis    耦合关系分析（三源合并）+ CAE耦合测试点              [f-analyzer + CP04]
   5. q-analysis    质量属性分析（HTSM）+ CAE质量测试点                  [q-analyzer + CP05]
-  6. integration   M+F+Q测试点归集 → factor_bindings → 逻辑用例(LC) + 测试数据 [test-point-integrator + CP06]
+  6. integration   M+F+Q测试点归集 → factor_bindings + topology_bindings → 逻辑用例(LC) + 测试数据 [test-point-integrator + CP06]
   7. plan          LC+TD trace 驱动的 CAE→PPDCS 推断 + 设计计划          [design-planner + CP07]
   8. design-ppdcs  每LC生成PPDCS逻辑设计过程文件                         [design-ppdcs-analyzer + 5 design Skills + CP08/CP09]
   9. design-pc     每LC生成物理用例文件                                  [5 design Skills + CP10]
@@ -73,6 +73,7 @@ tools:
 - **`input/`** — 原始输入目录，只读；放置特性需求文件、防火墙 topo 文件、耦合矩阵 Excel、参考资料等。
 - **`analysis/`** — MFQ 分析中间产物，按阶段分为 `feature-input/`、`scenarios/`、`m-analysis/`、`f-analysis/`、`q-analysis/`、`integration/`、`plan/`、`factor-usage/`、`coverage/`。
 - **`analysis/factor-usage/`** — 本项目因子库消费记录，只保存公共库 lock、factor bindings、候选提案和解析报告；不得保存公共因子库主库。
+- **`analysis/scenarios/confirmed-scenarios.md`** — 已确认场景、Topology 与真实设备/端口/链路来源基线，供 LC `topology_bindings` 和 PC 物化回链。
 - **`design/ppdcs/`** — 每个逻辑用例一份 PPDCS 设计过程文件。
 - **`design/pc/`** — 每个逻辑用例一份物理用例文件。
 - **`checkpoints/`** — CP01 等人工/自动检查点结果。
@@ -165,6 +166,33 @@ CAE 中使用因子占位符：
 
 下游正式消费 `factor_bindings`；`factor_refs` 仅保留为兼容摘要字段。
 
+## 测试因子、拓扑角色与真实组网对象分层
+
+`ptm-tde` 必须同时维护两条并行链路：
+
+```text
+测试因子链路：factor_id / sample_id -> factor_bindings -> factor materialization
+拓扑绑定链路：topology_role_refs -> topology_bindings -> PC materialization
+```
+
+分层规则：
+
+| 层 | 允许内容 | 禁止内容 | 典型字段 |
+|---|---|---|---|
+| 测试因子 | 可跨项目复用的测试变量、接口类型、接口能力、配置字段、流量属性、状态、oracle | 项目专属真实端口、真实链路、`DUT.port1`、`TG.port1` | `factor_id`, `sample_id`, `factor_bindings` |
+| 拓扑角色 | CAE 测试逻辑中的抽象位置或职责 | 真实端口编号 | `topology_role_refs`, `topology_role` |
+| 真实组网对象 | 已确认场景中的设备、端口、链路实例 | 公共因子 values / sample_id | `topology_bindings`, `device_id`, `port_id`, `link_id`, `source`, `fact_status` |
+
+执行链路：
+
+1. `scenario-discovery` 在 `analysis/scenarios/confirmed-scenarios.md` 中固化已确认场景、`topology_ref`、角色、设备、端口、链路和来源。
+2. `m-analyzer` 的 CAE 只能表达测试逻辑和 `topology_role_refs`，不得把真实端口写入因子或 CAE value。
+3. `test-point-integrator` 从 `confirmed-scenarios.md` 绑定真实组网对象，输出 LC `topology_bindings`；无法绑定时写 `topology_binding_status=needs-confirmation` 和 `topology_gap_refs`。
+4. `design-planner`、PPDCS 设计 Skill 和 PC 生成阶段消费 LC 绑定表，PC 中任何真实端口必须能回链到 `LC.topology_bindings -> confirmed-scenarios.md`。
+5. `coverage-verifier` 和 `deliverable-renderer` 必须保留 `topology_bindings / topology_role / source / fact_status`，不得用覆盖统计或交付渲染把 `needs-confirmation` 提升为 `confirmed`。
+
+真实端口、真实链路和项目专属 link 实例只属于拓扑绑定或 PC 物化，不属于公共因子库。公共库可以表达“接口类型”“接口能力”“出口模式”等可复用变量，但不能用 `DUT.port1`、`TG.port1` 或具体 link 作为 `values` / `sample_id`。
+
 ## 用户确认点
 
 | 节点 | 确认内容 | 确认方式 |
@@ -246,15 +274,15 @@ CAE 中使用因子占位符：
 ## 追踪链
 
 ```
-SR（系统需求）→ TP(C/A/E)（测试点）→ LC（逻辑用例：因子-取值表 + 动作路径）→ 组合（数据×路径）→ PC（物理用例）
+SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表 + topology_bindings + 动作路径）→ 组合（数据×路径×拓扑绑定）→ PC（物理用例）
 ```
 
-每条物理用例可反向追踪：`PC → 组合 → LC → TP → SR`。
+每条物理用例可反向追踪：`PC → topology_bindings / 组合 → LC → TP → SR`；PC 中的真实设备、端口和链路还必须能追踪到 `analysis/scenarios/confirmed-scenarios.md`。
 
 ## 交付物
 
-1. **`<特性名>特性测试方案.md`**：特性概述、场景分析（含 `topology_ref`）、需求分析、MFQ(PPDCS) 分析表、测试点整合
-2. **`<特性名>特性测试用例.md`**：测试点分析表 + 按五级目录组织的每个逻辑用例的完整设计过程
+1. **`<特性名>特性测试方案.md`**：特性概述、场景分析（含 `topology_ref`、`topology_bindings`、来源和确认状态）、需求分析、MFQ(PPDCS) 分析表、测试点整合
+2. **`<特性名>特性测试用例.md`**：测试点分析表 + 按五级目录组织的每个逻辑用例的完整设计过程，并保留拓扑角色到真实组网对象的物化链路
 
 ## 约束
 

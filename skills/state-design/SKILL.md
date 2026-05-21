@@ -55,7 +55,7 @@ status: active
 
 | 来源 | 必收字段 | 用途 |
 |------|----------|------|
-| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则`, `关联SR` | 识别状态主体、迁移动作与 trace 链 |
+| `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `topology_bindings`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则`, `关联SR` | 识别状态主体、迁移动作、拓扑绑定目录与 trace 链 |
 | `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `source_section`, `scenario_refs`, `action_source_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | 分析守卫条件、迁移触发数据与非法迁移 |
 | `confirmed-scenarios.md` | `precondition_operations`, `atomic_operations`, `observation_points`, `expected_state`, `minimal_logic_chain`, `data_overlay_slots`, `atomic-ops`, `Knowledge Reference`, `confirmation_gaps` | 推导稳定状态、迁移与观察点 |
 
@@ -63,6 +63,14 @@ status: active
 > - 不得脑补；
 > - 写 `[待确认]`；
 > - 保留 `confirmation_gap_refs` 与 `fact_status=needs-confirmation`。
+
+## 拓扑绑定边界
+
+- 必须消费 LC 的 `topology_bindings`，但拓扑实例不构成状态集合；
+- `state_name`、迁移守卫、`value_set` 和 `factor_refs` 不得使用 `DUT.port*`、`TG.port*`、link/TOPO 实例作为状态值或因子值；
+- 状态只能来自对象稳定生命周期或可观察状态；真实端口、link 和 TOPO 实例只能作为 PC 物化目标或绑定上下文；
+- PC 阶段物化真实端口时，必须记录 `topology_binding_ref / materialized_object / source_ref / fact_status`；
+- 若上游将 TOPO 实例混入状态、守卫或 TD 取值，必须移入拓扑绑定目录；绑定来源不清时，对应状态路径降级为 `needs-confirmation`。
 
 ## 执行流程
 
@@ -152,6 +160,7 @@ status: active
 2. 将 `value_set` 映射到迁移的 `guard` 或 `event`；
 3. 输出合法迁移数据与守卫失败数据；
 4. `TD.status=needs-confirmation` 时，只能保留 `[待确认]`。
+5. 从 LC `topology_bindings` 解析迁移路径所需的拓扑角色绑定；真实端口只在 PC 阶段物化，不进入守卫值域。
 
 **迁移数据/叠加表最少字段**：
 
@@ -202,6 +211,7 @@ PC 由 `覆盖策略选中的 state_path × data_overlay_set` 生成。
 | `graph_ref` | `state_path_id` |
 | `coverage_goal` | 迁移路径覆盖目标 |
 | `trigger_data` | 守卫/触发数据摘要 |
+| `topology_binding_refs` | PC 物化使用的 LC 拓扑绑定引用；无则写 `—` |
 | `trace_refs` | trace 链 |
 | `scenario_refs` | 来源场景 |
 | `scenario_chain_refs` | PRE/AO 引用 |
@@ -241,6 +251,7 @@ design/pc/<basename>.md
 只输出最终 PC，但每条 PC 必须回链：
 
 - `graph_ref`
+- `topology_binding_refs`（存在真实端口物化时必须填写）
 - `trace_refs`
 - `scenario_refs`
 - `scenario_chain_refs`
@@ -284,6 +295,7 @@ stateDiagram-v2
 - 优先使用 `factor_bindings` 识别状态主体、迁移、守卫条件和非法迁移。
 - 不得把普通范围边界值误判为状态。
 - `factor_refs` 仅作兼容摘要。
+- `factor_bindings` 只表达状态主体、迁移与守卫的逻辑绑定；真实端口和 TOPO 实例必须通过 LC `topology_bindings` 旁路保留。
 
 ## Gotchas
 
@@ -292,6 +304,7 @@ stateDiagram-v2
 - 非法迁移只能来自需求已定义或合法迁移矩阵直接推导，不能主观扩张
 - `confirmation_gap_refs`、`uncertain_facts`、`TD.status=needs-confirmation` 不能被吞掉
 - 若 `P-Process` 仍是强候选，必须写清“为何此处核心是状态迁移而非步骤流程”
+- 不得把 TOPO 实例、link 或真实端口写成状态值、迁移守卫值或测试因子值。
 
 ## 验收标准
 
@@ -302,3 +315,4 @@ stateDiagram-v2
 - [ ] `TD.status=needs-confirmation` 未被静默定值
 - [ ] 物理用例字段骨架与 `process-design` 一致
 - [ ] 输出采用 `design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
+- [ ] 已消费 LC `topology_bindings`；真实端口物化保留来源和 `fact_status`，且未进入 factor/data/state value
