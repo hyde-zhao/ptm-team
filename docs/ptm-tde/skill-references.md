@@ -17,7 +17,7 @@
 |---|---|---|
 | checkpoint | `checkpoint-manager` | 执行 CP01 input 自检和检查点记录，确认需求文件、特性名、原子操作、topo、耦合矩阵和输出目录可用。 |
 | input | `feature-parser` | 解析特性需求文件，提取结构化需求并生成三至五级目录结构。 |
-| scenario | `scenario-discovery` | 生成 Scenario Chain、Topology、atomic-ops、Knowledge Reference 和确认缺口。 |
+| scenario | `scenario-discovery` | 重新发现部署型场景，生成 Scenario Chain、Operation Path、Topology、atomic-ops、Knowledge Reference 和确认缺口。 |
 | m-analysis | `m-analyzer` | 执行 M 分析，完成单功能拆分、PPDCS 标注、测试对象/因子提取和 CAE 测试点生成。 |
 | f-analysis | `f-analyzer` | 执行 F 分析，合并耦合矩阵、场景耦合和可选代码依赖，生成 CAE 耦合测试点。 |
 | q-analysis | `q-analyzer` | 执行 Q 分析，基于 HTSM 质量属性维度生成 CAE 质量测试点和工具覆盖评估。 |

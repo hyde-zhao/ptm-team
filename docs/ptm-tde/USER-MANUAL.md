@@ -85,11 +85,20 @@ SR
 - `principle`
 - `preconditions`
 - `topology_ref`
+- `normal_path`
+- `abnormal_path`
 - `atomic_operations`
 - `observation_points`
 - `minimal_logic_chain`
 - `data_overlay_slots`
 - `review_status`
+
+操作路径口径：
+
+- `normal_path` 必须包含 `step_id / sub_step_ids / operation / necessity / description`。
+- `necessity` 只能使用 `必要 / 可选 / 至少选择一项`。
+- `至少选择一项` 必须列出可选子步骤，并在 `minimal_logic_chain` 中保留选择约束。
+- `abnormal_path` 必须包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling`；异常项应能追溯到正常路径步骤、子步骤、前置条件、环境故障或退出动作。
 
 atomic-ops 口径：
 
@@ -156,9 +165,9 @@ atomic-ops 口径：
 
 ### scenario-discovery
 - **触发词**：场景分析、搜索场景、应用场景、场景链
-- **适用场景**：生成 Scenario Chain、Topology、原子操作、观察点、最小逻辑链
+- **适用场景**：从需求或 functional scenario seed 重新发现部署型场景，生成 Scenario Chain、Operation Path、Topology、原子操作、观察点、最小逻辑链
 - **输入**：目录结构、只读 MCP、atomic-ops 能力说明、REST API / CLI / tool-method 底层契约说明
-- **输出**：场景链、`topology.mmd/yaml`、atomic-ops 目录、知识引用、缺口项
+- **输出**：场景链、正常/异常操作路径、`topology.mmd/yaml`、atomic-ops 目录、知识引用、缺口项
 - **示例**：`@ptm-tde 结合 MCP 和 REST API 配置做场景分析`
 
 ### m-analyzer

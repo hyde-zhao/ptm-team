@@ -49,7 +49,7 @@ tools:
  # 追踪链：SR → TP(C/A/E) → LC → 组合方案 → PC（物理用例）
 
   1. input         CP01自检 + 特性文件解析 + 三~五级目录生成             [checkpoint-manager + feature-parser]
-  2. scenario      Scenario Chain / Topology / atomic-ops / 知识引用确认 [scenario-discovery + CP02]
+  2. scenario      场景再发现 + 操作路径建模 + Topology + atomic-ops + CP02自检/确认 [scenario-discovery + CP02]
   3. m-analysis    单功能拆分 + PPDCS特征标注 + CAE测试点               [m-analyzer + CP03]
   4. f-analysis    耦合关系分析（三源合并）+ CAE耦合测试点              [f-analyzer + CP04]
   5. q-analysis    质量属性分析（HTSM）+ CAE质量测试点                  [q-analyzer + CP05]
@@ -129,7 +129,7 @@ tools:
 
 | 节点 | 确认内容 | 确认方式 |
 |------|---------|---------|
-| CP02 | 目录结构 + Scenario Chain / Topology / atomic-ops / Knowledge Reference / 待确认缺口 | 展示结构化场景包，等待用户确认 |
+| CP02 | 目录结构 + Seed-to-Scenario Mapping + Scenario Chain / Operation Path / Topology / atomic-ops / Knowledge Reference / 待确认缺口 | 展示结构化场景包和 CP02 自动自检结果，等待用户确认 |
 | CP09 | 每个逻辑用例的 PPDCS 特征、设计方法、逻辑步骤和数据设计 | 展示 `design/ppdcs/*.md` 汇总，等待用户确认 |
 | CP11 | 覆盖率报告 | 展示 `analysis/coverage/` 报告，等待用户确认 |
 

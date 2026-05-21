@@ -32,7 +32,7 @@ ptm-tde 是 ptm-team 体系中的 MFQ&PPDCS 测试设计组件。它只维护 Ag
 
 1. `checkpoint-manager` 执行 CP01 input 自检。
 2. `feature-parser` 解析需求并固化目录结构。
-3. `scenario-discovery` 构建 Scenario Chain、Topology、atomic-ops 和 Knowledge Reference。
+3. `scenario-discovery` 从需求或 functional scenario seed 重新发现部署型场景，构建 Scenario Chain、Operation Path、Topology、atomic-ops 和 Knowledge Reference。
 4. `m-analyzer`、`f-analyzer`、`q-analyzer` 分别生成 M/F/Q 测试点。
 5. `test-point-integrator` 归集为逻辑用例和测试数据。
 6. `design-planner` 选择 PPDCS 方法。
