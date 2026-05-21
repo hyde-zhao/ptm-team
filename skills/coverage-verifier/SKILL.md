@@ -200,6 +200,13 @@ status: active
 | 测试点覆盖率 | ≥ 95% |
 | `design_artifact_gaps` | = 0 |
 
+## 公共因子库补充契约
+
+- coverage-verifier 必须读取 `analysis/factor-usage/factor-library-lock.yaml`，并按 lock 指定版本校验 `factor_bindings`。
+- 覆盖报告必须补充因子覆盖：active 因子引用、factor_group 必测样本、配置拒绝样本、功能正反向样本、CAE 占位符 `sample_id` 存在性。
+- `factor_id` 或 `sample_id` 在 lock 指定公共库中不存在时，不得静默修复，必须输出缺口或阻断项。
+- `candidate` 因子进入最终 PC 前未确认时，必须输出风险。
+
 ## Gotchas
 
 - 必须消费 STORY-06 / STORY-07 的**完整过程文档**
@@ -212,6 +219,6 @@ status: active
 
 - [ ] 输出需求层与测试点层双层覆盖报告
 - [ ] 覆盖检查消费 `logic-cases.md`、`test-data.md`、`design/ppdcs/*.md` 与 `design/pc/*.md`
-- [ ] 报告保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status`
+- [ ] 报告保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `confirmation_gap_refs`, `fact_status`
 - [ ] 未覆盖项与设计缺口被单独列出
 - [ ] 未扩写上游不存在的规则、接口或行为

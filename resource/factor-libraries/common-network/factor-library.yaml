@@ -1,0 +1,61 @@
+schema_version: 1
+library_id: common-network
+version: 0.1.0
+status: active
+factors:
+  - factor_id: FAC-NET-IP-SRC
+    factor_name: 源 IP 地址
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: ip_address
+    value_type: string
+    domain_expr: ipv4_or_ipv6
+    aliases: [source_ip, src_ip, 源地址]
+    applicable_when: always
+    sample_definitions:
+      - sample_id: SRC_IP_VALID_MEMBER
+        sample_class: valid_member
+        expr: from_rule.src_ip.valid_member
+        applicability:
+          function_test: positive
+      - sample_id: SRC_IP_NOT_IN_RULE
+        sample_class: negative_function
+        expr: not_in(rule.src_ip)
+        applicability:
+          function_test: negative
+    usage_profiles:
+      function_test:
+        positive_samples: [SRC_IP_VALID_MEMBER]
+        negative_samples: [SRC_IP_NOT_IN_RULE]
+    constraints: []
+    downstream_methods: [D-Data, C-Combination]
+    status: active
+  - factor_id: FAC-NET-TCP-DST-PORT
+    factor_name: TCP 目的端口
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: range
+    value_type: integer
+    domain_expr: int[1,65535]
+    aliases: [dst_port, destination_port, 目的端口]
+    applicable_when: protocol == tcp
+    sample_definitions:
+      - sample_id: TCP_DST_PORT_VALID_MEMBER
+        sample_class: valid_member
+        expr: from_rule.service.dst_port.valid_member
+        applicability:
+          function_test: positive
+      - sample_id: TCP_DST_PORT_NOT_IN_RULE
+        sample_class: negative_function
+        expr: not_in(rule.service.dst_port)
+        applicability:
+          function_test: negative
+    usage_profiles:
+      function_test:
+        positive_samples: [TCP_DST_PORT_VALID_MEMBER]
+        negative_samples: [TCP_DST_PORT_NOT_IN_RULE]
+    constraints: []
+    downstream_methods: [D-Data, C-Combination]
+    status: active

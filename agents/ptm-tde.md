@@ -50,10 +50,10 @@ tools:
 
   1. input         CP01自检 + 特性文件解析 + 三~五级目录生成             [checkpoint-manager + feature-parser]
   2. scenario      场景再发现 + 操作路径建模 + Topology + atomic-ops + CP02自检/确认 [scenario-discovery + CP02]
-  3. m-analysis    单功能拆分 + PPDCS特征标注 + CAE测试点               [m-analyzer + CP03]
+  3. m-analysis    公共因子库锁定 + 单功能拆分 + PPDCS特征标注 + CAE测试点 [m-analyzer + CP03]
   4. f-analysis    耦合关系分析（三源合并）+ CAE耦合测试点              [f-analyzer + CP04]
   5. q-analysis    质量属性分析（HTSM）+ CAE质量测试点                  [q-analyzer + CP05]
-  6. integration   M+F+Q测试点归集 → 逻辑用例(LC) + 测试数据             [test-point-integrator + CP06]
+  6. integration   M+F+Q测试点归集 → factor_bindings → 逻辑用例(LC) + 测试数据 [test-point-integrator + CP06]
   7. plan          LC+TD trace 驱动的 CAE→PPDCS 推断 + 设计计划          [design-planner + CP07]
   8. design-ppdcs  每LC生成PPDCS逻辑设计过程文件                         [design-ppdcs-analyzer + 5 design Skills + CP08/CP09]
   9. design-pc     每LC生成物理用例文件                                  [5 design Skills + CP10]
@@ -71,7 +71,8 @@ tools:
 一个特性对应一个特性项目。ptm-tde 在当前特性项目根目录工作，读取 `input/`，并将运行产物直接写入项目根目录下的规范目录；不再创建或使用 `.output/`。
 
 - **`input/`** — 原始输入目录，只读；放置特性需求文件、防火墙 topo 文件、耦合矩阵 Excel、参考资料等。
-- **`analysis/`** — MFQ 分析中间产物，按阶段分为 `feature-input/`、`scenarios/`、`m-analysis/`、`f-analysis/`、`q-analysis/`、`integration/`、`plan/`、`coverage/`。
+- **`analysis/`** — MFQ 分析中间产物，按阶段分为 `feature-input/`、`scenarios/`、`m-analysis/`、`f-analysis/`、`q-analysis/`、`integration/`、`plan/`、`factor-usage/`、`coverage/`。
+- **`analysis/factor-usage/`** — 本项目因子库消费记录，只保存公共库 lock、factor bindings、候选提案和解析报告；不得保存公共因子库主库。
 - **`design/ppdcs/`** — 每个逻辑用例一份 PPDCS 设计过程文件。
 - **`design/pc/`** — 每个逻辑用例一份物理用例文件。
 - **`checkpoints/`** — CP01 等人工/自动检查点结果。
@@ -93,6 +94,7 @@ tools:
 │   ├── q-analysis/
 │   ├── integration/
 │   ├── plan/
+│   ├── factor-usage/
 │   └── coverage/
 ├── design/
 │   ├── ppdcs/
@@ -124,6 +126,44 @@ tools:
 ```
 
 > **简记**：读 `input/`，写 `analysis/`、`design/`、`checkpoints/`、`delivery/`、`doc/STATE.yaml`。
+
+## 公共因子库
+
+公共因子库是 `ptm-team` 仓库级 resource，不属于单个特性项目，也不是 Skill。`ptm-tde` 通过显式资源关联消费公共库：
+
+- canonical source：`resource/factor-libraries/`
+- 组件关联：`resource/component-resource-links.yaml`
+- 默认安装位置：`~/.ptm-team/resource/factor-libraries/`
+- 可覆盖环境变量：`PTM_TEAM_RESOURCE_HOME`
+
+安装 `ptm-tde` agent 时，ptm-team 安装器必须同步安装 `component-resource-links.yaml` 中声明的 `required` 与 `recommended` factor libraries；卸载时必须按 `installed_for` 引用关系处理，禁止误删仍被其他组件引用的公共资源。
+
+运行时查找顺序：
+
+1. `PTM_TEAM_RESOURCE_HOME/factor-libraries`
+2. `~/.ptm-team/resource/factor-libraries`
+3. 开发态仓库 `resource/factor-libraries`
+4. 用户显式指定路径
+
+项目内只生成：
+
+```text
+analysis/factor-usage/
+├── factor-library-lock.yaml
+├── factor-bindings.md
+├── candidate-factor-proposals.yaml
+└── factor-resolution-report.md
+```
+
+`m-analyzer` 是首个强制消费者：提取测试因子前必须读取公共库。命中 `active` 因子时复用；值域、样本或约束不足时生成扩展建议；未命中时写入 `candidate-factor-proposals.yaml`。项目运行不得直接修改公共因子库主库。
+
+CAE 中使用因子占位符：
+
+```text
+{{TF:FAC-ID|role=<driver|constraint|oracle|precondition>|usage=<config_test|function_test|fault_test|performance_test>|sample=<sample_id>}}
+```
+
+下游正式消费 `factor_bindings`；`factor_refs` 仅保留为兼容摘要字段。
 
 ## 用户确认点
 

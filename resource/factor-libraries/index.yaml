@@ -1,0 +1,26 @@
+schema_version: 1
+libraries:
+  - library_id: common-network
+    resource_type: factor-library
+    display_name: "通用网络因子库"
+    domain: network
+    version: 0.1.0
+    status: active
+    path: common-network/factor-library.yaml
+    library_doc: common-network/factor-library.md
+    groups_doc: common-network/factor-groups.md
+    change_log: common-network/factor-change-log.md
+    compatible_consumers: [ptm-tde]
+    checksum: pending
+  - library_id: ngfw-policy-routing
+    resource_type: factor-library
+    display_name: "NGFW 策略路由因子库"
+    domain: ngfw-policy-routing
+    version: 0.2.1
+    status: active
+    path: ngfw-policy-routing/factor-library.yaml
+    library_doc: ngfw-policy-routing/factor-library.md
+    groups_doc: ngfw-policy-routing/factor-groups.md
+    change_log: ngfw-policy-routing/factor-change-log.md
+    compatible_consumers: [ptm-tde]
+    checksum: pending

@@ -118,6 +118,13 @@ status: active
 2. **不丢字段**：不得删掉 trace / gap / fact_status；若存在 `topology_ref`，不得在场景章节中丢失
 3. **不扩展交付文件**：`delivery/` 只输出测试方案和测试用例两份 Markdown
 
+## 公共因子库补充契约
+
+- deliverable-renderer 必须读取 `analysis/factor-usage/`，在测试方案中输出“因子库与样本策略”小节。
+- 小节至少包含公共库 `library_id / version / checksum`、关键 factor groups、配置/功能样本策略、物化策略。
+- 最终物理用例展示 `materialized_value`；随机样本必须记录 deterministic seed。
+- `factor_bindings` 是主契约，`factor_refs` 仅作兼容摘要。
+
 ## Gotchas
 
 - `feature_tags` 若缺失，应在交付中列为 gap，而不是用模块名临时替代
@@ -127,5 +134,5 @@ status: active
 
 - [ ] 只输出测试方案、测试用例两份 Markdown
 - [ ] 测试用例文档消费 STORY-06 / STORY-07 的完整过程文档，而非仅最终 PC
-- [ ] 交付物保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status`
+- [ ] 交付物保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `confirmation_gap_refs`, `fact_status`
 - [ ] 不生成工具分析表或 `case-index.yaml`

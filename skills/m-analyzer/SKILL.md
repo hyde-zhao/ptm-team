@@ -272,6 +272,17 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 4. **可追溯**：每个测试点必须关联至少一条需求
 5. **不预设设计方法**：M 分析只关注"测什么"和"什么特征"，不关注"怎么测"
 
+## 公共因子库补充契约
+
+- M 分析是公共因子库首个强制消费者；提取测试因子前必须读取 `analysis/factor-usage/factor-library-lock.yaml` 或从公共 resource 目录选择库。
+- 公共库查找顺序：`PTM_TEAM_RESOURCE_HOME/factor-libraries` → `~/.ptm-team/resource/factor-libraries` → 开发态 `resource/factor-libraries`。
+- 按 `factor_id / factor_name / aliases / owner_object / factor_group` 检索；命中 `active` 因子时复用，值域/样本/约束不足时输出扩展建议，未命中时写入 `analysis/factor-usage/candidate-factor-proposals.yaml`。
+- 项目运行不得直接修改公共主库；公共库归档和更新只能回流到 `resource/factor-libraries/`。
+- CAE 中使用 `{{TF:FAC-ID|role=<role>|usage=<usage_context>|sample=<sample_id>}}`；下游主契约是 `factor_bindings`，`factor_refs` 只保留为兼容摘要。
+- `factor_bindings` 至少包含 `library_id / factor_id_or_group_id / role / binding_mode / usage_context / sample_id / expr / materialized_stage / gap`。
+- 禁止把 atomic-ops、`scenario_refs`、`knowledge_refs`、`confirmation_gap_refs` 当成测试因子。
+- 必须输出 `analysis/factor-usage/factor-resolution-report.md`；如有未命中或需扩展内容，必须输出 `candidate-factor-proposals.yaml`。
+
 ## Gotchas
 
 - 需求描述中隐含的功能也需要提取测试点
@@ -288,7 +299,7 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 - [ ] 每个测试点包含完整的 CAE 三字段（C/A/E 均不为空、不模糊）
 - [ ] C 字段为可验证状态，A 字段为可执行操作，E 字段为可观测结果
 - [ ] E="待定" 必须附批注 `[待定原因: <描述>]`；空 E 字段不允许
-- [ ] 每个 TP 包含 `scenario_refs / action_source_refs / test_object_refs / factor_refs / trace_refs`
+- [ ] 每个 TP 包含 `scenario_refs / action_source_refs / test_object_refs / factor_bindings / factor_refs / trace_refs`
 - [ ] 未确认事实通过 `confirmation_gap_refs` 显式透传
 - [ ] 输出文件按**四级目录（H2）→ 五级目录（H3）**分节，每节标注 PPDCS 主特征
 - [ ] **每个五级目录节点均有 PPDCS 主特征标注和判定依据**

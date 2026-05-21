@@ -299,6 +299,15 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 | GAP-001 | 上限值待产品确认 | D-Data 边界仅作候选辅特征 |
 ```
 
+## 公共因子库补充契约
+
+- design-planner 必须优先读取 `factor_bindings` 和 `analysis/factor-usage/factor-library-lock.yaml`，`factor_refs` 仅作兼容摘要。
+- 读取公共库中的 `domain_model / usage_profiles / constraints / downstream_methods` 参与 PPDCS 推断。
+- `domain_model=range/string_pattern` 且存在边界样本时增强 D-Data 信号。
+- 多个 driver 因子属于同一 `factor_group` 且存在 `constraints` 时增强 C-Combination 或 P-Parameter 信号。
+- `factor_kind=state` 或 `sample_class=transition_*` 时增强 S-State 信号。
+- 功能用例只命中 `rejected_config_samples` 时，标记为设计错误或不适用，不得继续生成正常功能 PC。
+
 ## Gotchas
 
 - PPDCS 特征是“子模块级”标注，但 design-planner 必须按 **LC + TD** 做二次复核
@@ -317,7 +326,7 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 - [ ] 设计计划表包含 `主信号 / 候选特征 / 排除摘要 / 关键trace / 待确认事项`
 - [ ] 混合特征以 `主（主）+ 辅（辅）` 格式输出
 - [ ] 每条 LC 的 reasoning 至少包含 `primary_signal / candidate_features / exclusion_reasons / recommended_method`
-- [ ] reasoning 保留 `scenario_refs / scenario_chain_refs / source_tp_ids / td_refs / test_object_refs / factor_refs`
+- [ ] reasoning 保留 `scenario_refs / scenario_chain_refs / source_tp_ids / td_refs / test_object_refs / factor_bindings / factor_refs`
 - [ ] 未确认事实通过 `confirmation_gap_refs / uncertain facts` 显式保留
 - [ ] 详细推断路径写入 `analysis/plan/design-planner-reasoning.md`（不在设计计划表完整展开）
 - [ ] 直接设计法占比 < 5%

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -44,6 +45,8 @@ except ImportError:
 VALID_PLATFORMS = ("claude", "codex")
 MANAGED_VERSION = "1.0.0"
 MANIFEST_FILENAME = ".ptm-team-manifest.json"
+RESOURCE_HOME_ENV = "PTM_TEAM_RESOURCE_HOME"
+DEFAULT_RESOURCE_HOME = Path.home() / ".ptm-team" / "resource"
 
 # Agent aliases
 AGENT_ALIASES = {
@@ -94,10 +97,12 @@ FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n?", re.DOTALL)
 
 @dataclass
 class ManifestEntry:
-    kind: str  # "agent" or "skill"
+    kind: str  # "agent", "skill", or "resource"
     name: str
     path: str
     remove_path: str
+    resource_type: str = ""
+    installed_for: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -270,6 +275,97 @@ def get_agent_skills(agent_name: str) -> list[str]:
     return []
 
 
+def strip_yaml_value(value: str) -> str:
+    """Strip a simple YAML scalar value."""
+    return value.strip().strip('"').strip("'")
+
+
+def resource_home() -> Path:
+    """Return the shared ptm-team resource home."""
+    configured = os.environ.get(RESOURCE_HOME_ENV)
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return DEFAULT_RESOURCE_HOME.expanduser().resolve()
+
+
+def parse_resource_index(source_dir: Path) -> dict[str, dict[str, str]]:
+    """Parse resource/factor-libraries/index.yaml for library paths."""
+    index_path = source_dir / "resource" / "factor-libraries" / "index.yaml"
+    if not index_path.is_file():
+        return {}
+
+    libraries: dict[str, dict[str, str]] = {}
+    current: dict[str, str] | None = None
+    for raw_line in index_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("- library_id:"):
+            library_id = strip_yaml_value(line.split(":", 1)[1])
+            current = {"library_id": library_id}
+            libraries[library_id] = current
+        elif current is not None and ":" in line:
+            key, value = line.split(":", 1)
+            current[key.strip()] = strip_yaml_value(value)
+    return libraries
+
+
+def parse_component_resource_links(source_dir: Path) -> dict[str, list[dict[str, str]]]:
+    """Parse resource/component-resource-links.yaml for component resources."""
+    links_path = source_dir / "resource" / "component-resource-links.yaml"
+    if not links_path.is_file():
+        return {}
+
+    links: dict[str, list[dict[str, str]]] = {}
+    current_component = ""
+    current_resource: dict[str, str] | None = None
+    for raw_line in links_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("- component_id:"):
+            current_component = strip_yaml_value(line.split(":", 1)[1])
+            links.setdefault(current_component, [])
+            current_resource = None
+        elif current_component and line.startswith("- resource_type:"):
+            current_resource = {"resource_type": strip_yaml_value(line.split(":", 1)[1])}
+            links[current_component].append(current_resource)
+        elif current_component and current_resource is not None and ":" in line:
+            key, value = line.split(":", 1)
+            current_resource[key.strip()] = strip_yaml_value(value)
+    return links
+
+
+def get_component_resources(
+    source_dir: Path,
+    component_id: str,
+    include_recommended: bool = True,
+    explicit_resources: list[str] | None = None,
+) -> list[dict[str, str]]:
+    """Get resources associated with a component."""
+    links = parse_component_resource_links(source_dir)
+    resources = links.get(component_id, [])
+    explicit = set(explicit_resources or [])
+    selected: list[dict[str, str]] = []
+
+    for resource in resources:
+        if resource.get("resource_type") != "factor-library":
+            continue
+        library_id = resource.get("library_id", "")
+        policy = resource.get("install_policy", "optional")
+        if policy == "required" or (policy == "recommended" and include_recommended) or library_id in explicit:
+            selected.append(resource)
+
+    known = {r.get("library_id", "") for r in resources}
+    for library_id in explicit - known:
+        selected.append({
+            "resource_type": "factor-library",
+            "library_id": library_id,
+            "install_policy": "explicit",
+        })
+    return selected
+
+
 def load_manifest(manifest_path: Path) -> dict:
     """Load manifest file."""
     if not manifest_path.exists():
@@ -324,6 +420,18 @@ def copy_skill_tree(src_dir: Path, dest_dir: Path, dry_run: bool) -> None:
     print(f"  ✓ 安装 skill: {src_dir.name}")
 
 
+def copy_resource_tree(src_dir: Path, dest_dir: Path, dry_run: bool) -> None:
+    """Copy a shared resource tree."""
+    if dry_run:
+        print(f"  [DryRun] 复制 resource: {src_dir.name} -> {dest_dir}")
+        return
+
+    if dest_dir.exists():
+        shutil.rmtree(dest_dir)
+    shutil.copytree(src_dir, dest_dir)
+    print(f"  ✓ 安装 resource: {src_dir.name}")
+
+
 def remove_path(path: Path, dry_run: bool) -> None:
     """Remove file or directory."""
     if not path.exists():
@@ -346,6 +454,8 @@ def install_agent(
     commit: str,
     generated: str,
     dry_run: bool,
+    include_recommended_resources: bool = True,
+    explicit_resources: list[str] | None = None,
 ) -> list[ManifestEntry]:
     """Install an agent and its referenced skills."""
     entries: list[ManifestEntry] = []
@@ -406,7 +516,63 @@ def install_agent(
                 remove_path=str(skill_dest.relative_to(workspace_root)),
             ))
 
+    # Install associated shared resources.
+    resources = get_component_resources(
+        source_dir,
+        agent_name,
+        include_recommended=include_recommended_resources,
+        explicit_resources=explicit_resources,
+    )
+    if resources:
+        print(f"\n安装 {agent_name} 关联的 {len(resources)} 个公共 resources:")
+        index = parse_resource_index(source_dir)
+        source_resource_root = source_dir / "resource" / "factor-libraries"
+        dest_resource_root = resource_home() / "factor-libraries"
+        index_src = source_resource_root / "index.yaml"
+        index_dest = dest_resource_root / "index.yaml"
+
+        if dry_run:
+            print(f"  [DryRun] 复制 resource index: {index_src} -> {index_dest}")
+        else:
+            ensure_directory(dest_resource_root)
+            if index_src.is_file():
+                shutil.copy2(index_src, index_dest)
+
+        for resource in resources:
+            library_id = resource.get("library_id", "")
+            if not library_id:
+                continue
+            library_meta = index.get(library_id, {})
+            library_file = library_meta.get("path", f"{library_id}/factor-library.yaml")
+            library_dir = source_resource_root / Path(library_file).parts[0]
+            if not library_dir.is_dir():
+                fail(f"公共因子库不存在: {library_id} ({library_dir})")
+            dest = dest_resource_root / library_dir.name
+            copy_resource_tree(library_dir, dest, dry_run)
+            entries.append(ManifestEntry(
+                kind="resource",
+                name=library_id,
+                path=str(dest),
+                remove_path=str(dest),
+                resource_type="factor-library",
+                installed_for=[agent_name],
+            ))
+
     return entries
+
+
+def manifest_entry_to_dict(entry: ManifestEntry) -> dict:
+    payload = {
+        "kind": entry.kind,
+        "name": entry.name,
+        "path": entry.path,
+        "remove_path": entry.remove_path,
+    }
+    if entry.resource_type:
+        payload["resource_type"] = entry.resource_type
+    if entry.installed_for:
+        payload["installed_for"] = entry.installed_for
+    return payload
 
 
 def install_skills_interactive(
@@ -527,7 +693,7 @@ def uninstall_agent(
     if record is None:
         fail(f"未找到 {platform} 的安装记录")
 
-    # Filter entries for this agent and its skills
+    # Filter entries for this agent, its skills, and resources installed for it.
     entries_to_remove = []
     remaining_entries = []
 
@@ -536,6 +702,14 @@ def uninstall_agent(
             entries_to_remove.append(entry)
         elif entry["kind"] == "skill" and entry["name"] in get_agent_skills(agent_name):
             entries_to_remove.append(entry)
+        elif entry["kind"] == "resource" and agent_name in entry.get("installed_for", []):
+            installed_for = [x for x in entry.get("installed_for", []) if x != agent_name]
+            if installed_for:
+                updated = dict(entry)
+                updated["installed_for"] = installed_for
+                remaining_entries.append(updated)
+            else:
+                entries_to_remove.append(entry)
         else:
             remaining_entries.append(entry)
 
@@ -654,6 +828,7 @@ def list_installed(platform: str, workspace_root: Path, manifest: dict) -> None:
 
     agents = [e for e in record.get("entries", []) if e["kind"] == "agent"]
     skills = [e for e in record.get("entries", []) if e["kind"] == "skill"]
+    resources = [e for e in record.get("entries", []) if e["kind"] == "resource"]
 
     print(f"\n{platform} 已安装内容:")
     print(f"  安装时间: {record.get('installed_at', 'unknown')}")
@@ -667,6 +842,56 @@ def list_installed(platform: str, workspace_root: Path, manifest: dict) -> None:
         print(f"\n  Skills ({len(skills)}):")
         for s in skills:
             print(f"    - {s['name']}")
+
+    if resources:
+        print(f"\n  Resources ({len(resources)}):")
+        for r in resources:
+            resource_type = r.get("resource_type", "resource")
+            installed_for = ", ".join(r.get("installed_for", [])) or "unknown"
+            print(f"    - {resource_type}:{r['name']} (installed_for={installed_for})")
+
+
+def list_resources(source_dir: Path) -> None:
+    """List source resource libraries."""
+    libraries = parse_resource_index(source_dir)
+    if not libraries:
+        print("没有找到公共因子库索引")
+        return
+    print("公共因子库:")
+    for library_id, meta in sorted(libraries.items()):
+        print(f"  - {library_id}: {meta.get('display_name', '')} ({meta.get('version', 'unknown')})")
+
+
+def validate_resources(source_dir: Path) -> None:
+    """Validate resource index and component links."""
+    libraries = parse_resource_index(source_dir)
+    if not libraries:
+        fail("公共因子库索引不存在或为空: resource/factor-libraries/index.yaml")
+
+    root = source_dir / "resource" / "factor-libraries"
+    errors: list[str] = []
+    for library_id, meta in libraries.items():
+        rel_path = meta.get("path", f"{library_id}/factor-library.yaml")
+        library_file = root / rel_path
+        if not library_file.is_file():
+            errors.append(f"{library_id}: 缺少 {library_file}")
+        for doc_key in ("library_doc", "groups_doc", "change_log"):
+            doc_rel = meta.get(doc_key, "")
+            if doc_rel and not (root / doc_rel).is_file():
+                errors.append(f"{library_id}: 缺少 {root / doc_rel}")
+
+    links = parse_component_resource_links(source_dir)
+    for component_id, resources in links.items():
+        for resource in resources:
+            library_id = resource.get("library_id", "")
+            if resource.get("resource_type") == "factor-library" and library_id not in libraries:
+                errors.append(f"{component_id}: 未知 factor-library {library_id}")
+
+    if errors:
+        for error in errors:
+            print(f"[ERROR] {error}", file=sys.stderr)
+        raise SystemExit(1)
+    print("公共资源校验通过")
 
 
 def find_source_dir() -> Path:
@@ -712,6 +937,8 @@ def parse_args() -> argparse.Namespace:
     install_parser.add_argument("--skill", nargs="?", const="", help="安装 skill (可指定关键字)")
     install_parser.add_argument("--list", action="store_true", help="列出已安装内容")
     install_parser.add_argument("--dry-run", action="store_true", help="预览模式")
+    install_parser.add_argument("--no-recommended-resources", action="store_true", help="安装 agent 时跳过 recommended resources")
+    install_parser.add_argument("--resource", action="append", default=[], help="安装 agent 时额外指定 resource id")
 
     # uninstall subcommand
     uninstall_parser = subparsers.add_parser("uninstall", help="卸载 agent 或 skill")
@@ -719,6 +946,13 @@ def parse_args() -> argparse.Namespace:
     uninstall_parser.add_argument("--agent", nargs="?", const="", help="卸载 agent")
     uninstall_parser.add_argument("--skill", action="store_true", help="卸载 skill (交互式)")
     uninstall_parser.add_argument("--dry-run", action="store_true", help="预览模式")
+
+    # resource subcommand
+    resource_parser = subparsers.add_parser("resource", help="查询或校验公共资源")
+    resource_subparsers = resource_parser.add_subparsers(dest="resource_command", help="resource 命令")
+    resource_subparsers.add_parser("list", help="列出源目录中的公共资源")
+    resource_subparsers.add_parser("path", help="显示用户级公共资源目录")
+    resource_subparsers.add_parser("validate", help="校验源目录中的公共资源索引和关联")
 
     return parser.parse_args()
 
@@ -758,8 +992,20 @@ def main() -> None:
 
     print(f"工作目录: {workspace_root}")
     print(f"源目录: {source_dir}")
-    print(f"平台: {args.platform}")
+    if hasattr(args, "platform"):
+        print(f"平台: {args.platform}")
     print()
+
+    if args.command == "resource":
+        if args.resource_command == "list":
+            list_resources(source_dir)
+        elif args.resource_command == "path":
+            print(resource_home())
+        elif args.resource_command == "validate":
+            validate_resources(source_dir)
+        else:
+            fail("请指定 resource 子命令: list、path 或 validate")
+        return
 
     if args.command == "install":
         # List mode
@@ -774,6 +1020,8 @@ def main() -> None:
             entries = install_agent(
                 args.platform, agent_name, source_dir, workspace_root,
                 commit, generated, args.dry_run,
+                include_recommended_resources=not args.no_recommended_resources,
+                explicit_resources=args.resource,
             )
             # Update manifest
             if not args.dry_run and entries:
@@ -785,12 +1033,7 @@ def main() -> None:
                     "workspace_root": str(workspace_root),
                     "entries": [],
                 }
-                record["entries"].extend([{
-                    "kind": e.kind,
-                    "name": e.name,
-                    "path": e.path,
-                    "remove_path": e.remove_path,
-                } for e in entries])
+                record["entries"].extend([manifest_entry_to_dict(e) for e in entries])
                 upsert_install_record(manifest, record)
                 save_manifest(manifest_path, manifest)
             return
@@ -812,12 +1055,7 @@ def main() -> None:
                     "workspace_root": str(workspace_root),
                     "entries": [],
                 }
-                record["entries"].extend([{
-                    "kind": e.kind,
-                    "name": e.name,
-                    "path": e.path,
-                    "remove_path": e.remove_path,
-                } for e in entries])
+                record["entries"].extend([manifest_entry_to_dict(e) for e in entries])
                 upsert_install_record(manifest, record)
                 save_manifest(manifest_path, manifest)
             return

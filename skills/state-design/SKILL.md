@@ -278,6 +278,13 @@ stateDiagram-v2
 | SP-02 | T2 | FAC-002 | TD-002 | `[待确认]` | fail | OVL-02 | needs-confirmation |
 ```
 
+## 公共因子库补充契约
+
+- state-design 必须消费 lock 指定公共库中的 `factor_kind=state` 因子和 `sample_class=transition_*` 样本。
+- 优先使用 `factor_bindings` 识别状态主体、迁移、守卫条件和非法迁移。
+- 不得把普通范围边界值误判为状态。
+- `factor_refs` 仅作兼容摘要。
+
 ## Gotchas
 
 - 不得只读 `design-plan.md` 而忽略 `design-planner-reasoning.md`

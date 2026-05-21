@@ -219,6 +219,13 @@ design/pc/<basename>.md
 | 约束边界组合 | P2~P3 |
 | `needs-confirmation` 组合 | P3 |
 
+## 公共因子库补充契约
+
+- combination-design 必须消费 lock 指定公共库中的 `factor_groups / constraints / applicable_when / usage_profiles`。
+- 生成组合前必须先按公共库约束过滤无效组合。
+- 配置组合和功能组合分开处理；禁止把配置拒绝样本带入功能组合。
+- 优先使用 `factor_bindings` 形成 factor catalog；`factor_refs` 仅作兼容摘要。
+
 ## Gotchas
 
 - 不得只消费 `design-plan.md`；必须同时消费 `design-planner-reasoning.md`

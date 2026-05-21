@@ -17,6 +17,8 @@ uv run python script/install.py install codex --agent tde
 uv run python script/install.py install claude --agent ptm-tde --dry-run
 ```
 
+安装 `ptm-tde` agent 时，安装器会同步安装 `resource/component-resource-links.yaml` 中声明的公共 resources，例如公共因子库。默认安装目标为 `~/.ptm-team/resource/`，可通过 `PTM_TEAM_RESOURCE_HOME` 覆盖。
+
 ### 安装 Skill
 
 ```shell
@@ -47,6 +49,14 @@ uv run python script/install.py uninstall claude --dry-run
 
 ```shell
 uv run python script/install.py install claude --list
+```
+
+### 公共资源
+
+```shell
+uv run python script/install.py resource list
+uv run python script/install.py resource path
+uv run python script/install.py resource validate
 ```
 
 ## skills_manager.py

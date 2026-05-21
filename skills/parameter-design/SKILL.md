@@ -184,6 +184,13 @@ design/pc/<basename>.md
 | `needs-confirmation` 规则 | P2~P3 |
 | Don't Care 验证 | P3 |
 
+## 公共因子库补充契约
+
+- parameter-design 必须消费 lock 指定公共库中的 `factor_groups / constraints / usage_profiles / oracle` 因子。
+- 优先使用 `factor_bindings` 生成判定条件桩；`factor_refs` 仅作兼容摘要。
+- 配置判定使用 accepted/rejected；功能判定使用 hit/miss/fallback/fail，不得混用。
+- 业务流量匹配类用例应使用 oracle 因子表达预期命中结果。
+
 ## Gotchas
 
 - 不得只看 `design-plan.md`；必须同时消费 `design-planner-reasoning.md`

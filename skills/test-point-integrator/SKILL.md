@@ -294,6 +294,14 @@ integrator 必须消费并透传以下字段：
 | GAP-TOOL-001 | GAP-TOOL-001 | tool-gap | audit-exporter | — | 导出审计时间线 | SCN-AUDIT-001 | fw_export_audit_timeline | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | OBJ-AUDIT-LOG | OBJ-AUDIT-LOG | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | FAC-AUDIT-FIELD,FAC-AUDIT-TIMELINE | `audit-exporter trace --since ...` | `audit-exporter trace --since ...` | 补齐审计观测能力 | 指定时间窗且日志可读→返回完整时间线；字段缺失→返回缺失字段清单与失败状态 | stdout/json + timeline report | gap |
 ```
 
+## 公共因子库补充契约
+
+- integrator 必须消费并透传上游 `factor_bindings`，不能只合并 `factor_refs`。
+- `factor_bindings` 是主契约，必须保留 `library_id / version或snapshot_id / factor_id_or_group_id / role / binding_mode / usage_context / sample_id / expr / materialized_stage / gap`。
+- `factor_refs` 只作为兼容摘要，不得覆盖或替换 binding。
+- 生成 LC 和 TD 时必须保留 `usage_context` 与 `sample_id`，不得在 integration 阶段提前物化随机表达式。
+- 配置样本和功能样本分开合并；`rejected_config_samples` 不得作为功能用例前置。
+
 ## Gotchas
 
 - 覆盖检查必须是逐条语义对比，不能只看编号关联
@@ -308,7 +316,7 @@ integrator 必须消费并透传以下字段：
 - [ ] M+F+Q 测试点全部归集且无遗漏
 - [ ] 需求覆盖率 = 100%（所有 SR 至少 1 个 TP）
 - [ ] 每个逻辑用例包含：测试逻辑描述 + 因子-取值表 + 动作路径 + 覆盖测试点明细
-- [ ] 每个 LC 保留 `source_tp_ids / scenario_refs / action_source_refs / factor_refs / trace_refs`
+- [ ] 每个 LC 保留 `source_tp_ids / scenario_refs / action_source_refs / factor_bindings / factor_refs / trace_refs`
 - [ ] 每个 TD 保留 `factor_ref / scenario_refs / action_source_refs / confirmation_gap_refs`
 - [ ] 输出按四/五级目录分节，每个五级目录至少有 1 个逻辑用例
 - [ ] 合并判定表含优先级列和规则编号（规则0~规则3）

@@ -98,6 +98,16 @@ uv run --python 3.11 python skills/checkpoint-manager/scripts/run_checkpoint.py 
 - [ ] 脚本位于 `skills/checkpoint-manager/scripts/run_checkpoint.py`
 - [ ] 不依赖安装器或安装清单
 
+## 公共因子库检查补充
+
+`ptm-tde` 使用公共因子库时，检查点必须覆盖 resource 可用性和项目消费记录：
+
+- CP01 input 自检应检查公共 resource 根目录是否可解析：`PTM_TEAM_RESOURCE_HOME/factor-libraries`、`~/.ptm-team/resource/factor-libraries` 或开发态 `resource/factor-libraries`。
+- M 分析完成后的检查应确认 `analysis/factor-usage/factor-library-lock.yaml`、`factor-resolution-report.md` 已生成。
+- 若存在未命中因子或扩展建议，必须确认 `candidate-factor-proposals.yaml` 已生成，且没有直接修改公共主库。
+- coverage 前必须确认 `factor_bindings` 中的 `factor_id / sample_id` 能在 lock 指定公共库中找到。
+- delivery 前必须确认测试方案记录公共库 `library_id / version / checksum` 和样本策略摘要。
+
 ## CP02 Scenario 场景自检
 
 CP02 在 `scenario-discovery` 完成后执行，先生成场景自检结果，再进入人工确认。CP02 必须防止功能种子被直接当作最终场景交付。

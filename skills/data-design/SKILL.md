@@ -179,6 +179,13 @@ design/pc/<basename>.md
 | 类型错误 / 空值 | P3 |
 | `needs-confirmation` 边界 | P3 |
 
+## 公共因子库补充契约
+
+- data-design 必须消费 lock 指定公共库中的 `domain_expr / sample_definitions / usage_profiles`。
+- 优先使用 `factor_bindings` 中的 `sample_id` 和 `expr` 形成 factor catalog；`factor_refs` 仅作兼容摘要。
+- 配置用例只使用 `accepted_config_samples / rejected_config_samples`；功能用例不得使用 `rejected_config_samples` 作为前置。
+- 表达式样本在 PC 阶段才物化，并记录 `materialized_value` 与 deterministic seed。
+
 ## Gotchas
 
 - 不得只消费 `design-plan.md`；必须同时消费 `design-planner-reasoning.md`

@@ -13,6 +13,7 @@
 │   ├── q-analysis/
 │   ├── integration/
 │   ├── plan/
+│   ├── factor-usage/
 │   └── coverage/
 ├── design/
 │   ├── ppdcs/
@@ -32,6 +33,29 @@
 - 防火墙 topo 文件；
 - 耦合矩阵；
 - 外部接口、CLI 或工具方法参考资料。
+
+## 公共因子库消费记录
+
+公共因子库主库不存放在特性项目 `analysis/` 中。主库由 `ptm-team` 归档在仓库级 `resource/factor-libraries/`，安装后位于 `~/.ptm-team/resource/factor-libraries/` 或 `PTM_TEAM_RESOURCE_HOME/factor-libraries/`。
+
+特性项目仅保存本次消费记录：
+
+```text
+analysis/factor-usage/
+├── factor-library-lock.yaml
+├── factor-bindings.md
+├── candidate-factor-proposals.yaml
+└── factor-resolution-report.md
+```
+
+| 文件 | 内容 |
+|---|---|
+| `factor-library-lock.yaml` | 本项目锁定的公共因子库 `library_id / version / checksum / source / locked_at` |
+| `factor-bindings.md` | TP/LC/TD/PC 对公共因子的实际引用，包含 `factor_id / sample_id / usage_context / materialized_stage` |
+| `candidate-factor-proposals.yaml` | 未命中或需扩展的候选因子、样本、约束和目标库建议 |
+| `factor-resolution-report.md` | 查库、复用、扩展、候选、冲突和降级处理报告 |
+
+`ptm-tde` 不得在项目运行期间直接修改公共主库；候选因子必须通过公共库维护流程回流到 `resource/factor-libraries/_proposals/`。
 
 ## 场景产物字段
 
@@ -67,6 +91,7 @@ Scenario Details 中每个场景至少包含：
 | `analysis/q-analysis/` | 质量属性测试点 |
 | `analysis/integration/` | 全量测试点、逻辑用例、测试数据、设计计划输入 |
 | `analysis/plan/` | PPDCS 推断 reasoning |
+| `analysis/factor-usage/` | 公共因子库 lock、binding、候选提案和解析报告 |
 | `analysis/coverage/` | 需求层与测试点层覆盖报告 |
 
 ## 设计产物

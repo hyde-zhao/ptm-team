@@ -1,0 +1,13 @@
+schema_version: 1
+components:
+  - component_id: ptm-tde
+    component_type: agent
+    resources:
+      - resource_type: factor-library
+        library_id: common-network
+        install_policy: required
+        reason: "通用网络、协议、地址、端口、接口状态等基础因子供测试设计复用。"
+      - resource_type: factor-library
+        library_id: ngfw-policy-routing
+        install_policy: recommended
+        reason: "NGFW 策略路由领域因子供策略路由类特性复用。"

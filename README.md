@@ -38,6 +38,8 @@ ptm-team install claude --list
 ptm-team uninstall claude
 ```
 
+安装 `ptm-tde` agent 时会同步安装它关联的公共 resources。公共因子库归档在仓库 `resource/factor-libraries/`，默认安装到 `~/.ptm-team/resource/factor-libraries/`，可通过 `PTM_TEAM_RESOURCE_HOME` 指向团队共享资源目录。
+
 ### 开发模式安装
 
 如果需要修改代码，可以使用开发模式：
