@@ -41,25 +41,68 @@ tools:
 - **A（Action）**：可执行的测试操作（操作对象 + 内容；不得写成"验证…"等描述性文字）
 - **E（Effect）**：可观测的系统响应（含观测点 + 期望值）；E="待定" 时须附批注 `[待定原因: <描述>]`
 
-## 状态机
+## 三阶段框架
 
-工具按以下 11 步主流程执行：
+ptm-tde 按以下三阶段 + 入口/出口门控体系推进：
 
- ```
- # 追踪链：SR → TP(C/A/E) → LC → 组合方案 → PC（物理用例）
-
-  1. input         CP01自检 + 特性文件解析 + 三~五级目录生成             [checkpoint-manager + feature-parser]
-  2. scenario      场景再发现 + 操作路径建模 + Topology + atomic-ops + CP02自检/确认 [scenario-discovery + CP02]
-  3. m-analysis    公共因子库锁定 + 单功能拆分 + PPDCS特征标注 + CAE测试点 [m-analyzer + CP03]
-  4. f-analysis    耦合关系分析（三源合并）+ CAE耦合测试点              [f-analyzer + CP04]
-  5. q-analysis    质量属性分析（HTSM）+ CAE质量测试点                  [q-analyzer + CP05]
-  6. integration   M+F+Q测试点归集 → factor_bindings + topology_bindings → 逻辑用例(LC) + 测试数据 [test-point-integrator + CP06]
-  7. plan          LC+TD trace 驱动的 CAE→PPDCS 推断 + 设计计划          [design-planner + CP07]
-  8. design-ppdcs  每LC生成PPDCS逻辑设计过程文件                         [design-ppdcs-analyzer + 5 design Skills + CP08/CP09]
-  9. design-pc     每LC生成物理用例文件                                  [5 design Skills + CP10]
- 10. coverage      双层覆盖率验证（SR→LC→PC）                           [coverage-verifier + CP11]
- 11. delivery      输出测试方案和测试用例总表                            [deliverable-renderer + CP12]
 ```
+Entry Gate（GATE-1，纯自检）
+  → KYM Phase: feature-parser → scenario-discovery
+    → KYM Exit Gate（GATE-2，自检+人工确认）
+      → MFQ Phase: m-analyzer → f-analyzer → q-analyzer → test-point-integrator → design-planner
+        → MFQ Exit Gate（GATE-3，自检+人工确认）
+          → PPDCS Phase: design-ppdcs-analyzer + 5设计Skill → PC → coverage-verifier → deliverable-renderer
+            → PPDCS Exit Gate（GATE-4，自检+人工确认）
+              → Exit Gate（GATE-5，纯自检）
+```
+
+### 阶段与 Gate 总览
+
+| 阶段 | 包含步骤 | 关键 Skill | 入口 Gate | 出口 Gate | 产物目录 |
+|------|----------|-----------|-----------|-----------|----------|
+| **KYM**（Know Your Mission） | feature-parser → scenario-discovery | `feature-parser`、`scenario-discovery` | GATE-1 Entry Gate（纯自检） | GATE-2 KYM Exit Gate（自检+人工） | `kym/feature-input/`、`kym/scenarios/` |
+| **MFQ**（M/F/Q Analysis） | m-analyzer → f-analyzer → q-analyzer → test-point-integrator → design-planner | `m-analyzer`、`f-analyzer`、`q-analyzer`、`test-point-integrator`、`design-planner` | GATE-2（通过后进入） | GATE-3 MFQ Exit Gate（自检+人工） | `mfq/m-analysis/`、`mfq/f-analysis/`、`mfq/q-analysis/`、`mfq/integration/`、`mfq/factor-usage/`、`process/plan/` |
+| **PPDCS**（Design & Delivery） | design-ppdcs-analyzer + 5设计Skill → PC → coverage-verifier → deliverable-renderer | `design-ppdcs-analyzer`、5设计Skill、`coverage-verifier`、`deliverable-renderer` | GATE-3（通过后进入） | GATE-4 PPDCS Exit Gate（自检+人工） | `ppdcs/ppdcs/`、`ppdcs/pc/`、`ppdcs/coverage/`、`ppdcs/delivery/` |
+
+### Gate 门控总览
+
+| Gate | 名称 | 类型 | 触发时机 | 产物 |
+|------|------|------|----------|------|
+| **GATE-1** | Entry Gate | 纯自检 | 项目启动时 | `process/checkpoints/GATE-1-Entry.md` |
+| **GATE-2** | KYM Exit Gate | 自检 + 人工确认 | KYM 阶段完成后 | `process/checkpoints/GATE-2-KYM-Exit-auto.md` + `manual.md` |
+| **GATE-3** | MFQ Exit Gate | 自检 + 人工确认 | MFQ 阶段完成后 | `process/checkpoints/GATE-3-MFQ-Exit-auto.md` + `manual.md` |
+| **GATE-4** | PPDCS Exit Gate | 自检 + 人工确认 | PPDCS 阶段完成后 | `process/checkpoints/GATE-4-PPDCS-Exit-auto.md` + `manual.md` |
+| **GATE-5** | Exit Gate | 纯自检 | GATE-4 通过后 | `process/checkpoints/GATE-5-Exit.md` |
+
+### 阶段内滚动自检
+
+MFQ 和 PPDCS 阶段的每个 Skill 完成后，主 Agent 触发 checkpoint-manager 执行阶段内滚动自检（对应旧 CP03-CP07 和 CP08/CP10 逻辑），写入 `process/checkpoints/` 或日志。自检项参照 `docs/ptm-tde/gate-spec.md` 中对应 Gate 的 Checklist。
+
+### CP↔Gate 映射
+
+| 旧 CP | 新体系 | 说明 |
+|-------|--------|------|
+| CP01 | GATE-1 Entry Gate | input 自检 |
+| CP02 | GATE-2 KYM Exit Gate | 场景自检 + 人工确认 |
+| CP03 | MFQ 阶段内滚动自检 | M 分析完整性 |
+| CP04 | MFQ 阶段内滚动自检 | F 分析完整性 |
+| CP05 | MFQ 阶段内滚动自检 | Q 分析完整性 |
+| CP06 | MFQ 阶段内滚动自检 | 整合完整性 |
+| CP07 | MFQ 阶段内滚动自检 | 设计计划完整性 |
+| — | GATE-3 MFQ Exit Gate | 新增：MFQ 出口人工确认 |
+| CP08 | PPDCS 阶段内滚动自检 | PPDCS 设计完整性 |
+| CP09 | GATE-4 PPDCS Exit Gate | PPDCS 设计确认 |
+| CP10 | PPDCS 阶段内滚动自检 | PC 生成完整性 |
+| CP11 | GATE-4 PPDCS Exit Gate | 覆盖率确认 |
+| CP12 | GATE-5 Exit Gate | 交付自检 |
+
+### 追踪链
+
+```
+SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表 + topology_bindings + 动作路径）→ 组合（数据×路径×拓扑绑定）→ PC（物理用例）
+```
+
+每条物理用例可反向追踪：`PC → topology_bindings / 组合 → LC → TP → SR`；PC 中的真实设备、端口和链路还必须能追踪到 `kym/scenarios/confirmed-scenarios.md`。
 
 ### 扩展分支
 
@@ -68,65 +111,85 @@ tools:
 
 ## 运行时工作目录
 
-一个特性对应一个特性项目。ptm-tde 在当前特性项目根目录工作，读取 `input/`，并将运行产物直接写入项目根目录下的规范目录；不再创建或使用 `.output/`。
+一个特性对应一个特性项目。ptm-tde 在当前特性项目根目录工作，读取 `input/`，并将运行产物直接写入项目根目录下的阶段级规范目录；不再创建或使用 `.output/`。
 
+- **`kym/`** — KYM（Know Your Mission）阶段产物：`feature-input/`、`scenarios/`。
+- **`mfq/`** — MFQ 分析阶段产物：`m-analysis/`、`f-analysis/`、`q-analysis/`、`integration/`、`factor-usage/`。
+- **`ppdcs/`** — PPDCS 设计与交付阶段产物：`ppdcs/`、`pc/`、`coverage/`、`delivery/`。
+- **`process/plan/`** — 跨阶段边界产物：设计计划（MFQ 阶段 design-planner 写入，PPDCS 阶段读取+验证）。
+- **`process/checkpoints/`** — Gate 检查点结果。
+- **`process/STATE.yaml`** — 当前特性项目运行状态。
 - **`input/`** — 原始输入目录，只读；放置特性需求文件、防火墙 topo 文件、耦合矩阵 Excel、参考资料等。
-- **`analysis/`** — MFQ 分析中间产物，按阶段分为 `feature-input/`、`scenarios/`、`m-analysis/`、`f-analysis/`、`q-analysis/`、`integration/`、`plan/`、`factor-usage/`、`coverage/`。
-- **`analysis/factor-usage/`** — 本项目因子库消费记录，只保存公共库 lock、factor bindings、候选提案和解析报告；不得保存公共因子库主库。
-- **`analysis/scenarios/confirmed-scenarios.md`** — 已确认场景、Topology 与真实设备/端口/链路来源基线，供 LC `topology_bindings` 和 PC 物化回链。
-- **`design/ppdcs/`** — 每个逻辑用例一份 PPDCS 设计过程文件。
-- **`design/pc/`** — 每个逻辑用例一份物理用例文件。
-- **`checkpoints/`** — CP01 等人工/自动检查点结果。
-- **`delivery/`** — 仅放最终两份交付文件。
-- **`doc/STATE.yaml`** — 当前特性项目运行状态。
+- **`mfq/factor-usage/`** — 本项目因子库消费记录，只保存公共库 lock、factor bindings、候选提案和解析报告；不得保存公共因子库主库。
+- **`kym/scenarios/confirmed-scenarios.md`** — 已确认场景、Topology 与真实设备/端口/链路来源基线，供 LC `topology_bindings` 和 PC 物化回链。
 
 ```
 <feature-project-root>/
-├── input/                                  # 原始输入，只读
+├── input/                                    # 原始输入，只读
 │   ├── <特性需求文件>.md
 │   ├── <防火墙topo>.yaml
 │   ├── <耦合矩阵>.xlsx
 │   └── <其他参考资料>/
-├── analysis/
-│   ├── feature-input/
-│   ├── scenarios/
-│   ├── m-analysis/
-│   ├── f-analysis/
-│   ├── q-analysis/
-│   ├── integration/
-│   ├── plan/
-│   ├── factor-usage/
-│   └── coverage/
-├── design/
-│   ├── ppdcs/
+├── kym/                                      # KYM 阶段产物
+│   ├── feature-input/                        # 解析后的结构化需求与目录
+│   └── scenarios/                            # 已确认场景、Topology、atomic-ops
+│       └── confirmed-scenarios.md            # 已确认场景与真实设备/端口/链路基线
+├── mfq/                                      # MFQ 阶段产物
+│   ├── m-analysis/                           # M 测试点、PPDCS 标注
+│   ├── f-analysis/                           # F 耦合测试点
+│   ├── q-analysis/                           # Q 质量测试点
+│   ├── integration/                          # 整合层：LC、factor_bindings、topology_bindings
+│   └── factor-usage/                         # 公共因子库 lock、binding、候选提案和解析报告
+├── ppdcs/                                    # PPDCS 阶段产物
+│   ├── ppdcs/                                # 每个逻辑用例的 PPDCS 设计过程
 │   │   └── <三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md
-│   └── pc/
-│       └── <三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md
-├── checkpoints/
-├── delivery/
-│   ├── <特性名>特性测试方案.md
-│   └── <特性名>特性测试用例.md
-└── doc/
-    └── STATE.yaml
+│   ├── pc/                                   # 每个逻辑用例的物理用例
+│   │   └── <三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md
+│   ├── coverage/                             # 双层覆盖率报告
+│   └── delivery/                             # 最终交付物
+│       ├── <特性名>特性测试方案.md
+│       └── <特性名>特性测试用例.md
+├── process/                                  # 跨阶段边界产物
+│   ├── plan/                                 # 设计计划（MFQ 阶段 design-planner 写入，PPDCS 阶段读取）
+│   ├── checkpoints/                          # Gate 检查点结果
+│   └── STATE.yaml                            # 当前特性项目运行状态
 ```
+
+### 目录迁移对照表
+
+| 旧路径 | 新路径 | 所属阶段 |
+|--------|--------|----------|
+| `analysis/feature-input/` | `kym/feature-input/` | KYM |
+| `analysis/scenarios/` | `kym/scenarios/` | KYM |
+| `analysis/m-analysis/` | `mfq/m-analysis/` | MFQ |
+| `analysis/f-analysis/` | `mfq/f-analysis/` | MFQ |
+| `analysis/q-analysis/` | `mfq/q-analysis/` | MFQ |
+| `analysis/integration/` | `mfq/integration/` | MFQ |
+| `analysis/factor-usage/` | `mfq/factor-usage/` | MFQ |
+| `analysis/plan/` | `process/plan/` | 跨阶段边界 |
+| `analysis/coverage/` | `ppdcs/coverage/` | PPDCS |
+| `design/ppdcs/` | `ppdcs/ppdcs/` | PPDCS |
+| `design/pc/` | `ppdcs/pc/` | PPDCS |
+| `delivery/` | `ppdcs/delivery/` | PPDCS |
 
 ### ⚠️ 路径规则（CRITICAL）
 
 1. 禁止创建或写入 `.output/`。
 2. `input/` 只读，任何分析产物都不能写入 `input/`。
-3. 分析过程写入 `analysis/<stage>/`，设计过程写入 `design/ppdcs/`，物理用例写入 `design/pc/`，检查点写入 `checkpoints/`，最终交付写入 `delivery/`，状态写入 `doc/STATE.yaml`。
-4. `design/ppdcs/` 和 `design/pc/` 均按每个逻辑用例单文件输出，文件名固定为 `<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，不创建深层模块目录。
-5. `delivery/` 只允许输出 `<特性名>特性测试方案.md` 和 `<特性名>特性测试用例.md`。
+3. KYM 分析写入 `kym/`，MFQ 分析写入 `mfq/`（含 `mfq/factor-usage/`），跨阶段计划写入 `process/plan/`，PPDCS 设计与交付写入 `ppdcs/`，检查点写入 `process/checkpoints/`，状态写入 `process/STATE.yaml`。
+4. `ppdcs/ppdcs/` 和 `ppdcs/pc/` 均按每个逻辑用例单文件输出，文件名固定为 `<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，不创建深层模块目录。
+5. `ppdcs/delivery/` 只允许输出 `<特性名>特性测试方案.md` 和 `<特性名>特性测试用例.md`。
+6. `process/plan/` 是跨阶段边界产物：MFQ 阶段的 design-planner 写入，PPDCS 阶段的 Skill 读取。主 Agent 在 PPDCS 阶段启动时检查 plan 存在性。
 
 **绝对路径示例**（假设 cwd = `D:\workspace\myproject`）：
 
 ```
-✅ 正确：D:\workspace\myproject\analysis\feature-input\raw-requirements.md
-❌ 错误：D:\workspace\myproject\feature-input\raw-requirements.md
+✅ 正确：D:\workspace\myproject\kym\feature-input\raw-requirements.md
+❌ 错误：D:\workspace\myproject\analysis\feature-input\raw-requirements.md
 ❌ 错误：D:\workspace\myproject\.output\feature-input\raw-requirements.md
 ```
 
-> **简记**：读 `input/`，写 `analysis/`、`design/`、`checkpoints/`、`delivery/`、`doc/STATE.yaml`。
+> **简记**：读 `input/`，按阶段写入 `kym/`、`mfq/`、`process/plan/`、`ppdcs/`、`process/checkpoints/`、`process/STATE.yaml`。
 
 ## 公共因子库
 
@@ -149,7 +212,7 @@ tools:
 项目内只生成：
 
 ```text
-analysis/factor-usage/
+mfq/factor-usage/
 ├── factor-library-lock.yaml
 ├── factor-bindings.md
 ├── candidate-factor-proposals.yaml
@@ -185,7 +248,7 @@ CAE 中使用因子占位符：
 
 执行链路：
 
-1. `scenario-discovery` 在 `analysis/scenarios/confirmed-scenarios.md` 中固化已确认场景、`topology_ref`、角色、设备、端口、链路和来源。
+1. `scenario-discovery` 在 `kym/scenarios/confirmed-scenarios.md` 中固化已确认场景、`topology_ref`、角色、设备、端口、链路和来源。
 2. `m-analyzer` 的 CAE 只能表达测试逻辑和 `topology_role_refs`，不得把真实端口写入因子或 CAE value。
 3. `test-point-integrator` 从 `confirmed-scenarios.md` 绑定真实组网对象，输出 LC `topology_bindings`；无法绑定时写 `topology_binding_status=needs-confirmation` 和 `topology_gap_refs`。
 4. `design-planner`、PPDCS 设计 Skill 和 PC 生成阶段消费 LC 绑定表，PC 中任何真实端口必须能回链到 `LC.topology_bindings -> confirmed-scenarios.md`。
@@ -195,11 +258,11 @@ CAE 中使用因子占位符：
 
 ## 用户确认点
 
-| 节点 | 确认内容 | 确认方式 |
+| Gate | 确认内容 | 确认方式 |
 |------|---------|---------|
-| CP02 | 目录结构 + Seed-to-Scenario Mapping + Scenario Chain / Operation Path / Topology / atomic-ops / Knowledge Reference / 待确认缺口 | 收集全部 `confirmation_gaps` 并以统一决策清单呈现（每项含推荐方案 + 至少 1 个备选方案 + 优劣分析），展示 CP02 自动自检结果，等待用户确认 |
-| CP09 | 每个逻辑用例的 PPDCS 特征、设计方法、逻辑步骤和数据设计 | 收集全部设计决策项并以统一清单呈现（每项含推荐方案 + 至少 1 个备选方案 + 优劣分析），展示 `design/ppdcs/*.md` 汇总，等待用户确认 |
-| CP11 | 覆盖率报告 | 收集全部未覆盖项和覆盖边界决策，展示 `analysis/coverage/` 报告，等待用户确认 |
+| GATE-2 KYM Exit Gate | 目录结构 + Seed-to-Scenario Mapping + Scenario Chain / Operation Path / Topology / atomic-ops / Knowledge Reference / 待确认缺口 | 主 Agent 收集全部 `confirmation_gaps` 并以统一决策清单呈现（每项含推荐方案 + 至少 1 个备选方案 + 优劣分析），展示 GATE-2 自动自检结果（`process/checkpoints/GATE-2-KYM-Exit-auto.md`），等待用户确认 |
+| GATE-3 MFQ Exit Gate（**新增**） | M/F/Q 分析质量、LC 整合一致性、设计计划、公共因子消费 | 主 Agent 收集全部 MFQ 阶段决策项并以统一清单呈现（每项含推荐方案 + 至少 1 个备选方案 + 优劣分析），展示 GATE-3 自动自检结果（`process/checkpoints/GATE-3-MFQ-Exit-auto.md`）和上下游 Warning，等待用户确认 |
+| GATE-4 PPDCS Exit Gate | PPDCS 设计、覆盖率报告、PC 物化结果 | 主 Agent 收集全部设计决策项并以统一清单呈现（每项含推荐方案 + 至少 1 个备选方案 + 优劣分析），展示 GATE-4 自动自检结果（`process/checkpoints/GATE-4-PPDCS-Exit-auto.md`），等待用户确认 |
 
 ### 确认点通用规则
 
@@ -215,23 +278,23 @@ CAE 中使用因子占位符：
 
 | Skill | 触发词 | PPDCS | 阶段 |
 |-------|--------|-------|------|
-| `feature-parser` | 解析特性、解析需求、导入特性文件 | KYM | input |
-| `scenario-discovery` | 场景分析、搜索场景、应用场景、场景链 | KYM | scenario |
-| `m-analyzer` | M分析、功能分析、模块分析、PPDCS标注 | M+TCO | m-analysis |
-| `f-analyzer` | F分析、耦合分析、耦合矩阵、特性交互 | F | f-analysis |
-| `q-analyzer` | Q分析、质量分析、HTSM、质量属性 | Q | q-analysis |
-| `test-point-integrator` | 整合测试点、测试点合并、逻辑用例 | — | integration |
-| `design-planner` | 设计计划、PPDCS匹配、方法推荐 | PPDCS | plan |
-| `process-design` | 流程图、流程图法、路径分析 | P-Process | design-ppdcs / design-pc |
-| `parameter-design` | 判定表、因果图、参数规则、决策树 | P-Parameter | design-ppdcs / design-pc |
-| `data-design` | 等价类、边界值、数据分析 | D-Data | design-ppdcs / design-pc |
-| `combination-design` | 数据组合、Pairwise、正交、因子组合 | C-Combination | design-ppdcs / design-pc |
-| `state-design` | 状态图、状态机、状态迁移 | S-State | design-ppdcs / design-pc |
-| `design-ppdcs-analyzer` | PPDCS设计、逻辑用例设计、单文件设计 | PPDCS | design-ppdcs |
-| `coverage-verifier` | 覆盖检查、覆盖率、覆盖验证 | — | coverage |
-| `checkpoint-manager` | CP01、自检、检查点、输入检查 | — | checkpoint |
-| `deliverable-renderer` | 生成交付物、输出文档、测试方案 | — | delivery |
-| `case-retriever` | 检索用例、按需求查用例、按LC查用例、按标签查用例 | — | delivery 后回查 |
+| `feature-parser` | 解析特性、解析需求、导入特性文件 | KYM | KYM |
+| `scenario-discovery` | 场景分析、搜索场景、应用场景、场景链 | KYM | KYM |
+| `m-analyzer` | M分析、功能分析、模块分析、PPDCS标注 | M+TCO | MFQ |
+| `f-analyzer` | F分析、耦合分析、耦合矩阵、特性交互 | F | MFQ |
+| `q-analyzer` | Q分析、质量分析、HTSM、质量属性 | Q | MFQ |
+| `test-point-integrator` | 整合测试点、测试点合并、逻辑用例 | — | MFQ |
+| `design-planner` | 设计计划、PPDCS匹配、方法推荐 | PPDCS | MFQ |
+| `process-design` | 流程图、流程图法、路径分析 | P-Process | PPDCS |
+| `parameter-design` | 判定表、因果图、参数规则、决策树 | P-Parameter | PPDCS |
+| `data-design` | 等价类、边界值、数据分析 | D-Data | PPDCS |
+| `combination-design` | 数据组合、Pairwise、正交、因子组合 | C-Combination | PPDCS |
+| `state-design` | 状态图、状态机、状态迁移 | S-State | PPDCS |
+| `design-ppdcs-analyzer` | PPDCS设计、逻辑用例设计、单文件设计 | PPDCS | PPDCS |
+| `coverage-verifier` | 覆盖检查、覆盖率、覆盖验证 | — | PPDCS |
+| `checkpoint-manager` | GATE-1、GATE-2、GATE-3、GATE-4、GATE-5、CP01、自检、检查点、输入检查 | — | 共享工具 |
+| `deliverable-renderer` | 生成交付物、输出文档、测试方案 | — | PPDCS |
+| `case-retriever` | 检索用例、按需求查用例、按LC查用例、按标签查用例 | — | PPDCS 后回查 |
 | `change-impact-analyzer` | 需求变更、变更分析、增量分析 | — | 扩展 |
 | `bug-gap-analyzer` | 问题单、缺陷分析、覆盖盲区 | — | 扩展 |
 
@@ -239,11 +302,13 @@ CAE 中使用因子占位符：
 
 1. 创建目录结构：
    - `input/`（用户输入，如已存在则跳过）
-   - `analysis/feature-input/`、`analysis/scenarios/`、`analysis/m-analysis/`、`analysis/f-analysis/`、`analysis/q-analysis/`、`analysis/integration/`、`analysis/plan/`、`analysis/coverage/`
-   - `design/ppdcs/`、`design/pc/`、`checkpoints/`、`delivery/`、`doc/`
-2. 初始化 `doc/STATE.yaml`（记录当前步骤为 `input`）
+   - `kym/feature-input/`、`kym/scenarios/`
+   - `mfq/m-analysis/`、`mfq/f-analysis/`、`mfq/q-analysis/`、`mfq/integration/`、`mfq/factor-usage/`
+   - `ppdcs/ppdcs/`、`ppdcs/pc/`、`ppdcs/coverage/`、`ppdcs/delivery/`
+   - `process/plan/`、`process/checkpoints/`
+2. 初始化 `process/STATE.yaml`（记录 `current_phase: kym` 和 `current_step: feature-parser`，并将 GATE-1 状态置为 `pending`）
 3. 提示用户将特性需求文件放入 `input/` 目录
-4. 调用 `checkpoint-manager` 执行 CP01 input 自检，通过后调用 `feature-parser` 开始分析（输出写入 `analysis/feature-input/`）
+4. 调用 `checkpoint-manager` 执行 GATE-1 Entry Gate 自检，通过后更新 `process/STATE.yaml`（记录 GATE-1 结果），调用 `feature-parser` 开始分析（输出写入 `kym/feature-input/`）
 
 ## 目录层级规范
 
@@ -287,7 +352,7 @@ CAE 中使用因子占位符：
 SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表 + topology_bindings + 动作路径）→ 组合（数据×路径×拓扑绑定）→ PC（物理用例）
 ```
 
-每条物理用例可反向追踪：`PC → topology_bindings / 组合 → LC → TP → SR`；PC 中的真实设备、端口和链路还必须能追踪到 `analysis/scenarios/confirmed-scenarios.md`。
+每条物理用例可反向追踪：`PC → topology_bindings / 组合 → LC → TP → SR`；PC 中的真实设备、端口和链路还必须能追踪到 `kym/scenarios/confirmed-scenarios.md`。
 
 ## 交付物
 

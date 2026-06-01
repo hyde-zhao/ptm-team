@@ -52,4 +52,4 @@ md5sum: 3682c766b11460eb55af6957a7ce653f
 
 ## ptm-tde
 
-MFQ&PPDCS 测试用例设计工具，详细说明见 [docs/ptm-tde/README.md](../docs/ptm-tde/README.md)。
+MFQ&PPDCS 测试用例设计工具，基于三阶段框架（KYM → MFQ → PPDCS）+ 入口/出口门控（GATE-1 至 GATE-5）推进完整测试分析与用例设计流程。详细说明见 [docs/ptm-tde/README.md](../docs/ptm-tde/README.md)。

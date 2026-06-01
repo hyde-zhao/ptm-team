@@ -1,0 +1,159 @@
+# ptm-tde 检查点规范
+
+## 检查点矩阵
+
+| CP | 阶段 | 类型 | 文件 |
+|---|---|---|---|
+| CP01 | input | auto | `checkpoints/CP01_input_auto.md` |
+| CP02 | scenario | auto + manual | `checkpoints/CP02_scenario_auto.md` + `checkpoints/CP02_scenario_manual.md` |
+| CP03 | m-analysis | auto | `checkpoints/CP03_m-analysis_auto.md` |
+| CP04 | f-analysis | auto | `checkpoints/CP04_f-analysis_auto.md` |
+| CP05 | q-analysis | auto | `checkpoints/CP05_q-analysis_auto.md` |
+| CP06 | integration | auto | `checkpoints/CP06_integration_auto.md` |
+| CP07 | plan | auto | `checkpoints/CP07_plan_auto.md` |
+| CP08 | design-ppdcs | auto | `checkpoints/CP08_design-ppdcs_auto.md` |
+| CP09 | design-ppdcs | manual | `checkpoints/CP09_design-ppdcs_manual.md` |
+| CP10 | design-pc | auto | `checkpoints/CP10_design-pc_auto.md` |
+| CP11 | coverage | manual | `checkpoints/CP11_coverage_manual.md` |
+| CP12 | delivery | auto | `checkpoints/CP12_delivery_auto.md` |
+
+人工确认点只保留 CP02、CP09、CP11。其他 checkpoint 只做可机器判定的完整性、路径、字段和 trace 检查。
+
+## CP01 Input 自检
+
+CP01 在 input 阶段执行，结果写入：
+
+```text
+checkpoints/CP01_input_auto.md
+```
+
+状态写入：
+
+```text
+doc/STATE.yaml
+```
+
+## 检查项
+
+| # | 检查项 | 通过条件 | 阻断处理 |
+|---|---|---|---|
+| 1 | 需求文件存在 | 显式路径、本地 `input/` 或 wiki 中可找到需求/接口文档 | 提示用户提供需求文件 |
+| 2 | 特性名可确定 | 用户提供 > 需求标题 > 项目目录最后一级 | 提示用户提供特性名 |
+| 3 | 原子操作可用 | 全局命令 `atomic-ops` 可执行，或 wiki 有原子操作描述与特性接口文档 | 提示用户补充命令或 wiki 文档 |
+| 4 | 防火墙 topo 可用 | 本地 `input/` 或 wiki 可找到 topo | 提示用户提供 topo |
+| 5 | 耦合矩阵可用 | 本地 `input/` 或 wiki 可找到耦合矩阵/耦合关系 | 提示用户提供耦合矩阵 |
+| 6 | 输出目录就绪 | `analysis/`、`design/ppdcs/`、`design/pc/`、`checkpoints/`、`delivery/`、`doc/` 可创建 | 路径冲突或无权限时阻断 |
+
+## 脚本
+
+```text
+skills/checkpoint-manager/scripts/run_checkpoint.py
+```
+
+示例：
+
+```bash
+uv run --python 3.11 python skills/checkpoint-manager/scripts/run_checkpoint.py CP01 --project-root .
+```
+
+## 状态
+
+检查项状态：
+
+| 状态 | 含义 |
+|---|---|
+| `PASS` | 检查通过 |
+| `BLOCKING` | 缺少必要输入或路径不可用 |
+| `WAIVED` | 用户接受风险后放行 |
+
+整体结论：
+
+| 状态 | 含义 |
+|---|---|
+| `PASS` | 可进入 feature-parser |
+| `BLOCKED` | 不可继续，需补充输入或修复路径 |
+
+## CP02 Scenario 场景自检与确认
+
+CP02 在 `scenario-discovery` 完成后执行。该检查点必须先完成自动场景自检，再进入人工确认。
+
+结果写入：
+
+```text
+checkpoints/CP02_scenario_auto.md
+checkpoints/CP02_scenario_manual.md
+```
+
+## CP02 自动自检项
+
+| # | 检查项 | 通过条件 | 阻断处理 |
+|---|---|---|---|
+| 1 | 输入文档类型识别 | 场景产物明确区分 raw requirement / functional scenario seed / deployment scenario draft / confirmed scenario artifact | 回到 `scenario-discovery` 补输入分类 |
+| 2 | 场景再发现 | functional scenario seed 已经过头脑风暴、重构、归并、拆分和范围收敛 | 禁止把 seed 一对一改写为最终场景 |
+| 3 | Seed-to-Scenario Mapping | 每个 seed 均有映射、排除或缺口记录 | 未映射 seed 必须补齐 |
+| 4 | 范围收敛 | 用户约束进入 `scope_constraints`，排除项进入 `out_of_scope_candidates` | 范围不明时阻断 |
+| 5 | Topology Catalog | 依赖组网的场景均有 `topology_ref`、来源、Mermaid、设备/端口/链路表 | 缺拓扑时阻断 |
+| 6 | TGFW 组网集合 | 存在 `input/TGFW测试组网图集合.md` 时已读取并优先复用 | 未读取时阻断 |
+| 7 | Confirmed Scenarios | `confirmed-scenarios.md` 保留 `scenario_id / topology_ref / topology_role / device_id / port_id / link_id / source / fact_status` | 无确认基线时不得生成真实端口绑定 |
+| 8 | atomic-ops 唯一口径 | `source_type=atomic-ops`，`action_source_ref` 直接引用 atomic-ops `op_id` | 出现 REST API / CLI / tool-method 独立引用类型时阻断 |
+| 9 | 场景链字段完整 | 每个场景包含目标、原理、前置条件、原子操作、观察点、预期状态、最小逻辑链、退出动作 | 缺字段时补齐 |
+| 10 | 正常路径可追溯 | `normal_path` 包含 `step_id / sub_step_ids / operation / necessity / description`，且 `necessity` 仅使用 `必要 / 可选 / 至少选择一项` | 缺字段或取值不规范时补齐 |
+| 11 | 选择语义保留 | `至少选择一项` 步骤列出可选子步骤；`minimal_logic_chain` 未把可选步骤或选择组写成必做链路 | 选择语义丢失时补齐 |
+| 12 | 异常路径可追溯 | 每条异常路径包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling`，且 `related_normal_steps` 可解析或说明来源 | 缺少异常追溯时补齐 |
+| 13 | Knowledge Reference 三态 | 保留 `resolved / missing / unavailable` | 混写或缺失时补齐 |
+| 14 | 工具缺口 | 缺失 atomic-ops 或工具能力进入 Tool Abstraction Draft 或 confirmation gaps | 缺口未记录时阻断 |
+| 15 | 缺口分类 | `confirmation_gaps` 区分可下传缺口和必须先确认缺口 | 不分类时不得进入 M 分析 |
+
+## CP02 人工确认项
+
+| 确认项 | 说明 |
+|---|---|
+| 目录结构 | 三级/四级/五级目录是否支撑后续 M/F/Q 分析 |
+| 场景列表 | 部署、扩容、维护、可靠性、性能、易用性、配置顺序、异常路径是否覆盖目标范围 |
+| Seed-to-Scenario Mapping | 功能初稿如何重构为部署型场景是否可接受 |
+| Operation Path | 正常路径的大步骤、子步骤、必要性和选择组是否符合真实操作流程 |
+| Topology | `topology_ref`、Mermaid、设备/端口/链路是否符合实际组网 |
+| Topology Bindings Source | 真实端口来源、角色名称和 `fact_status` 是否可作为后续 LC 绑定基线 |
+| atomic-ops | 每个 `action_source_ref` 是否为真实 atomic-ops `op_id`，能力状态是否合理 |
+| Abnormal Path | 异常项是否追溯到具体正常步骤、子步骤、前置条件、环境故障或退出动作 |
+| Knowledge Reference | resolved / missing / unavailable 三态是否符合事实 |
+| Confirmation Gaps | 哪些缺口必须先补，哪些可下传到 M/F/Q |
+
+整体结论：
+
+| 状态 | 含义 |
+|---|---|
+| `PASS` | 可进入 M 分析 |
+| `BLOCKED` | 场景事实不足，不可继续 |
+| `WAIVED` | 用户接受风险后放行，并记录风险项 |
+
+## 跨阶段拓扑绑定检查
+
+以下检查贯穿 CP03、CP06、CP10、CP11 和 CP12，用于保证测试因子、拓扑角色和真实组网对象分层。
+
+| 检查点 | 阶段 | 检查项 | 通过条件 | 阻断处理 |
+|---|---|---|---|---|
+| CP03 | m-analysis | CAE topology role | M 输出只包含 `topology_role_refs`，不包含 `DUT.port1`、`TG.port1` 或真实 link 实例作为 factor value | 回到 M 分析，拆出 topology role |
+| CP06 | integration | LC topology bindings | LC `topology_bindings` 从 `confirmed-scenarios.md` 绑定真实 `device_id / port_id / link_id`，并保留 `source / fact_status` | 无法绑定时写 `needs-confirmation` 和 `topology_gap_refs` |
+| CP08/CP09 | design-ppdcs | PPDCS 消费绑定 | 设计过程引用 `topology_binding_refs`，不重新发明真实端口 | 缺绑定引用时补齐或回退 LC |
+| CP10 | design-pc | PC materialization | PC 中所有真实设备、端口、链路均能回链到 LC `topology_bindings` 和 `confirmed-scenarios.md` | 无回链时不得标记 confirmed |
+| CP11 | coverage | 覆盖状态保持 | 覆盖统计不把 `topology_binding_status=needs-confirmation` 或 `fact_status=needs-confirmation` 提升为 confirmed | 输出 topology binding gap |
+| CP12 | delivery | 交付字段保留 | 交付物保留 `topology_bindings / topology_role / source / fact_status`，并且真实端口不进入因子取值表 | 渲染前修正字段或列出阻断项 |
+
+公共因子校验与拓扑绑定校验并行存在：`factor_bindings` 仍用于公共因子与样本覆盖，`topology_bindings` 只用于真实组网对象回链。
+
+## ptm-tde CP 与 Meta Flow CP 映射
+
+ptm-tde 使用 CP01-CP12 作为测试设计方法论内部检查点，Meta Flow 使用 CP0-CP8 作为工作流产物开发生命周期门控。两个体系使用相同 `CP` 前缀但语义不同，映射关系如下：
+
+| ptm-tde CP | 阶段 | Meta Flow CP | 说明 |
+|------------|------|-------------|------|
+| CP01 | input 自检 | CP0-CP1 | ptm-tde 的 input 自检对应 Meta Flow 的请求受理和场景完备 |
+| CP02 | scenario 自检+确认 | CP2 | ptm-tde 的场景确认是 Meta Flow 需求基线门的一部分 |
+| CP03-CP05 | M/F/Q 分析 | — | ptm-tde 特有的测试分析方法论步骤，无 Meta Flow 对应 |
+| CP06-CP07 | 整合+计划 | CP4 | 测试点整合和设计计划对应 Story 拆解与并行安全 |
+| CP08-CP10 | PPDCS 设计+PC | CP5-CP7 | 设计实现对应 Story LLD、编码和验证 |
+| CP11 | 覆盖率确认 | CP7 | 覆盖率验证是验证完成门的一部分 |
+| CP12 | 交付 | CP8 | 交付自检对应交付就绪门 |
+
+**注意**：ptm-tde 的检查点文件写入项目级 `checkpoints/` 目录（如 `checkpoints/CP01_input_auto.md`），Meta Flow 的自动检查写入 `process/checks/CP*.md`，人工确认稿写入仓库级 `checkpoints/CP*.md`。两者在同一仓库中通过不同文件路径和命名约定共存，不会互相覆盖。
