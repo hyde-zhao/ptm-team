@@ -52,4 +52,4 @@ md5sum: 3682c766b11460eb55af6957a7ce653f
 
 ## ptm-tde
 
-等待补充
+MFQ&PPDCS 测试用例设计工具，详细说明见 [docs/ptm-tde/README.md](../docs/ptm-tde/README.md)。

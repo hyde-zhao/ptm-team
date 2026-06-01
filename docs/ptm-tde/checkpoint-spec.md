@@ -141,3 +141,19 @@ checkpoints/CP02_scenario_manual.md
 | CP12 | delivery | 交付字段保留 | 交付物保留 `topology_bindings / topology_role / source / fact_status`，并且真实端口不进入因子取值表 | 渲染前修正字段或列出阻断项 |
 
 公共因子校验与拓扑绑定校验并行存在：`factor_bindings` 仍用于公共因子与样本覆盖，`topology_bindings` 只用于真实组网对象回链。
+
+## ptm-tde CP 与 Meta Flow CP 映射
+
+ptm-tde 使用 CP01-CP12 作为测试设计方法论内部检查点，Meta Flow 使用 CP0-CP8 作为工作流产物开发生命周期门控。两个体系使用相同 `CP` 前缀但语义不同，映射关系如下：
+
+| ptm-tde CP | 阶段 | Meta Flow CP | 说明 |
+|------------|------|-------------|------|
+| CP01 | input 自检 | CP0-CP1 | ptm-tde 的 input 自检对应 Meta Flow 的请求受理和场景完备 |
+| CP02 | scenario 自检+确认 | CP2 | ptm-tde 的场景确认是 Meta Flow 需求基线门的一部分 |
+| CP03-CP05 | M/F/Q 分析 | — | ptm-tde 特有的测试分析方法论步骤，无 Meta Flow 对应 |
+| CP06-CP07 | 整合+计划 | CP4 | 测试点整合和设计计划对应 Story 拆解与并行安全 |
+| CP08-CP10 | PPDCS 设计+PC | CP5-CP7 | 设计实现对应 Story LLD、编码和验证 |
+| CP11 | 覆盖率确认 | CP7 | 覆盖率验证是验证完成门的一部分 |
+| CP12 | 交付 | CP8 | 交付自检对应交付就绪门 |
+
+**注意**：ptm-tde 的检查点文件写入项目级 `checkpoints/` 目录（如 `checkpoints/CP01_input_auto.md`），Meta Flow 的自动检查写入 `process/checks/CP*.md`，人工确认稿写入仓库级 `checkpoints/CP*.md`。两者在同一仓库中通过不同文件路径和命名约定共存，不会互相覆盖。

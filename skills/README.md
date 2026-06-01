@@ -1,6 +1,13 @@
-# skills
+# Skills
 
-Skills 使用帮助，待补充。
+ptm-team 平台下所有 Skill 的索引、使用帮助与跨阶段契约。本文件覆盖 ptm-tde 测试设计工具链（19 个核心 Skill）、自动化工厂（2 个运维 Skill）和扩展工具（流量生成、atomic-ops 构建）。
+
+## 使用说明
+
+- **安装**：通过 `ptm-team install claude --agent ptm-tde` 一键安装 ptm-tde Agent 及其关联的全部 Skill 和公共因子库。
+- **调用**：Skill 由 ptm-tde Agent 按 11 步主流程自动调度，用户只需在人工检查点（CP02/CP09/CP11）确认输出。
+- **索引**：下方 Skill Index 列出每个 Skill 的角色和在流程中的位置，Cross-Stage Contracts 定义 Skill 间的数据契约。
+- **版本**：Skill 当前未独立版本化，以 ptm-tde Agent 版本和 CR 变更记录为准（参见 `process/STATE.md` 和 `process/changes/`）。
 
 ## Skill Index
 
