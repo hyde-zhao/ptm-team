@@ -268,6 +268,38 @@ integrator 必须消费并透传以下字段：
 若以上文件**全部不存在**，输出 `⚠️ Warning：无可候选汇总数据，跳过本步骤` 并继续步骤 5。
 若部分文件存在但格式不一致，输出 Warning 并展示原始内容，继续流程。
 
+##### 4.5.1.5 因子库反查去重
+
+> 在去重合并之前，用公共因子库对候选因子做反查，消除因 m-analyzer 扫描遗漏导致的假阳性候选。
+
+**反查逻辑**：
+
+```
+1. 重建因子库索引：
+   a. 优先读取 mfq/m-analysis/factor-resolution-report.md 中的命中记录（含 N_scanned）
+   b. 若 resolution-report 不可用 → 重建索引：
+      读取 resource/factor-libraries/index.yaml → 遍历各库 factor-library.yaml → 构建 factor_id 索引
+   c. 若 index.yaml 不可读 → ⚠️ Warning："无法读取因子库索引，跳过反查去重"，继续现有流程
+
+2. 对每个候选因子执行反查：
+   a. 在因子库索引中按 factor_id / factor_name / aliases 检索
+   b. 命中（已在公共库中存在）：
+      → 标记 "已在公共因子库中存在"（library_id + factor_id + match_confidence）
+      → 优先级降级为 low，加入候选汇总时标记 [库中已存在]
+      → 说明：该因子可能因 m-analyzer 扫描遗漏而被误标为候选
+   c. 未命中 → 保留为候选，按现有优先级规则处理
+
+3. 输出反查结果摘要：
+   - 反查前候选数 / 反查命中数 / 反查后候选数
+   - 命中明细：每个命中项的 candidate_id → library_id.factor_id → match_confidence
+```
+
+**反查后的处理**：
+
+- 反查命中的候选仍展示在汇总表中，但标记为 `[库中已存在]` 且优先级为 low
+- 用户可在 Step 4.5.3 确认时将其移除或拒绝
+- 反查未命中的候选按现有流程进入优先级判定
+
 #### 4.5.2 去重合并与优先级判定
 
 **因子候选去重**：
