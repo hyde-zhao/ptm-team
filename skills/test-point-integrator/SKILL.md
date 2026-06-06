@@ -300,6 +300,34 @@ integrator 必须消费并透传以下字段：
 - 用户可在 Step 4.5.3 确认时将其移除或拒绝
 - 反查未命中的候选按现有流程进入优先级判定
 
+##### 4.5.1.6 原子操作候选交叉验证
+
+> 用 atomic-ops CLI 对候选原子操作做反向查询，验证是否有已存在的操作可覆盖该候选。
+
+**交叉验证逻辑**：
+
+```
+1. 读取候选列表：
+   - M 原子操作候选：mfq/m-analysis/candidate-atomic-ops.yaml
+
+2. 若 atomic-ops CLI 可用：
+   a. 对每个候选原子操作执行语义查询：
+      用候选的 candidate_op_name 构造查询 → atomic-ops list --format json
+      → 在全部 op_id / description / tags 中做关键词匹配（复用 m-analyzer 同义词表）
+   b. 命中已有操作：
+      → 标记 "已有原子操作可覆盖"（matched_op_id + match_source）
+      → 优先级降级为 low，汇总时标记 [已有可覆盖]
+      → 记录到 atomic-op-bindings.yaml
+   c. 未命中 → 保留为候选，按现有流程处理
+
+3. 若 CLI 不可用 → ⚠️ Warning："atomic-ops CLI 不可用，跳过候选交叉验证"，继续
+```
+
+**交叉验证结果**：
+
+- 写入 `mfq/atomic-op-usage/atomic-op-bindings.yaml`（命中绑定时）
+- 交叉验证命中的候选仍展示在汇总表，标记为 `[已有可覆盖]` 且优先级 low
+
 #### 4.5.2 去重合并与优先级判定
 
 **因子候选去重**：

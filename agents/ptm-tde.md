@@ -108,7 +108,7 @@ PPDCS 阶段调用顺序：
 | 阶段 | 包含步骤 | 关键 Skill | 入口 Gate | 出口 Gate | 产物目录 |
 |------|----------|-----------|-----------|-----------|----------|
 | **KYM**（Know Your Mission） | feature-parser → kym Skill → scenario-discovery | `feature-parser`、`kym`、`scenario-discovery` | GATE-1 Entry Gate（纯自检） | GATE-2 KYM Exit Gate（自检+人工） | `kym/feature-input/`、`kym/mission-understanding/`、`kym/scenarios/` |
-| **MFQ**（M/F/Q Analysis） | m-analyzer → (f-analyzer ∥ q-analyzer) → test-point-integrator → design-planner | `m-analyzer`、`f-analyzer`、`q-analyzer`、`test-point-integrator`、`design-planner` | GATE-2（通过后进入） | GATE-3 MFQ Exit Gate（自检+人工） | `mfq/m-analysis/`、`mfq/f-analysis/`、`mfq/q-analysis/`、`mfq/integration/`、`mfq/factor-usage/`、`process/plan/` |
+| **MFQ**（M/F/Q Analysis） | m-analyzer → (f-analyzer ∥ q-analyzer) → test-point-integrator → design-planner | `m-analyzer`、`f-analyzer`、`q-analyzer`、`test-point-integrator`、`design-planner` | GATE-2（通过后进入） | GATE-3 MFQ Exit Gate（自检+人工） | `mfq/m-analysis/`、`mfq/f-analysis/`、`mfq/q-analysis/`、`mfq/integration/`、`mfq/factor-usage/`、`mfq/atomic-op-usage/`、`process/plan/` |
 | **PPDCS**（Design & Delivery） | design-ppdcs-analyzer → (5设计Skill ∥ PC) → coverage-verifier → deliverable-renderer | `design-ppdcs-analyzer`、5设计Skill（可并行）、`coverage-verifier`、`deliverable-renderer` | GATE-3（通过后进入） | GATE-4 PPDCS Exit Gate（自检+人工） | `ppdcs/ppdcs/`、`ppdcs/pc/`、`ppdcs/coverage/`、`ppdcs/delivery/` |
 
 ### Gate 门控总览
@@ -168,6 +168,7 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 - **`process/STATE.yaml`** — 当前特性项目运行状态。
 - **`input/`** — 原始输入目录，只读；放置特性需求文件、防火墙 topo 文件、耦合矩阵 Excel、参考资料等。
 - **`mfq/factor-usage/`** — 本项目因子库消费记录，只保存公共库 lock、factor bindings、候选提案和解析报告；不得保存公共因子库主库。
+- **`mfq/atomic-op-usage/`** — 本项目原子操作消费记录，保存 atomic-ops CLI lock、bindings 和解析报告。与 factor-usage/ 平行独立维护。（CR-016 新增）
 - **`kym/scenarios/confirmed-scenarios.md`** — 已确认场景、Topology 与真实设备/端口/链路来源基线，供 LC `topology_bindings` 和 PC 物化回链。
 
 ```

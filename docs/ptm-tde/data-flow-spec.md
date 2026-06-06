@@ -1048,6 +1048,32 @@ CAE 的 A（Action）字段约束：
 
 > **GATE-1 强制检查** `[已实现 CR-010]`：GATE-1 #3 检查原子操作可用性（全局命令或 wiki 可找到）；不可用时提示用户补充，不阻断（用户可继续分析，但执行阶段受阻）。
 
+### 8.8 CLI 查询语义匹配（CR-016 新增）
+
+> m-analyzer v3.0+ 通过 Step 1.6 运行 `atomic-ops list --format json` 获取全部操作的完整元数据（op_id / description / tags / parameters_summary），构建内存索引供 Step 2C 执行加权分词语义匹配。
+
+**CLI 查询字段**：
+
+| 字段 | 类型 | 语义匹配权重 | 说明 |
+|------|------|:--:|------|
+| `op_id` | string | 3.0 | 操作 ID，主匹配维度 |
+| `description` | string | 1.0 | 操作描述，辅助匹配 |
+| `tags` | list[string] | 2.0 | 分类标签（如 firewall/capacity/interface） |
+| `parameters_summary` | list[{name,type,required}] | 1.5 | 参数名列表，辅助区分同类操作 |
+
+**匹配级别**：
+
+| 级别 | 条件 | 说明 |
+|------|------|------|
+| L1 strong-exact-match | action_source_ref 精确命中 | 无需语义匹配 |
+| L2 strong-semantic-match | 加权总分 ≥ 6.0 | 直接复用 |
+| L3 weak-semantic-match | 3.0 ≤ 总分 < 6.0 | 记录最佳匹配，人工审查 |
+| L4 no-match | 总分 < 3.0 或 CLI 不可用 | 生成候选 |
+
+**CLI 不可用降级**：Step 1.6 降级输出 WARNING，Step 2C 仅执行 L1 精确匹配 + L4 候选生成。不阻断流程。
+
+**新增输出**：`mfq/atomic-op-usage/atomic-op-lock.yaml`（CLI 版本快照）、`mfq/atomic-op-usage/atomic-op-bindings.yaml`（匹配绑定）、`mfq/atomic-op-usage/atomic-op-resolution-report.md`（匹配统计）。
+
 ---
 
 ## 附录：实体生产消费矩阵（总表）
