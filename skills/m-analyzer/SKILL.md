@@ -1,22 +1,25 @@
 ---
 name: m-analyzer
 description: >-
-  M 分析（MD: Model-based Discrete Function）：按四/五级目录拆分单功能，
-  为每个单功能标注 PPDCS 特征（Process/Parameter/Data/Combination/State），
-  生成覆盖需求和场景的测试点。
+  M 分析 v3.0（MD: Model-based Discrete Function）：按场景步骤驱动发现测试对象与因子，
+  逐步骤评估关联度、匹配公共因子库、检查原子操作支撑、打场景步骤标签（[M]/[F→]/[Q→]），
+  生成 Scenario-TSP 覆盖矩阵、TSP 描述（含 covered_scenario_segments + f_tags + q_tags）、
+  PPDCS 特征标注和按关联度分级的 CAE 测试点，输出因子候选与原子操作候选列表。
   触发词包括：M分析、功能分析、模块分析、测试点分析、PPDCS标注。
   适用场景：MFQ 分析的第三步（m-analysis 阶段）。
-argument-hint: "无需参数，自动读取 feature-input 目录"
+argument-hint: "无需参数，自动读取 kym/ 和 mfq/ 目录"
 user-invokable: true
 status: active
 ---
 
 ## 目标
 
-基于 feature-parser 输出的结构化需求、已确认目录以及 STORY-03 产出的
-`Scenario Chain / atomic-ops / Knowledge Reference / Existing Tool Usage Seed / Tool Abstraction Draft / confirmation_gaps`，
-逐模块/子模块分析功能点，**为每个单功能标注 PPDCS 主特征**，
-生成带 trace chain v6 的 CAE 测试点，并抽取后续设计所需的测试对象与测试因子。
+基于 KYM 阶段产出的结构化需求、已确认目录、已确认场景和 mission-statement，
+**逐场景步骤驱动**发现测试对象与测试因子，评估对象关联度（高/中/低），匹配公共因子库（已有 vs 候选），
+检查原子操作支撑（已有 vs 候选），对每个场景步骤打标签 `[M]` / `[F→]` / `[Q→]`，
+建立 Scenario-TSP 覆盖矩阵，为每个单功能标注 PPDCS 主特征，
+按对象关联度分级生成带 trace chain v6 的 CAE 测试点，
+输出因子候选和原子操作候选列表供下游消费。
 
 ## 理论基础
 
@@ -41,36 +44,48 @@ M 分析即 MFQ 框架中的 **MD（Model-based Discrete Function）**：
 **MFQ 分层概念（强制）**：
 - **测试因子**：只表示业务取值、配置取值、数据取值或报文取值，例如协议类型、端口号取值、状态枚举、阈值、字段值。
 - **拓扑角色**：只表示测试逻辑位置，例如匹配流量入口、DUT 出口、流量发生端、观测端；CAE 中可写成 `{{topo_role:MATCH_INGRESS_IF}}`。
-- **真实组网对象**：只表示 `analysis/scenarios/confirmed-scenarios.md` 中已确认的 TOPO 实例，例如具体 DUT/TG/接口/link 绑定。
+- **真实组网对象**：只表示 `kym/scenarios/confirmed-scenarios.md` 中已确认的 TOPO 实例，例如具体 DUT/TG/接口/link 绑定。
 
 测试因子、拓扑角色、真实组网对象必须分层输出。禁止把 `DUT.port1`、`TG.port1`、link 实例或任何真实端口写成 factor value。
 
 ## 适用范围
 
-- 适用阶段：MFQ 分析的 m-analysis 阶段
-- 输入：`analysis/feature-input/` + `analysis/scenarios/confirmed-scenarios.md`
-- 输出：
-  - `analysis/m-analysis/test-points.md`
-  - `analysis/m-analysis/ppdcs-annotation.md`
-  - `analysis/m-analysis/test-objects-factors.md`
+- 适用阶段：MFQ 分析的 m-analysis 阶段（v3.0 场景步骤驱动模式）
+- 输入路径：
+  - `kym/feature-input/` + `kym/scenarios/confirmed-scenarios.md`
+  - `kym/mission-understanding/mission-statement.md`
+  - 公共因子库（`mfq/factor-usage/`）
+- 输出路径（全部写入 `mfq/m-analysis/`）：
+  - `test-points.md`、`ppdcs-annotation.md`、`test-objects-factors.md`
+  - `scenario-tsp-coverage.md`（v3.0 新增：覆盖矩阵 + 标签汇总）
+  - `tsp/<M编号>-tsp.md`（v3.0 新增：每个 M 的 TSP 描述）
+  - `factor-resolution-report.md`
+  - `candidate-factor-proposals.yaml`（v3.0 新增：因子候选列表）
+  - `candidate-atomic-ops.yaml`（v3.0 新增：原子操作候选列表）
 
 ## 前置条件
 
-- [ ] `analysis/feature-input/raw-requirements.md` 存在
-- [ ] `analysis/feature-input/directory-structure.md` 存在（用户已确认）
-- [ ] `analysis/scenarios/confirmed-scenarios.md` 存在（用户已确认）
+- [ ] `kym/feature-input/raw-requirements.md` 存在
+- [ ] `kym/feature-input/directory-structure.md` 存在（用户已确认）
+- [ ] `kym/scenarios/confirmed-scenarios.md` 存在（用户已确认）
+- [ ] `kym/mission-understanding/mission-statement.md` 存在（KYM 产出可用）
+- [ ] 全局 atomic-ops 可用（GATE-1 #3 检查）
 - [ ] 若 `confirmation_gaps` 仍存在，已明确哪些 gap 可继续下游透传，哪些必须先回到场景确认
+
+⛔ **HARD-STOP（STOP-03）**：禁止 Agent 绕过本 Skill 直接生成 M 分析产物。M 分析必须通过 m-analyzer Skill 调用执行。不得跳过子步骤 A/B/C/D 中的任一步，不得使用旧版 v2.0 的"逐模块功能分析"模式替代场景步骤驱动模式。
 
 ## 场景输入契约（trace chain v6）
 
-M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简述”：
+M 分析必须消费以下上游字段，不再假设"只有场景标题 + 简述"：
 
 | 上游字段 | 用途 | 缺失处理 |
 |------|------|------|
 | `Scenario Chain` | 生成 TP 的场景上下文与最小逻辑链骨架 | 不得脑补，输出 `[待确认]` 并挂 `confirmation_gap_refs` |
 | `precondition_operations` | 生成 C 条件与前置动作 trace | 缺失时仅保留已确认前置，不得伪造操作 |
-| `atomic_operations` | 生成 A 动作、动作顺序和 `scenario_chain_refs` | 缺失时不得把“功能描述”直接当成可执行动作 |
+| `atomic_operations` | 生成 A 动作、动作顺序和 `scenario_chain_refs` | 缺失时不得把"功能描述"直接当成可执行动作 |
 | `atomic-ops` | 关联 `action_source_refs`，识别 atomic-ops `op_id` 依赖 | 若原子操作契约不清，仅标记 `unknown/gap` |
+| `minimal_logic_chain` | 逻辑链步骤序列，逐步骤扫描的核心输入 | 缺失时场景步骤不完整，标记 `confirmation_gap_refs` |
+| `observation_targets` | 附加到步骤上的观察点，辅助对象关联度判定 | 缺失时仅基于步骤描述判定 |
 | `Knowledge Reference` | 记录需求/场景依据来源 | `missing/unavailable` 必须保留原状态 |
 | `Existing Tool Usage Seed` | 保留已有工具线索供后续 F/Q/Integrator 使用 | 没有则留空，不做默认映射 |
 | `Tool Abstraction Draft` | 标记能力缺口背景 | 仅引用已确认草案 |
@@ -81,111 +96,280 @@ M 分析必须消费以下上游字段，不再假设“只有场景标题 + 简
 
 ### 步骤 1：加载输入
 
-1. 读取 `analysis/feature-input/raw-requirements.md` 获取需求条目列表
-2. 读取 `analysis/feature-input/directory-structure.md` 获取目录层级
-3. 读取 `analysis/scenarios/confirmed-scenarios.md` 获取已确认场景链、atomic-ops、知识引用与 gap
-4. 读取 confirmed-scenarios.md 中的 TOPO / 组网实例，建立 `scenario_ref -> topology_refs -> topology_role_refs` 的可追溯索引
-5. 校验每个场景是否包含 `Scenario Chain / atomic-ops / Knowledge Reference`
-6. 对影响 CAE 落地的未确认事实建立 `confirmation_gap_refs`，不做隐式默认
-7. 对影响 CAE 拓扑落地的缺口建立 `topology_gap_refs`，不把真实端口降级写入测试因子
+**📥 消费**：
 
-### 步骤 2：逐模块功能分析
+| 文件 | 消费字段 | 用途 |
+|------|---------|------|
+| `kym/feature-input/raw-requirements.md` | 全文 | 需求条目列表 |
+| `kym/feature-input/directory-structure.md` | 四/五级目录层级 | 分析范围 |
+| `kym/scenarios/confirmed-scenarios.md` | Scenario Chain / precondition_operations / atomic_operations / minimal_logic_chain / observation_targets / Knowledge Reference / TOPO | 场景上下文与步骤序列 |
+| `kym/mission-understanding/mission-statement.md` | `test_items.items` + `dont_test` | M 识别边界 |
+| | `risks[].area` + `likelihood` + `impact` | 风险预填（步骤 5 用） |
+| | `downstream_guidance.mfq.suggested_m_granularity` | M 拆分粒度建议 |
 
-按四级目录（模块）→五级目录（子模块）的顺序，依次分析：
-
-对每个子模块：
-1. 提取该子模块关联的需求条目
-2. 提取该子模块关联的 `scenario_refs`
-3. 从 `minimal_logic_chain + precondition_operations + atomic_operations` 提取该子模块的功能点
-4. 对每个功能点，考虑以下维度生成测试点：
-   - **正常功能**：功能按预期工作
-   - **参数边界**：输入参数的有效/无效边界
-   - **异常处理**：错误输入、异常条件下的行为
-   - **默认值**：默认配置下的行为
-   - **交互影响**：与同模块内其他功能的交互
-
-### 步骤 3：测试对象 / 测试因子 / 拓扑角色提取
-
-先提取测试对象，再提取测试因子，最后提取拓扑角色约束：
-
-1. **测试对象提取优先级**：`C（Condition） → A（Action） → E（Effect）`
-2. 每个对象至少记录：
-
-| 字段 | 说明 |
-|------|------|
-| `object_id` | 对象编号 |
-| `object_name` | 对象名称 |
-| `object_type` | 配置对象 / 运行态对象 / 接口对象 / 观测对象 |
-| `observation_targets` | 如何判断对象状态变化 |
-| `scenario_refs` | 来源场景 |
-| `action_source_refs` | 关联 atomic-ops `op_id` |
-
-3. 每个因子至少记录：
-
-| 字段 | 说明 |
-|------|------|
-| `factor_id` | 因子编号 |
-| `factor_name` | 因子名称 |
-| `source_section` | `precondition / condition / action-input / observation` |
-| `data_domain` | 取值范围 / 枚举 / 阈值 |
-| `related_object_id` | 关联对象 |
-| `scenario_refs` | 来源场景 |
-| `confirmation_gap_refs` | 若取值边界未确认 |
-
-4. 典型因子：`IP地址 / 协议类型 / 报文字段值 / 状态值 / 数量阈值 / 配置项取值`
-5. 因子取值只能来自业务、配置、数据、报文取值；接口角色、设备角色、物理端口、link 实例不得作为 `data_domain / value_set / factor_bindings.expr`
-6. 无法确认对象或因子边界时，输出 `[待确认]` 并保留 gap，不得自行补齐
-
-拓扑角色至少记录：
-
-| 字段 | 说明 |
-|------|------|
-| `topology_role_ref` | 角色编号或占位符，如 `MATCH_INGRESS_IF` |
-| `role_name` | 测试逻辑位置名称 |
-| `role_expression` | CAE 中使用的角色占位，如 `{{topo_role:MATCH_INGRESS_IF}}` |
-| `scenario_refs` | 来源场景 |
-| `topology_refs` | confirmed-scenarios.md 中 TOPO 实例引用 |
-| `topology_binding_status` | `confirmed / needs-confirmation / unbound` |
-| `topology_gap_refs` | 绑定缺口或不唯一引用 |
-
-CAE 中允许使用 `{{topo_role:MATCH_INGRESS_IF}}`、`{{topo_role:DUT_EGRESS_IF}}` 等角色占位。若 CAE 必须出现真实端口或链路，必须能通过 `topology_refs` 回链到 confirmed-scenarios.md；无法回链时该 TP 的 `fact_status=needs-confirmation`，并写入 `topology_gap_refs`。
-
-### 步骤 4：PPDCS 特征标注（v2 新增）
-
-**对每个五级目录节点（单功能），分析其内在逻辑特征并标注 PPDCS 主特征**：
+**🔄 处理逻辑**：
 
 ```
-对每个单功能：
-  1. 分析需求描述中的逻辑结构
-  2. 按以下优先级逐条判断：
+1. 读取需求条目，建立「需求条目 → 目录节点」的映射
+2. 读取目录层级，获得分析范围（按四级→五级展开）
+3. 读取场景链，将每个场景展开为操作步骤序列：
+   - 提取 precondition_operations（前置步骤）
+   - 提取 atomic_operations（执行步骤）
+   - 提取 minimal_logic_chain（逻辑链）
+   - 提取 observation_targets（观察点）
+   - 按原始顺序拼接：precondition_ops → atomic_ops → logic_chain
+   - 为每个步骤分配 step_index（场景内顺序号）
+4. 建立 scenario_ref → topology_refs → topology_role_refs 的可追溯索引
+5. 校验每个场景是否包含必需的场景链、atomic-ops、知识引用
+6. 对影响后续分析的未确认事实，建立 confirmation_gap_refs 和 topology_gap_refs
+7. 读取 mission-statement 的 test_items / dont_test / risks 用于后续边界判定
+```
+
+### 步骤 2：场景步骤驱动的对象与因子发现
+
+> 这是 M 分析最核心的步骤。逐场景、逐步骤扫描，在每一步中发现测试对象、测试因子和原子操作依赖，
+> 区分"已有"和"候选"两类产出，打场景步骤标签，建立 Scenario→TSP 覆盖映射。
+
+**📥 消费**：
+
+| 消费数据 | 字段 | 用途 |
+|---------|------|------|
+| 步骤 1 的场景步骤序列 | precondition_operations / atomic_operations / minimal_logic_chain | 逐步骤扫描 |
+| 步骤 1 的需求映射 | 需求条目 → 目录节点 | 判定步骤归属的子模块 |
+| `confirmed-scenarios.md` | knowledge_ref / action_source_ref | 追溯来源 |
+| 公共因子库 | factor_id / factor_name / aliases / owner_object | 匹配已有因子 |
+| 全局 atomic-ops | 全部 op_id | 匹配已有原子操作 |
+
+**🔄 处理逻辑**：
+
+```
+对每个已确认的场景（Scenario Chain）：
+  对场景中的每个操作步骤（precondition_operations + atomic_operations + minimal_logic_chain）：
+
+    【子步骤 A：识别测试对象】
+    1. 从步骤描述中识别操作目标（配置项、数据实体、协议报文、状态机、接口等）
+    2. 判断该目标是否可作为一个"测试对象"：可独立配置/操作？可独立观测其状态变化？
+       否 → 跳过，继续下一对象
+    3. 评估该对象与当前特性的关联度：
+
+       | 判定维度 | 高关联 | 中关联 | 低关联 |
+       |---------|--------|--------|--------|
+       | 操作频率 | 每个场景路径都操作该对象 | 部分场景操作该对象 | 仅初始化/清理时使用 |
+       | 结果影响 | 对象状态直接决定测试结果 | 对象影响局部行为 | 对象不影响测试判定 |
+       | 可替代性 | 不可替代 | 可部分替代（默认值） | 完全可替代 |
+       | 需求明确度 | SR 明确描述该对象的预期行为 | SR 提及但未详述 | SR 未单独提及 |
+
+       综合判定：满足 ≥2 条的高关联条件 → 高关联；满足 ≥2 条的低关联条件 → 低关联；其余 → 中关联。
+
+       处理策略：
+       - 高关联 → 标记为"已确认对象"，必须生成测试点（正常+边界+异常）
+       - 中关联 → 标记为"已确认对象"，选择性生成测试点（至少正常功能）
+       - 低关联 → 记录但不生成 M 测试点，供 F 分析参考
+    4. 记录：object_id / object_name / object_type / 关联度 + 判定理由 /
+       observation_targets / scenario_refs
+
+    【子步骤 B：发现/匹配测试因子】
+    1. 从该步骤的操作参数、输入数据、前置条件中提取候选因子：
+       - 配置参数（IP、端口、协议类型、阈值...）
+       - 数据字段（报文内容、字段值、编码格式...）
+       - 状态值（ON/OFF、active/standby...）
+       - 约束条件（数量上限、时间窗口...）
+    2. 在公共因子库中检索每个候选因子：
+       查找顺序：PTM_TEAM_RESOURCE_HOME/factor-libraries → ~/.ptm-team/resource/factor-libraries → resource/factor-libraries
+       按 factor_id / factor_name / aliases / owner_object 检索
+       - 命中 active 因子 → 标记为"已有因子"（source=public-library），直接复用
+         · 如值域/样本/约束不足 → 记录扩展建议
+       - 未命中 → 标记为"因子候选"（source=new-candidate），加入候选列表
+    3. 记录：factor_id / factor_name / source_section（precondition/action-input/observation）/
+       data_domain / related_object_id / source（public-library/new-candidate）/ scenario_refs
+
+    【子步骤 C：检查原子操作支撑】
+    1. 判断该步骤是否已有原子操作支撑：
+       - 若步骤的 action_source_ref 指向已有 atomic-ops op_id → "已有原子操作"，直接引用
+       - 若可用已有 atomic-ops 组合实现 → "已有原子操作"
+       - 其余 → 生成"原子操作候选"
+    2. 原子操作候选格式：
+       - candidate_op_name：建议的操作名称（动词 + 对象 + 参数，非描述性文字）
+       - candidate_op_desc：操作的行为描述
+       - related_object_id：关联的测试对象
+       - related_step：来源步骤
+       - scenario_refs：来源场景
+    3. 记录已有 op_id 到 action_source_refs
+
+    【子步骤 D：打标签 + 建立 Scenario→TSP 覆盖映射】
+    1. 对当前步骤打标签（可多标签并存）：
+
+       | 标签 | 含义 | 判定条件 | 消费方 |
+       |------|------|---------|--------|
+       | [M] | 纯单功能步骤 | 步骤仅涉及当前 M 内部逻辑 | M 分析自身 |
+       | [F→目标] | 暗示跨 M 交互 | 操作目标属于其他 M / 外部系统 / 共享对象 / 引用了其他 M 的配置 / 共享其他 M 的 atomic-ops op_id | F 分析（种子线索） |
+       | [Q→维度] | 暗示质量属性 | 涉及异常恢复（掉电/重启/主备切换）→ [Q→可靠性]；涉及性能约束（响应时间/并发数/吞吐量）→ [Q→性能]；涉及安全校验（权限/加密/审计）→ [Q→安全性]；涉及长期运行/资源泄漏 → [Q→可靠性]；涉及版本升级/迁移 → [Q→可维护性] | Q 分析（相关性补充依据） |
+
+       [F→] 和 [Q→] 标签由 M 分析生产、F 分析和 Q 分析消费。
+
+    2. 判定该步骤被哪个 M 覆盖：
+       - 若该步骤的测试对象已归属某 M → ✅ covered，记录 TSP 覆盖
+       - 若无 M 覆盖但仍在本特性 scope 内 → ⚠️ uncovered（覆盖缺口）
+       - 若超出 test_items 或 dont_test 范围 → ⚪ excluded（显式排除）
+
+    3. 记录覆盖信息：scenario_ref + step_range / tsp_ref（若已确定）/ coverage_status / tags / directory_path / note
+```
+
+**汇总（所有场景的所有步骤分析完成后）**：
+
+- 按四级目录（模块）→五级目录（子模块）聚合对象和因子
+- 同一对象出现在多个场景中时，合并 scenario_refs
+- 识别出所有单功能（M），形成 M 列表（M1, M2, M3...）
+- 提取所有 [F→] 标签 → 形成"F 分析线索列表"
+- 提取所有 [Q→] 标签 → 形成"Q 分析线索列表"
+- 生成 Scenario-TSP 覆盖矩阵（视角 A 场景→TSP + 视角 B 目录→场景 + 覆盖率统计）
+
+**📤 生产**：
+
+| 产出 | 内容 |
+|------|------|
+| M 列表 | 每个 M 含名称、关联需求编号、关联场景编号 |
+| 已确认测试对象表 | object_id / object_name / object_type / 关联度 / observation_targets / scenario_refs |
+| 已有测试因子表 | factor_id / factor_name / source_section / data_domain / related_object_id / source=public-library |
+| 因子候选列表 | factor_id / factor_name / data_domain / related_object_id / source=new-candidate / scenario_refs |
+| 已有原子操作清单 | op_id / related_step / scenario_refs |
+| 原子操作候选列表 | candidate_op_name / candidate_op_desc / related_object_id / related_step / scenario_refs |
+| 场景步骤标签列表 | scenario_ref + step_range + tags + 判定依据 |
+| Scenario-TSP 覆盖矩阵 | 视角 A（场景→TSP）+ 视角 B（目录→场景）+ F/Q 线索汇总表 |
+
+### 步骤 3：TSP 描述生成
+
+**📥 消费**：
+
+| 数据 | 字段 | 用途 |
+|------|------|------|
+| 步骤 2 的 M 列表 + 测试对象表 + 覆盖记录 | M 名称/关联需求/关联场景 + object_name/object_type + coverage_status/tags | 为每个 M 生成 TSP，汇总 covered_scenario_segments + f_tags + q_tags |
+| `mission-statement.md` | `test_items.items` | 交叉校验 M 识别边界 |
+
+**🔄 处理逻辑**：
+
+```
+对步骤 2 识别出的每个 M（单功能）：
+  1. Topic 提炼：一句话描述被测功能
+  2. Scope 界定：输入输出边界（含排除范围），参考步骤 2 中该 M 关联的测试对象范围
+  3. Purpose 提炼：测试意图（核心关注验证什么规则/行为/转换是正确的）
+  4. 覆盖信息汇总：从步骤 2 子步骤 D 覆盖记录聚合 → covered_scenario_segments
+  5. 标签汇总：从覆盖记录提取 → [F→] 汇总到 f_tags，[Q→] 汇总到 q_tags
+```
+
+**TSP YAML Schema**：
+
+```yaml
+tsp:
+  id: "TSP-M<M编号>-NNN"
+  m_id: "M2"
+  topic: "根据优惠规则计算价格..."
+  scope: "接收校验后商品数据..."
+  purpose: "验证买二赠一/95折..."
+  covered_scenario_segments:
+    - scenario_ref: "SCN-SHOP-001"
+      covered_steps: ["step-5", "step-6"]
+      coverage_type: full
+      coverage_note: "覆盖优惠规则计算核心步骤"
+  f_tags: []
+  q_tags: ["可靠性-数据一致性"]
+```
+
+**📤 生产**：每个 M 一个 TSP，写入 `mfq/m-analysis/tsp/<M编号>-tsp.md`
+
+**TSP 的消费方**：
+
+| 消费方 | 消费字段 | 用途 |
+|--------|---------|------|
+| m-analyzer（步骤 4） | `purpose` | 引导 PPDCS 主特征判断 |
+| f-analyzer | `f_tags` + TSP 整体 | F 分析的驱动单元 |
+| q-analyzer | `q_tags` + TSP 整体 | Q 分析的驱动单元 |
+| design-planner | `covered_scenario_segments` + `scope` + `purpose` | 设计方法边界与交叉校验 |
+| test-point-integrator | TSP 整体 | LC 组装时附着为元数据 |
+
+### 步骤 4：PPDCS 特征标注
+
+**📥 消费**：
+
+| 数据 | 字段 | 用途 |
+|------|------|------|
+| 步骤 3 的 TSP | **`purpose`**（主要消费字段） | 引导 PPDCS 主特征判断 |
+| 步骤 2 的测试对象表 | object_type + 功能描述 | 分析逻辑结构 |
+| 步骤 2 的已有因子 + 因子候选 | factor_id + data_domain | 辅助判断 Data vs Combination |
+
+**🔄 处理逻辑**：
+
+```
+对每个五级目录节点（单功能）：
+  1. 优先读取 TSP.purpose 判断测试意图倾向：
+
+     | Purpose 关注... | 倾向特征 | 理由 |
+     |----------------|----------|------|
+     | 步骤顺序/流程协调 | P-Process | 多步骤有序约束 |
+     | 规则的输入输出正确性 | P-Parameter | 参数参与业务规则判定 |
+     | 数据本身的合法性 | D-Data | 独立取值验证 |
+     | 状态间的转换一致性 | S-State | 对象有多状态可互转 |
+     | 参数太多需要压缩组合 | C-Combination | 因子组合爆炸 |
+
+  2. 结合步骤 2 中的对象和因子数量验证：
+     - 若对象涉及多状态且因子有 state 类型 → 加强 S-State
+     - 若因子数量多且 constraints 中 require 多 → 加强 C-Combination
+  3. 按以下优先级逐条判断：
      ├── 是否涉及多状态互转（可回退）？   → 标注 S-State
-     ├── 是否有多步骤有序业务流程？         → 标注 P-Process
-     ├── 参数间是否存在规则依赖？           → 标注 P-Parameter
-     ├── 因子是否过多需组合压缩？           → 标注 C-Combination
-     └── 数据是否独立可单独验证？           → 标注 D-Data
-  3. 如有混合特征，标注主特征 + 辅特征
-  4. 记录判定依据
+     ├── 是否有多步骤有序业务流程？       → 标注 P-Process
+     ├── 参数间是否存在规则依赖？         → 标注 P-Parameter
+     ├── 因子是否过多需组合压缩？         → 标注 C-Combination
+     └── 数据是否独立可单独验证？         → 标注 D-Data
+  4. 如有混合特征，标注主特征 + 辅特征
+  5. 记录判定依据（引用 TSP.purpose 或需求描述）
 ```
 
-### 步骤 5：测试点标注（CAE 三元组 + trace chain v6）
+**📤 生产**：PPDCS 特征标注表，写入 `mfq/m-analysis/ppdcs-annotation.md`
 
-每个测试点必须包含 **CAE 三元组**（条件/动作/预期），在什么条件下（C），完成什么操作（A），发生什么结果（E）：
+### 步骤 5：测试点生成（CAE 三元组 + trace chain v6）
+
+**📥 消费**：
+
+| 数据 | 字段 | 用途 |
+|------|------|------|
+| 步骤 2 的已确认测试对象 | 全部（高/中关联度） | 高关联度必须生成测试点；中关联度选择性生成 |
+| 步骤 2 的已有因子 + 因子候选 | factor_id / data_domain | C 条件引用 |
+| 步骤 3 的 TSP | id / topic / purpose | 测试点意图背景 |
+| 步骤 4 的 PPDCS 特征 | 主特征 + 辅特征 | 标注在测试点上 |
+| `confirmed-scenarios.md` | Scenario Chain / atomic_operations | trace 追溯 |
+| KYM 产出 | `risks[].area` + `likelihood` + `impact` | 预填 risk_level |
+
+**🔄 处理逻辑**：
+
+```
+**生成规则（基于步骤 2 的对象关联度）**：
+
+- **高关联度对象**：必须生成正常+边界+异常测试点，使用已有因子填充 C 条件具体取值；若因子全为候选 → 降级处理
+- **中关联度对象**：选择性生成（至少正常功能）；因子不足时在 C 条件中使用域引用 @domain.普通、@domain.边界、@domain.无效
+- **低关联度对象**：不生成 M 测试点，记录供 F 分析参考
+
+**因子全为候选降级处理**：TP 的 fact_status ← "needs-confirmation"，C 条件使用 @domain.xxx 域引用，test-points.md 中标注 [待确认]，确认后由 test-point-integrator 候选汇总步骤回填
+
+**R 字段预填**：intent 从 TSP.purpose 生成，risk_level 从 KYM risks 匹配，rule_id/model_type/coverage 留待 PPDCS 阶段
+```
+
+每个测试点必须包含 **CAE 三元组**：
 
 | 字段 | 说明 | 示例 |
 |------|------|------|
 | TP-ID | 测试点编号 | `TP-M-<模块缩写>-<子模块缩写>-NNN` |
 | 所属模块 | 四级目录名称 | 配置管理 |
 | 所属子模块 | 五级目录名称 | 日志服务器配置 |
-| C 条件 | 触发该测试的前置状态、数据边界或环境约束（多个条件用"；"分隔） | 系统已配置5台日志服务器（达上限）；管理员已登录 |
-| A 动作 | 可执行的测试操作，包含操作对象和内容（复合动作用"→"连接） | 尝试新建第6台日志服务器，点击"确定" |
-| E 预期 | 可观测的预期行为或系统响应（多个预期用"；"分隔） | 系统提示"超出最大服务器数量限制"；新建失败；服务器列表条目数不变 |
+| C 条件 | 触发该测试的前置状态、数据边界或环境约束 | 系统已配置5台日志服务器（达上限）；管理员已登录 |
+| A 动作 | 可执行的测试操作，包含操作对象和内容 | 尝试新建第6台日志服务器，点击"确定" |
+| E 预期 | 可观测的预期行为或系统响应 | 系统提示"超出最大服务器数量限制"；新建失败 |
 | 关联需求 | 需求编号列表 | SR-001, SR-003 |
 | `scenario_refs` | 场景编号列表 | SCN-XXX-001 |
 | `scenario_chain_refs` | `PRE-* / AO-* / minimal_logic_chain` 引用 | PRE-01, AO-02 |
 | `action_source_refs` | atomic-ops `op_id` 引用 | fw_config_policy_route |
 | `knowledge_refs` | 支撑该 TP 的知识引用 | KR-001 |
 | `confirmation_gap_refs` | 上游未确认事实引用 | GAP-001 |
-| `trace_refs` | 汇总 `requirement_refs / scenario_refs / action_source_refs / knowledge_refs` | 结构化 trace |
+| `trace_refs` | 汇总 trace 引用 | 结构化 trace |
 | `test_object_refs` | 关联测试对象 | OBJ-001 |
 | `factor_refs` | 关联测试因子 | FAC-001, FAC-002 |
 | `topology_refs` | 关联 confirmed-scenarios.md TOPO 实例 | TOPO-001 |
@@ -200,107 +384,103 @@ CAE 中允许使用 `{{topo_role:MATCH_INGRESS_IF}}`、`{{topo_role:DUT_EGRESS_I
 - C 必须是可验证的前置状态，禁止模糊表述（如"正常情况下"）
 - A 必须是可执行的操作，不能是"验证..."等描述性文字
 - E 必须是可观测的结果，包含观测点和期望值
-- **E="待定" 容错规则（Q1 default）**：预期结果尚不明确时（如依赖硬件规格、待确认的产品行为），E 可填 `"待定"`，但必须追加批注 `[待定原因: <描述>]`；进入用例设计阶段前须补全。空值不允许。
+- **E="待定" 容错规则**：预期结果尚不明确时（如依赖硬件规格、待确认的产品行为），E 可填 `"待定"`，但必须追加批注 `[待定原因: <描述>]`；进入用例设计阶段前须补全。空值不允许。
 - 若 A 依赖 atomic-ops 但契约不完整，A 只能写已确认部分，并在 `confirmation_gap_refs` 中注明缺口
 - 若 `Knowledge Reference` 为 `missing/unavailable`，仅记录状态，不得伪造理论依据
-- C/A/E 涉及接口位置时必须优先写拓扑角色占位和逻辑含义，例如 `{{topo_role:MATCH_INGRESS_IF}}`；不得把 `DUT.port1` / `TG.port1` / link 实例写成因子值
+- C/A/E 涉及接口位置时必须优先写拓扑角色占位，例如 `{{topo_role:MATCH_INGRESS_IF}}`；不得把真实端口写成因子值
 - C/A/E 出现真实端口时，必须同时写 `topology_refs` 并能回链 confirmed-scenarios.md；无法回链时 `topology_binding_status=needs-confirmation` 且 `fact_status=needs-confirmation`
 
-### 步骤 6：覆盖初检
+**📤 生产**：M 分析测试点，按四级→五级分节输出，写入 `mfq/m-analysis/test-points.md`
 
-1. **需求覆盖**：检查每条 SR 至少关联 1 个测试点
-2. **场景覆盖**：检查每个场景的关键功能点至少关联 1 个测试点
-3. **atomic-ops 覆盖**：每个被引用的 `action_source_ref`（atomic-ops `op_id`）至少落到 1 个 TP 或显式标记为 `未形成测试点`
-4. **输出未覆盖项**：标记为 `⚠️ 待补充`
+### 步骤 6：覆盖初检（四维）
 
-### 步骤 7：输出
+**📥 消费**：步骤 5 的 TP 清单 + 需求条目 + 步骤 2 的 Scenario-TSP 覆盖矩阵
 
-> 追踪链：`SR → Scenario Chain → atomic-ops / Knowledge Reference → TP(CAE + PPDCS + object/factor) → LC → Test Data → PC`
+**🔄 处理逻辑**：
 
-写入以下文件：
+```
+1. 需求覆盖: 遍历每条 SR，检查是否至少关联 1 个 TP
+   → 未覆盖的 SR 标记 ⚠️ 待补充
 
-**`analysis/m-analysis/test-points.md`**：按**四级目录（H2）→ 五级目录（H3）**分节输出，每节标注 PPDCS 主特征，测试点以 CAE 格式呈现：
+2. 场景步骤覆盖: 覆盖矩阵中每个 ✅ covered 步骤段是否至少关联 1 个 TP
+   → 若某步骤段被 TSP 覆盖但无对应 TP → ⚠️ 覆盖缺口
 
-```markdown
-# <特性名> — M 分析测试点
+3. 对象覆盖: 每个高关联度测试对象是否至少关联 1 个 TP
+   → 未覆盖的高关联度对象标记 ⚠️ 待补充
 
-## 统计
+4. 原子操作覆盖: 每个被引用的已有 atomic-ops op_id 是否至少落到 1 个 TP
+   → 未覆盖的 op_id 标记 ⚠️ 待补充
 
-| 来源 | 测试点数 |
-|------|---------|
-| M 分析 | N |
-
-## <四级目录名称（模块）>
-
-### <五级目录名称（子模块）>
-> PPDCS 主特征：P-Parameter | 辅特征：D-Data
-
-| TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `test_object_refs` | `factor_refs` | `topology_role_refs` | `topology_refs` | `topology_binding_status` | `topology_gap_refs` | 来源 | 测试类型 |
-|-------|--------|--------|--------|-----------------|----------------------|--------------------|---------------|----------------------|-----------------|---------------------------|---------------------|------|---------|
-| TP-M-CFG-SRV-001 | 系统无已配置的日志服务器；管理员已登录 | 在新建表单输入IP=<IP_ADDRESS>、端口=514、协议=UDP，点击"确定" | 服务器创建成功；服务器列表新增该条目；状态显示为"已配置" | SCN-LOG-001 | fw_config_log_server | OBJ-LOG-SERVER | FAC-IP,FAC-PORT,FAC-PROTO | — | — | — | — | M | 功能 |
-| TP-M-FLOW-001 | 流量从 `{{topo_role:MATCH_INGRESS_IF}}` 进入；策略已启用 | 发送协议=TCP、目的端口=443 的匹配报文 | 报文从 `{{topo_role:DUT_EGRESS_IF}}` 转发；命中计数+1 | SCN-FLOW-001 | fw_send_match_traffic | OBJ-POLICY | FAC-PROTO,FAC-DST-PORT | MATCH_INGRESS_IF,DUT_EGRESS_IF | TOPO-FLOW-001 | confirmed | — | M | 功能 |
-
-### <五级目录名称（子模块2）>
-> PPDCS 主特征：P-Process
-
-| TP-ID | C 条件 | A 动作 | E 预期 | `scenario_refs` | `action_source_refs` | `test_object_refs` | `factor_refs` | `topology_role_refs` | `topology_refs` | `topology_binding_status` | `topology_gap_refs` | 来源 | 测试类型 |
-|-------|--------|--------|--------|-----------------|----------------------|--------------------|---------------|----------------------|-----------------|---------------------------|---------------------|------|---------|
-| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | M | ... |
+5. 视角 A/B 一致性校验:
+   - sum_A(covered + uncovered + excluded) = total_steps（每个场景）
+   - sum_B(TSP 覆盖步骤数) = count_A(covered 步骤)
+   - [Q→] 标记步骤不计入 M 覆盖率
 ```
 
-> ⚠️ **完整性要求**：目录结构中每个五级目录节点必须有至少一个测试点，不允许跳过。若某节点无需求支撑，需标注 `⚠️ 无对应测试点 — 原因：<说明>`。
+⛔ **HARD-STOP（GATE-3）**：覆盖初检结果中的 ⚠️ 缺口必须显式标注，**禁止 Agent 自行判定"覆盖完成"**。输出覆盖缺口清单后，等待用户审查（`approve` / `修改: ...` / `reject`）。
 
-**`analysis/m-analysis/ppdcs-annotation.md`**：
+**📤 生产**：覆盖检查结果（嵌入 `test-points.md` 末尾的覆盖报告章节）
 
-```markdown
-# <特性名> — PPDCS 特征标注表
+### 步骤 7：写入 M 分析产物
 
-## 统计
+> 追踪链 v3.0：
+> `SR → Scenario Chain → 步骤级发现（标签 [M]/[F→]/[Q→]）→ M → TSP(covered_scenario_segments + f_tags + q_tags) → 覆盖矩阵 → 测试对象(关联度) → 测试因子(已有/候选) → 原子操作(已有/候选) → TP(CAE + PPDCS + trace + topology) → LC → Test Data → PC`
 
-| PPDCS 特征 | 子模块数 | 占比 |
-|-----------|---------|------|
-| P-Process | N | X% |
-| P-Parameter | M | Y% |
-| D-Data | K | Z% |
-| C-Combination | J | W% |
-| S-State | L | V% |
-| 混合特征 | H | U% |
+⛔ **HARD-STOP（STOP-04）**：写入产物前必须校验目标父目录存在且为目录（非普通文件）。禁止 Agent 手动 mkdir 创建目录。若父目录不存在，输出错误信息并终止，等待用户确认目录结构。
 
-## 标注详表
+**写入前校验**：
 
-| 子模块 | PPDCS 主特征 | 辅特征 | 判定依据 |
-|--------|-------------|--------|---------|
-| 日志服务器配置 | P-Parameter | D-Data | 多参数规则判定（IP/端口/协议组合影响结果） |
-| 日志过滤流程 | P-Process | — | 过滤有明确步骤和分支（格式校验→名称检查→保存） |
-| 日志导出状态 | S-State | — | 导出任务有状态变迁（未启动→导出中→完成/失败） |
-| 日志查询 | D-Data | C-Combination | 查询条件有取值范围，多条件需组合 |
+1. 校验目标父目录存在且为目录：`mfq/m-analysis/`、`mfq/m-analysis/tsp/`
+2. 若父目录不存在或为普通文件 → **fail fast**，提示用户（禁止 Agent 手动 `mkdir`）
+3. 若父目录存在 → 写入文件
+
+**写入文件清单**（8 个文件）：
+
+| 文件 | 内容 |
+|------|------|
+| `mfq/m-analysis/test-points.md` | 按四级→五级分节，CAE 表格 + 覆盖报告 |
+| `mfq/m-analysis/ppdcs-annotation.md` | PPDCS 特征标注表 + 统计 |
+| `mfq/m-analysis/test-objects-factors.md` | 测试对象表 + 已有因子表 + 因子候选表 + 拓扑角色表 |
+| `mfq/m-analysis/scenario-tsp-coverage.md` | 覆盖矩阵（视角 A 场景→TSP + 视角 B 目录→场景）+ F/Q 线索汇总表 |
+| `mfq/m-analysis/tsp/<M编号>-tsp.md` | 每个 M 的 TSP 描述 |
+| `mfq/m-analysis/factor-resolution-report.md` | 公共因子库命中/未命中统计 |
+| `mfq/m-analysis/candidate-factor-proposals.yaml` | 因子候选列表 |
+| `mfq/m-analysis/candidate-atomic-ops.yaml` | 原子操作候选列表 |
+
+**因子候选 YAML 格式**：
+
+```yaml
+candidate_factors:
+  - candidate_id: "FAC-CAND-001"
+    factor_name: "服务器数量上限"
+    data_domain: "5（上限）/ 可配置"
+    related_object_id: "OBJ-LOG-SERVER"
+    source: "new-candidate"
+    scenario_refs: ["SCN-LOG-001"]
+    discovery_step: "Step 4-8"
+    priority: "high"
 ```
 
-**`analysis/m-analysis/test-objects-factors.md`**：
+**原子操作候选 YAML 格式**：
 
-```markdown
-# <特性名> — 测试对象与测试因子
-
-## Test Objects
-
-| object_id | object_name | object_type | observation_targets | scenario_refs | action_source_refs |
-|-----------|-------------|-------------|---------------------|---------------|--------------------|
-| OBJ-LOG-SERVER | 日志服务器 | 配置对象 | 列表条目、状态字段、告警信息 | SCN-LOG-001 | fw_config_log_server |
-
-## Test Factors
-
-| factor_id | factor_name | source_section | data_domain | related_object_id | scenario_refs | confirmation_gap_refs |
-|-----------|-------------|----------------|-------------|-------------------|---------------|-----------------------|
-| FAC-IP | IP地址 | action-input | IPv4合法/非法边界 | OBJ-LOG-SERVER | SCN-LOG-001 | — |
-| FAC-SERVER-COUNT | 服务器数量 | condition | 0 / 1~4 / 5(上限) / >5[待确认] | OBJ-LOG-SERVER | SCN-LOG-001 | GAP-001 |
-
-## Topology Roles
-
-| topology_role_ref | role_name | role_expression | scenario_refs | topology_refs | topology_binding_status | topology_gap_refs |
-|-------------------|-----------|-----------------|---------------|---------------|-------------------------|-------------------|
-| MATCH_INGRESS_IF | 匹配流量入口 | `{{topo_role:MATCH_INGRESS_IF}}` | SCN-FLOW-001 | TOPO-FLOW-001 | confirmed | — |
-| DUT_EGRESS_IF | DUT 转发出口 | `{{topo_role:DUT_EGRESS_IF}}` | SCN-FLOW-001 | TOPO-FLOW-001 | confirmed | — |
+```yaml
+candidate_atomic_ops:
+  - candidate_id: "AO-CAND-001"
+    op_name: "fw_config_log_server_batch"
+    op_desc: "批量创建日志服务器配置"
+    related_object_id: "OBJ-LOG-SERVER"
+    related_step: "Step 4"
+    scenario_refs: ["SCN-LOG-001"]
 ```
+
+**覆盖矩阵格式示例**（写入 `scenario-tsp-coverage.md`）：
+
+视角 A — 场景→TSP：每行含 步骤范围 / 覆盖状态（✅/⚠️/⚪）/ TSP / 所属目录 / 标签 / 备注
+视角 B — 目录→场景：按四级→五级目录组织，每行为 TSP 与覆盖的场景步骤列表
+F 线索汇总：来源场景 / 步骤 / 标签 / 目标 M/系统 / 说明
+Q 线索汇总：来源场景 / 步骤 / 标签 / 质量维度 / 说明
+
+⛔ **HARD-STOP（GATE-3）**：写入完成后，输出 M 分析完成摘要和覆盖缺口清单，**等待用户审查覆盖初检结果**（`approve` / `修改: ...` / `reject`）。
 
 ## 测试点生成原则
 
@@ -309,17 +489,20 @@ CAE 中允许使用 `{{topo_role:MATCH_INGRESS_IF}}`、`{{topo_role:DUT_EGRESS_I
 3. **粒度适中**：测试点应可独立验证
 4. **可追溯**：每个测试点必须关联至少一条需求
 5. **不预设设计方法**：M 分析只关注"测什么"和"什么特征"，不关注"怎么测"
+6. **v3.0 关联度分级**：高关联度对象必须生成正常+边界+异常测试点；中关联度选择性生成（至少正常功能）；低关联度不生成 M 测试点
+7. **候选因子降级**：测试点因子全为候选时，C 条件使用域引用 @domain.xxx，标注 [待确认]，fact_status=needs-confirmation
+8. **候选列表不附确认建议**：因子候选和原子操作候选保持 source=new-candidate，禁止写入"建议全部确认"等自行判定语句。确认由 test-point-integrator 候选汇总步骤统一展示给用户
 
 ## 公共因子库补充契约
 
-- M 分析是公共因子库首个强制消费者；提取测试因子前必须读取 `analysis/factor-usage/factor-library-lock.yaml` 或从公共 resource 目录选择库。
+- M 分析是公共因子库首个强制消费者；提取测试因子前必须读取 `mfq/factor-usage/factor-library-lock.yaml` 或从公共 resource 目录选择库。
 - 公共库查找顺序：`PTM_TEAM_RESOURCE_HOME/factor-libraries` → `~/.ptm-team/resource/factor-libraries` → 开发态 `resource/factor-libraries`。
-- 按 `factor_id / factor_name / aliases / owner_object / factor_group` 检索；命中 `active` 因子时复用，值域/样本/约束不足时输出扩展建议，未命中时写入 `analysis/factor-usage/candidate-factor-proposals.yaml`。
+- 按 `factor_id / factor_name / aliases / owner_object / factor_group` 检索；命中 `active` 因子时复用，值域/样本/约束不足时输出扩展建议，未命中时写入 `mfq/m-analysis/candidate-factor-proposals.yaml`。
 - 项目运行不得直接修改公共主库；公共库归档和更新只能回流到 `resource/factor-libraries/`。
 - CAE 中使用 `{{TF:FAC-ID|role=<role>|usage=<usage_context>|sample=<sample_id>}}`；下游主契约是 `factor_bindings`，`factor_refs` 只保留为兼容摘要。
 - `factor_bindings` 至少包含 `library_id / factor_id_or_group_id / role / binding_mode / usage_context / sample_id / expr / materialized_stage / gap`。
 - 禁止把 atomic-ops、`scenario_refs`、`knowledge_refs`、`confirmation_gap_refs`、拓扑角色、真实端口、DUT/TG 实例或 link 实例当成测试因子。
-- 必须输出 `analysis/factor-usage/factor-resolution-report.md`；如有未命中或需扩展内容，必须输出 `candidate-factor-proposals.yaml`。
+- 必须输出 `mfq/m-analysis/factor-resolution-report.md`；如有未命中或需扩展内容，必须输出 `candidate-factor-proposals.yaml`。
 
 ## 拓扑绑定补充契约
 
@@ -339,19 +522,30 @@ CAE 中允许使用 `{{topo_role:MATCH_INGRESS_IF}}`、`{{topo_role:DUT_EGRESS_I
 - `action_source_refs` 只引用上游已建模 atomic-ops `op_id`，不重新命名为新的字段体系
 - 拓扑角色不是测试因子；`MATCH_INGRESS_IF` 这类角色只能出现在 `topology_role_refs` 或 CAE 角色占位中
 - 真实端口不是测试因子；出现 `DUT.port1` / `TG.port1` / link 实例时必须回链 confirmed-scenarios.md，否则降级为待确认
+- **v3.0 新增 1**：步骤 2 必须对每个场景步骤打标签。遗漏 [F→] 标签会导致 F 分析缺少耦合分析线索，遗漏 [Q→] 标签会导致 Q 分析缺乏质量属性相关性依据
+- **v3.0 新增 2**：候选因子和原子操作候选禁止自行确认。候选列表仅记录和透传，确认动作由 test-point-integrator 的候选汇总步骤统一完成
+- **v3.0 新增 3**：覆盖矩阵视角 A 和视角 B 数据必须一致。视角 A 的 covered + uncovered + excluded = total_steps，视角 B 的 TSP 覆盖步骤数 = 视角 A 的 covered 步骤数
 
 ## 验收标准
 
 - [ ] 每个五级目录节点至少有 1 个测试点，无跳过；无法覆盖的节点明确标注原因
+- [ ] 每个高关联度测试对象均有对应测试点（正常+边界+异常）
+- [ ] 每个 M 均有对应的 TSP 描述（含 `covered_scenario_segments` + `f_tags` + `q_tags`）
+- [ ] 覆盖矩阵中每个场景的 covered + uncovered + excluded 步骤数等于 total_steps
+- [ ] 覆盖矩阵视角 A 和视角 B 数据一致
+- [ ] 覆盖缺口（uncovered 且无排除原因）已显式标记 ⚠️
+- [ ] 每个场景步骤均打了标签（[M]/[F→]/[Q→]），F/Q 线索列表已生成
 - [ ] 每个测试点包含完整的 CAE 三字段（C/A/E 均不为空、不模糊）
 - [ ] C 字段为可验证状态，A 字段为可执行操作，E 字段为可观测结果
 - [ ] E="待定" 必须附批注 `[待定原因: <描述>]`；空 E 字段不允许
-- [ ] 每个 TP 包含 `scenario_refs / action_source_refs / test_object_refs / factor_bindings / factor_refs / trace_refs`
+- [ ] 每个 TP 包含完整的 trace 字段（`scenario_refs / action_source_refs / test_object_refs / factor_refs / trace_refs`）
+- [ ] 已有因子和因子候选均已记录（source=public-library / new-candidate）
+- [ ] 已有原子操作和原子操作候选均已记录
+- [ ] 每个五级目录节点均有 PPDCS 主特征标注和判定依据
 - [ ] 涉及组网的 TP 包含 `topology_refs / topology_role_refs / topology_binding_status / topology_gap_refs`
 - [ ] `factor_bindings` 中不包含拓扑角色、真实端口、DUT/TG 实例或 link 实例
-- [ ] CAE 中真实端口均可回链 `analysis/scenarios/confirmed-scenarios.md`，否则 `fact_status=needs-confirmation`
+- [ ] CAE 中真实端口均可回链 `kym/scenarios/confirmed-scenarios.md`，否则 `fact_status=needs-confirmation`
 - [ ] 未确认事实通过 `confirmation_gap_refs` 显式透传
-- [ ] 输出文件按**四级目录（H2）→ 五级目录（H3）**分节，每节标注 PPDCS 主特征
-- [ ] **每个五级目录节点均有 PPDCS 主特征标注和判定依据**
-- [ ] 需求覆盖初检已执行，未覆盖项已标记
-- [ ] 输出 `test-points.md`、`ppdcs-annotation.md`、`test-objects-factors.md`
+- [ ] 输出 8 个文件：`test-points.md` / `ppdcs-annotation.md` / `test-objects-factors.md` / `scenario-tsp-coverage.md` / `tsp/<M>-tsp.md` / `factor-resolution-report.md` / `candidate-factor-proposals.yaml` / `candidate-atomic-ops.yaml`
+- [ ] 步骤 6 覆盖初检结果显式标注 ⚠️ 缺口，禁止 Agent 自行判定"覆盖完成"
+- [ ] 步骤 7 路径写入前校验父目录存在且为目录，禁止 Agent 手动 `mkdir`

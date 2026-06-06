@@ -38,6 +38,14 @@ ptm-team install claude --list
 ptm-team uninstall claude
 ```
 
+> **⚠️ 强制重新安装**：拉取最新代码后，如果 `ptm-team` 命令仍使用旧版本（如安装的 skill 数量不对），需要清理构建缓存后强制重装：
+>
+> ```shell
+> cd /home/hyde/projects/ptm-team   # 或你的 ptm-team 项目路径
+> rm -rf build/ dist/ *.egg-info/
+> uv tool install . --reinstall
+> ```
+
 安装 `ptm-tde` agent 时会同步安装它关联的公共 resources。公共因子库归档在仓库 `resource/factor-libraries/`，默认安装到 `~/.ptm-team/resource/factor-libraries/`，可通过 `PTM_TEAM_RESOURCE_HOME` 指向团队共享资源目录。
 
 ### 开发模式安装

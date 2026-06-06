@@ -1,720 +1,429 @@
+# NGFW 策略路由因子库
+# 研究区 — ngfw-policy-routing
+# 策略路由专属因子。公共因子已迁移到 ngfw-objects, ngfw-traffic, ngfw-ipv4-route, ngfw-ha, ngfw-dfx, common-network。
+
 schema_version: 1
 library_id: ngfw-policy-routing
-version: 0.2.1
-status: active
-description: NGFW 策略路由公共因子库，覆盖三层转发出口、配置字段合法性、业务流量匹配、规则顺序、DFX 和 HA 场景。
+version: 0.2.0
+status: candidate
+description: "NGFW 策略路由专属因子库。覆盖规则匹配字段、流量匹配状态、规则顺序和结果判定。"
 
 factors:
-  - factor_id: FAC-L3-EGRESS-MODE
-    factor_name: 三层转发出口选择模式
-    factor_kind: control
-    design_role: driver
-    owner_object: OBJ-PR-EGRESS
-    domain_model: enum
-    value_type: enum
-    values: [next-hop, out-interface]
-    display_values:
-      next-hop: 下一跳
-      out-interface: 出接口
-    aliases: [出口模式, 转发出口类型, 三层转发出口类型]
-    applicable_when: always
-    downstream_methods: [P-Parameter, C-Combination]
-    reuse_policy: must_reuse
-    status: active
 
-  - factor_id: FAC-L3-NH-IF-TYPE
-    factor_name: 下一跳关联接口类型
+  # ═══════════════════════════════════════════════════════
+  # 规则匹配字段 — 引用型
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-PR-RULE-IN-INTERFACE
+    factor_name: 策略路由规则入接口
     factor_kind: data
     design_role: driver
-    owner_object: OBJ-PR-EGRESS
-    domain_model: enum
-    value_type: enum
-    values: [physical, sub-interface, aggregate, bvi, tunnel]
-    display_values:
-      physical: 物理口
-      sub-interface: 子接口
-      aggregate: 聚合口
-      bvi: BVI接口
-      tunnel: 隧道口
-    aliases: [下一跳接口类型, 下一跳所在接口, 下一跳关联三层接口]
-    applicable_when: "FAC-L3-EGRESS-MODE == next-hop"
-    downstream_methods: [C-Combination]
-    reuse_policy: must_reuse
-    status: active
-
-  - factor_id: FAC-L3-OUTIF-TYPE
-    factor_name: 出接口接口类型
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-EGRESS
-    domain_model: enum
-    value_type: enum
-    values: [tunnel, pppoe]
-    display_values:
-      tunnel: 隧道口
-      pppoe: PPPoE接口
-    aliases: [出接口类型, 策略路由出接口]
-    applicable_when: "FAC-L3-EGRESS-MODE == out-interface"
-    downstream_methods: [C-Combination]
-    reuse_policy: must_reuse
-    status: active
-
-  - factor_id: FAC-L3-IF-CAPABILITY
-    factor_name: 三层转发接口能力
-    factor_kind: constraint
-    design_role: constraint
-    owner_object: OBJ-PR-EGRESS
-    domain_model: enum
-    value_type: enum
-    values: [l3-capable, not-l3-capable]
-    display_values:
-      l3-capable: 支持三层转发
-      not-l3-capable: 不支持三层转发
-    aliases: [三层接口能力, 三层转发能力]
-    applicable_when: "FAC-L3-NH-IF-TYPE or FAC-L3-OUTIF-TYPE selected"
-    downstream_methods: [D-Data, C-Combination]
-    reuse_policy: must_reuse
-    status: active
-
-  - factor_id: FAC-L3-REACHABILITY
-    factor_name: 三层出口可达性
-    factor_kind: state
-    design_role: driver
-    owner_object: OBJ-PR-EGRESS
-    domain_model: state
-    value_type: state
-    values: [reachable, unreachable, recovered]
-    display_values:
-      reachable: 可达
-      unreachable: 不可达
-      recovered: 恢复
-    aliases: [下一跳可达性, 出口可达状态, 链路可达性]
-    applicable_when: "forwarding validation or failover validation"
-    downstream_methods: [S-State, P-Parameter]
-    reuse_policy: must_reuse
-    status: active
-
-  - factor_id: FAC-L3-FAIL-DETECT-METHOD
-    factor_name: 失效检测方式
-    factor_kind: condition
-    design_role: driver
-    owner_object: OBJ-PR-EGRESS
-    domain_model: enum
-    value_type: enum
-    values: [ip-link, interface-down]
-    display_values:
-      ip-link: IP-LINK
-      interface-down: 接口Down
-    aliases: [故障检测方式, 下一跳失效检测方式]
-    applicable_when: "FAC-L3-REACHABILITY == unreachable"
-    downstream_methods: [P-Parameter, S-State]
-    reuse_policy: must_reuse
-    status: active
-
-  - factor_id: FAC-L3-EXPECTED-FWD-PATH
-    factor_name: 预期转发路径
-    factor_kind: oracle
-    design_role: oracle
-    owner_object: OBJ-PR-EGRESS
-    domain_model: enum
-    value_type: enum
-    values: [policy-next-hop, policy-out-interface, fallback-route, forward-fail]
-    display_values:
-      policy-next-hop: 按策略路由下一跳转发
-      policy-out-interface: 按策略路由出接口转发
-      fallback-route: 按静态/默认路由兜底转发
-      forward-fail: 转发失败或丢弃
-    aliases: [预期出口, 预期路径, 转发结果]
-    applicable_when: "forwarding validation"
-    downstream_methods: [oracle-design]
-    reuse_policy: must_reuse
-    status: active
-
-  - factor_id: FAC-L3-NH-WEIGHT
-    factor_name: 下一跳权重
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-EGRESS
-    domain_model: range
-    value_type: integer
-    domain_expr: "int[1,255]"
-    aliases: [权重, 多下一跳权重, 负载权重]
-    applicable_when: "FAC-L3-EGRESS-MODE == next-hop"
-    downstream_methods: [D-Data, C-Combination]
-    reuse_policy: must_reuse
-    status: active
-    sample_definitions:
-      - sample_id: WEIGHT_MIN
-        sample_class: boundary_min
-        expr: "min"
-        materialized_value: 1
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: WEIGHT_MAX
-        sample_class: boundary_max
-        expr: "max"
-        materialized_value: 255
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: WEIGHT_NOMINAL
-        sample_class: in_range_nominal
-        expr: "random_int(2,254,seed=case_id)"
-        materialization: deterministic
-        applicability:
-          config_test: accepted
-          function_test: preferred_precondition
-      - sample_id: WEIGHT_BELOW_MIN
-        sample_class: below_min
-        expr: "min - 1"
-        materialized_value: 0
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
-      - sample_id: WEIGHT_ABOVE_MAX
-        sample_class: above_max
-        expr: "max + 1"
-        materialized_value: 256
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
-    usage_profiles:
-      config_test:
-        accepted_config_samples: [WEIGHT_MIN, WEIGHT_MAX, WEIGHT_NOMINAL]
-        rejected_config_samples: [WEIGHT_BELOW_MIN, WEIGHT_ABOVE_MAX]
-      function_test:
-        precondition_samples: [WEIGHT_NOMINAL]
-
-  - factor_id: FAC-CONFIG-NAME
-    factor_name: 配置对象名称
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-GENERIC-CONFIG
-    domain_model: string_pattern
+    owner_object: OBJ-PR-RULE
+    domain_model: object_instance
     value_type: string
     domain_expr:
-      length: "1..31"
-      charset: [uppercase_letter, lowercase_letter, digit, chinese, hyphen, dot]
-      regex: "^[A-Za-z0-9\\u4e00-\\u9fa5\\-.]{1,31}$"
-    aliases: [名称, 对象名称, 规则名称, 配置名称]
-    applicable_when: always
+      object_type: interface_name
+      default_value: any
+      stored_in: topology.interfaces
+    aliases: [入接口, 匹配入接口, incoming_interface]
+    applicable_when: "policy route rule incoming interface configured"
     downstream_methods: [D-Data]
     reuse_policy: must_reuse
-    status: active
+    status: candidate
     sample_definitions:
-      - sample_id: NAME_MIN_LEN
-        sample_class: min_length
-        expr: "string(charset=allowed,length=1)"
-        materialized_value: "A"
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: NAME_MAX_LEN
-        sample_class: max_length
-        expr: "string(charset=allowed,length=31)"
-        materialization: deterministic
-        applicability:
-          config_test: accepted
-          function_test: not_preferred
-      - sample_id: NAME_MIXED_CHARSET
-        sample_class: charset_mixed
-        expr: "string(include=[upper,lower,digit,chinese,hyphen,dot],length=12..20,seed=case_id)"
-        materialized_value: "Ab9-策略.route"
-        applicability:
-          config_test: accepted
-          function_test: preferred_precondition
-      - sample_id: NAME_EMPTY
-        sample_class: below_min_length
-        expr: "string(length=0)"
+      - sample_id: PR_IN_IF_ANY
+        sample_class: valid_config
+        description: "不指定入接口，匹配所有。默认值 any。"
+        representative_values: ["any"]
+        expr: 'any'
+        materialized_value: "any"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_IN_IF_EXISTING
+        sample_class: valid_config
+        description: "指定设备上存在的接口名称。"
+        representative_values: ["GE0", "GE1"]
+        expr: 'from_topology.interfaces.any'
+        materialized_value: "GE0"
+        applicability: {config_test: accepted, function_test: prefered_precondition}
+      - sample_id: PR_IN_IF_NOT_EXIST
+        sample_class: invalid_config
+        description: "指定设备上不存在的接口名称。配置应被拒绝。"
+        representative_values: ["GE999", "not_exist_if"]
+        expr: 'from_topology.interfaces.nonexistent'
+        materialized_value: "GE999"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PR_IN_IF_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: [""]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
         materialized_value: ""
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
-      - sample_id: NAME_TOO_LONG
-        sample_class: above_max_length
-        expr: "string(charset=allowed,length=32)"
-        materialization: deterministic
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
-      - sample_id: NAME_INVALID_CHAR
-        sample_class: invalid_charset
-        expr: "string(include=['@'],length=8)"
-        materialized_value: "name@001"
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
+        applicability: {config_test: rejected, function_test: not_applicable}
     usage_profiles:
       config_test:
-        accepted_config_samples: [NAME_MIN_LEN, NAME_MAX_LEN, NAME_MIXED_CHARSET]
-        rejected_config_samples: [NAME_EMPTY, NAME_TOO_LONG, NAME_INVALID_CHAR]
+        accepted_config_samples: [PR_IN_IF_ANY, PR_IN_IF_EXISTING]
+        rejected_config_samples: [PR_IN_IF_NOT_EXIST, PR_IN_IF_NAME_INVALID]
       function_test:
-        precondition_samples: [NAME_MIXED_CHARSET]
+        precondition_samples: [PR_IN_IF_EXISTING]
 
-  - factor_id: FAC-PR-RULE-SRC-IP
-    factor_name: 策略路由规则源IPv4配置
+  - factor_id: FAC-PR-RULE-SRC-NETWORK
+    factor_name: 策略路由规则源网络
     factor_kind: data
     design_role: driver
     owner_object: OBJ-PR-RULE
-    domain_model: ip_address
+    domain_model: object_instance
     value_type: string
-    aliases: [源IP配置, 源地址配置, 规则源地址]
-    applicable_when: "policy route rule source address configured"
+    domain_expr:
+      reference:
+        default: any
+        switch:
+          field: source_network_is_group
+          cases:
+            false: ngfw-objects/FAC-OBJ-ADDRESS
+            true: ngfw-objects/FAC-OBJ-ADDRESS-GROUP
+    aliases: [源网络, 源地址, source_network, src_network]
+    applicable_when: "policy route rule source network configured"
     downstream_methods: [D-Data]
     reuse_policy: must_reuse
-    status: active
+    status: candidate
     sample_definitions:
-      - sample_id: RULE_SRC_IP_VALID_HOST
+      - sample_id: PR_SRC_NET_ANY
         sample_class: valid_config
-        expr: "valid_ipv4_host()"
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_SRC_IP_VALID_SUBNET
+        description: "不指定源网络，匹配所有。默认值 any。"
+        representative_values: ["any"]
+        expr: 'any'
+        materialized_value: "any"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_SRC_NET_ADDR_VALID
         sample_class: valid_config
-        expr: "valid_ipv4_subnet()"
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_SRC_IP_INVALID
+        description: "is_group=false。引用设备上已存在的地址对象。"
+        representative_values: ["office_net", "dmz_servers"]
+        expr: 'from_target(is_group=false).accepted'
+        materialized_value: "office_net"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_SRC_NET_GROUP_VALID
+        sample_class: valid_config
+        description: "is_group=true。引用设备上已存在的地址组。"
+        representative_values: ["internal_networks"]
+        expr: 'from_target(is_group=true).accepted'
+        materialized_value: "internal_networks"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_SRC_NET_ADDR_NOT_EXIST
         sample_class: invalid_config
-        expr: "invalid_ipv4()"
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
+        description: "is_group=false。设备上不存在的地址对象名称。"
+        representative_values: ["not_exist_addr"]
+        expr: 'from_target(is_group=false).invalid_config'
+        materialized_value: "not_exist_addr"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PR_SRC_NET_GROUP_NOT_EXIST
+        sample_class: invalid_config
+        description: "is_group=true。设备上不存在的地址组名称。"
+        representative_values: ["not_exist_group"]
+        expr: 'from_target(is_group=true).invalid_config'
+        materialized_value: "not_exist_group"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PR_SRC_NET_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: [""]
+        expr: 'from_target().invalid_format'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
     usage_profiles:
       config_test:
-        accepted_config_samples: [RULE_SRC_IP_VALID_HOST, RULE_SRC_IP_VALID_SUBNET]
-        rejected_config_samples: [RULE_SRC_IP_INVALID]
+        accepted_config_samples: [PR_SRC_NET_ANY, PR_SRC_NET_ADDR_VALID, PR_SRC_NET_GROUP_VALID]
+        rejected_config_samples: [PR_SRC_NET_ADDR_NOT_EXIST, PR_SRC_NET_GROUP_NOT_EXIST, PR_SRC_NET_NAME_INVALID]
       function_test:
-        precondition_samples: [RULE_SRC_IP_VALID_HOST, RULE_SRC_IP_VALID_SUBNET]
+        precondition_samples: [PR_SRC_NET_ADDR_VALID]
 
-  - factor_id: FAC-PR-RULE-DST-IP
-    factor_name: 策略路由规则目的IPv4配置
+  - factor_id: FAC-PR-RULE-DST-NETWORK
+    factor_name: 策略路由规则目的网络
     factor_kind: data
     design_role: driver
     owner_object: OBJ-PR-RULE
-    domain_model: ip_address
+    domain_model: object_instance
     value_type: string
-    aliases: [目的IP配置, 目的地址配置, 规则目的地址]
-    applicable_when: "policy route rule destination address configured"
+    domain_expr:
+      reference:
+        default: any
+        switch:
+          field: destination_network_is_group
+          cases:
+            false: ngfw-objects/FAC-OBJ-ADDRESS
+            true: ngfw-objects/FAC-OBJ-ADDRESS-GROUP
+    aliases: [目的网络, 目的地址, dst_network]
+    applicable_when: "policy route rule destination network configured"
     downstream_methods: [D-Data]
     reuse_policy: must_reuse
-    status: active
+    status: candidate
     sample_definitions:
-      - sample_id: RULE_DST_IP_VALID_HOST
+      - sample_id: PR_DST_NET_ANY
         sample_class: valid_config
-        expr: "valid_ipv4_host()"
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_DST_IP_VALID_SUBNET
+        description: "不指定目的网络，匹配所有。默认值 any。"
+        representative_values: ["any"]
+        expr: 'any'
+        materialized_value: "any"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_DST_NET_ADDR_VALID
         sample_class: valid_config
-        expr: "valid_ipv4_subnet()"
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_DST_IP_INVALID
+        description: "is_group=false。引用设备上已存在的地址对象。"
+        representative_values: ["web_servers"]
+        expr: 'from_target(is_group=false).accepted'
+        materialized_value: "web_servers"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_DST_NET_GROUP_VALID
+        sample_class: valid_config
+        description: "is_group=true。引用设备上已存在的地址组。"
+        representative_values: ["partner_networks"]
+        expr: 'from_target(is_group=true).accepted'
+        materialized_value: "partner_networks"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_DST_NET_ADDR_NOT_EXIST
         sample_class: invalid_config
-        expr: "invalid_ipv4()"
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
+        description: "is_group=false。设备上不存在的地址对象名称。"
+        representative_values: ["not_exist_dst"]
+        expr: 'from_target(is_group=false).invalid_config'
+        materialized_value: "not_exist_dst"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PR_DST_NET_GROUP_NOT_EXIST
+        sample_class: invalid_config
+        description: "is_group=true。设备上不存在的地址组名称。"
+        representative_values: ["not_exist_dst_group"]
+        expr: 'from_target(is_group=true).invalid_config'
+        materialized_value: "not_exist_dst_group"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PR_DST_NET_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。"
+        representative_values: [""]
+        expr: 'from_target().invalid_format'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
     usage_profiles:
       config_test:
-        accepted_config_samples: [RULE_DST_IP_VALID_HOST, RULE_DST_IP_VALID_SUBNET]
-        rejected_config_samples: [RULE_DST_IP_INVALID]
+        accepted_config_samples: [PR_DST_NET_ANY, PR_DST_NET_ADDR_VALID, PR_DST_NET_GROUP_VALID]
+        rejected_config_samples: [PR_DST_NET_ADDR_NOT_EXIST, PR_DST_NET_GROUP_NOT_EXIST, PR_DST_NET_NAME_INVALID]
       function_test:
-        precondition_samples: [RULE_DST_IP_VALID_HOST, RULE_DST_IP_VALID_SUBNET]
+        precondition_samples: [PR_DST_NET_ADDR_VALID]
 
-  - factor_id: FAC-PR-RULE-PROTOCOL
-    factor_name: 策略路由规则服务协议配置
+  - factor_id: FAC-PR-RULE-SERVICE
+    factor_name: 策略路由规则服务
     factor_kind: data
     design_role: driver
     owner_object: OBJ-PR-RULE
-    domain_model: enum
-    value_type: enum
-    values: [ip, tcp, udp, icmp, application]
-    aliases: [协议配置, 服务协议配置, 规则协议]
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      reference:
+        default: any
+        switch:
+          field: service_is_group
+          cases:
+            false: ngfw-objects/FAC-OBJ-SERVICE
+            true: ngfw-objects/FAC-OBJ-SERVICE-GROUP
+    aliases: [服务, 服务对象, service]
     applicable_when: "policy route rule service configured"
     downstream_methods: [D-Data]
     reuse_policy: must_reuse
-    status: active
+    status: candidate
     sample_definitions:
-      - sample_id: RULE_PROTOCOL_IP
+      - sample_id: PR_SVC_ANY
         sample_class: valid_config
-        materialized_value: ip
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_PROTOCOL_TCP
+        description: "不指定服务，匹配所有。"
+        representative_values: ["any"]
+        expr: 'any'
+        materialized_value: "any"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_SVC_VALID
         sample_class: valid_config
-        materialized_value: tcp
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_PROTOCOL_UDP
+        description: "is_group=false。引用已存在的服务对象。"
+        representative_values: ["服务0001", "web_service"]
+        expr: 'from_target(is_group=false).accepted'
+        materialized_value: "服务0001"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_SVC_GROUP_VALID
         sample_class: valid_config
-        materialized_value: udp
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_PROTOCOL_INVALID
+        description: "is_group=true。引用已存在的服务组。"
+        representative_values: ["common_services"]
+        expr: 'from_target(is_group=true).accepted'
+        materialized_value: "common_services"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_SVC_NOT_EXIST
         sample_class: invalid_config
-        expr: "not_in(values)"
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
+        description: "设备上不存在的服务/服务组名称。"
+        representative_values: ["not_exist_svc"]
+        expr: 'from_target().invalid_config'
+        materialized_value: "not_exist_svc"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PR_SVC_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。"
+        representative_values: [""]
+        expr: 'from_target().invalid_format'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
     usage_profiles:
       config_test:
-        accepted_config_samples: [RULE_PROTOCOL_IP, RULE_PROTOCOL_TCP, RULE_PROTOCOL_UDP]
-        rejected_config_samples: [RULE_PROTOCOL_INVALID]
+        accepted_config_samples: [PR_SVC_ANY, PR_SVC_VALID, PR_SVC_GROUP_VALID]
+        rejected_config_samples: [PR_SVC_NOT_EXIST, PR_SVC_NAME_INVALID]
       function_test:
-        precondition_samples: [RULE_PROTOCOL_IP, RULE_PROTOCOL_TCP, RULE_PROTOCOL_UDP]
+        precondition_samples: [PR_SVC_VALID]
 
-  - factor_id: FAC-PR-RULE-SRC-PORT
-    factor_name: 策略路由规则源端口配置
+  - factor_id: FAC-PR-RULE-APP-LIST
+    factor_name: 策略路由规则应用列表
     factor_kind: data
     design_role: driver
     owner_object: OBJ-PR-RULE
-    domain_model: range
-    value_type: integer
-    domain_expr: "int[1,65535]"
-    aliases: [源端口配置, 规则源端口]
-    applicable_when: "FAC-PR-RULE-PROTOCOL in [tcp, udp]"
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      reference:
+        default: []
+        target: ngfw-objects/FAC-OBJ-APPLICATION
+      list: true
+    aliases: [应用列表, applist, application_list]
+    applicable_when: "policy route rule application configured"
     downstream_methods: [D-Data]
     reuse_policy: must_reuse
-    status: active
+    status: candidate
     sample_definitions:
-      - sample_id: RULE_SRC_PORT_MIN
-        sample_class: boundary_min
-        materialized_value: 1
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_SRC_PORT_MAX
-        sample_class: boundary_max
-        materialized_value: 65535
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_SRC_PORT_NOMINAL
-        sample_class: in_range_nominal
-        expr: "random_int(2,65534,seed=case_id)"
-        applicability:
-          config_test: accepted
-          function_test: preferred_precondition
-      - sample_id: RULE_SRC_PORT_BELOW_MIN
-        sample_class: below_min
-        materialized_value: 0
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
-      - sample_id: RULE_SRC_PORT_ABOVE_MAX
-        sample_class: above_max
-        materialized_value: 65536
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
+      - sample_id: PR_APP_LIST_EMPTY
+        sample_class: valid_config
+        description: "空列表，不限制应用。"
+        representative_values: ["[]"]
+        expr: 'empty_list'
+        materialized_value: "[]"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_APP_LIST_VALID
+        sample_class: valid_config
+        description: "列表中全部是设备上已存在的应用对象。"
+        representative_values: ["['tcp应用', 'test']"]
+        expr: 'from_target().accepted'
+        materialized_value: "['tcp应用']"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_APP_LIST_PARTIAL_INVALID
+        sample_class: invalid_config
+        description: "列表中存在设备上不存在的应用对象名称。"
+        representative_values: ["['tcp应用', 'not_exist_app']"]
+        expr: 'from_target().accepted + from_target().invalid_config'
+        materialized_value: "['tcp应用', 'not_exist_app']"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PR_APP_LIST_NAME_INVALID
+        sample_class: invalid_format
+        description: "列表中存在格式非法的名称。"
+        representative_values: ["['', 'tcp应用']"]
+        expr: 'from_target().invalid_format'
+        materialized_value: "['']"
+        applicability: {config_test: rejected, function_test: not_applicable}
     usage_profiles:
       config_test:
-        accepted_config_samples: [RULE_SRC_PORT_MIN, RULE_SRC_PORT_MAX, RULE_SRC_PORT_NOMINAL]
-        rejected_config_samples: [RULE_SRC_PORT_BELOW_MIN, RULE_SRC_PORT_ABOVE_MAX]
+        accepted_config_samples: [PR_APP_LIST_EMPTY, PR_APP_LIST_VALID]
+        rejected_config_samples: [PR_APP_LIST_PARTIAL_INVALID, PR_APP_LIST_NAME_INVALID]
       function_test:
-        precondition_samples: [RULE_SRC_PORT_NOMINAL]
+        precondition_samples: [PR_APP_LIST_VALID]
 
-  - factor_id: FAC-PR-RULE-DST-PORT
-    factor_name: 策略路由规则目的端口配置
+  - factor_id: FAC-PR-RULE-APP-TAG
+    factor_name: 策略路由规则应用标签
     factor_kind: data
     design_role: driver
     owner_object: OBJ-PR-RULE
-    domain_model: range
-    value_type: integer
-    domain_expr: "int[1,65535]"
-    aliases: [目的端口配置, 规则目的端口]
-    applicable_when: "FAC-PR-RULE-PROTOCOL in [tcp, udp]"
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      reference:
+        target: ngfw-objects/FAC-OBJ-APP-TAG
+    aliases: [应用标签, app_tag, apptag]
+    applicable_when: "policy route rule application tag configured"
     downstream_methods: [D-Data]
     reuse_policy: must_reuse
-    status: active
+    status: candidate
     sample_definitions:
-      - sample_id: RULE_DST_PORT_MIN
-        sample_class: boundary_min
-        materialized_value: 1
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_DST_PORT_MAX
-        sample_class: boundary_max
-        materialized_value: 65535
-        applicability:
-          config_test: accepted
-          function_test: precondition
-      - sample_id: RULE_DST_PORT_NOMINAL
-        sample_class: in_range_nominal
-        expr: "random_int(2,65534,seed=case_id)"
-        applicability:
-          config_test: accepted
-          function_test: preferred_precondition
-      - sample_id: RULE_DST_PORT_BELOW_MIN
-        sample_class: below_min
-        materialized_value: 0
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
-      - sample_id: RULE_DST_PORT_ABOVE_MAX
-        sample_class: above_max
-        materialized_value: 65536
-        applicability:
-          config_test: rejected
-          function_test: not_applicable
+      - sample_id: PR_APP_TAG_VALID
+        sample_class: valid_config
+        description: "引用设备上已存在的应用标签。"
+        representative_values: ["web_apps", "blocked_apps"]
+        expr: 'from_target().accepted'
+        materialized_value: "web_apps"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_APP_TAG_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的应用标签名称。"
+        representative_values: ["not_exist_tag"]
+        expr: 'from_target().invalid_config'
+        materialized_value: "not_exist_tag"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PR_APP_TAG_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。"
+        representative_values: [""]
+        expr: 'from_target().invalid_format'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
     usage_profiles:
       config_test:
-        accepted_config_samples: [RULE_DST_PORT_MIN, RULE_DST_PORT_MAX, RULE_DST_PORT_NOMINAL]
-        rejected_config_samples: [RULE_DST_PORT_BELOW_MIN, RULE_DST_PORT_ABOVE_MAX]
+        accepted_config_samples: [PR_APP_TAG_VALID]
+        rejected_config_samples: [PR_APP_TAG_NOT_EXIST, PR_APP_TAG_NAME_INVALID]
       function_test:
-        precondition_samples: [RULE_DST_PORT_NOMINAL]
+        precondition_samples: [PR_APP_TAG_VALID]
 
-  - factor_id: FAC-TRAFFIC-LAYER-TYPE
-    factor_name: 流量层级类型
+  - factor_id: FAC-PR-RULE-TIME-OBJ
+    factor_name: 策略路由规则时间对象
     factor_kind: data
     design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: enum
-    value_type: enum
-    values: [l2-non-ip, ip, tcp, udp, application]
-    display_values:
-      l2-non-ip: 二层非IP流
-      ip: IP流
-      tcp: TCP流
-      udp: UDP流
-      application: 应用流
-    aliases: [业务流类型, 流量类型, 报文类型]
-    downstream_methods: [C-Combination]
-    status: active
-
-  - factor_id: FAC-TRAFFIC-IP-MATCH
-    factor_name: IP匹配状态
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: enum
-    value_type: enum
-    values: [src-dst-match, src-ip-mismatch, dst-ip-mismatch, both-ip-mismatch]
-    display_values:
-      src-dst-match: 源IP和目的IP均匹配
-      src-ip-mismatch: 源IP不匹配
-      dst-ip-mismatch: 目的IP不匹配
-      both-ip-mismatch: 源IP和目的IP均不匹配
-    aliases: [IP匹配, 源目的IP匹配, 地址匹配状态]
-    downstream_methods: [P-Parameter, C-Combination]
-    status: active
-
-  - factor_id: FAC-TRAFFIC-SERVICE-MATCH
-    factor_name: 服务匹配状态
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: enum
-    value_type: enum
-    values: [service-match, service-type-mismatch, src-port-mismatch, dst-port-mismatch]
-    display_values:
-      service-match: 服务类型和端口均匹配
-      service-type-mismatch: 服务类型不匹配
-      src-port-mismatch: 源端口不匹配
-      dst-port-mismatch: 目的端口不匹配
-    aliases: [服务匹配, 端口匹配, 协议端口匹配]
-    downstream_methods: [P-Parameter, C-Combination]
-    status: active
-
-  - factor_id: FAC-TRAFFIC-APP-MATCH
-    factor_name: 应用匹配状态
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: enum
-    value_type: enum
-    values: [ftp-match, http-match, other-app-match, app-mismatch, app-unrecognized]
-    display_values:
-      ftp-match: FTP流
-      http-match: HTTP流
-      other-app-match: 其他应用流
-      app-mismatch: 应用不匹配
-      app-unrecognized: 应用未识别
-    aliases: [应用匹配, 应用识别, 应用流]
-    downstream_methods: [P-Parameter, C-Combination]
-    status: active
-
-  - factor_id: FAC-EXPECTED-MATCH-RESULT
-    factor_name: 预期命中结果
-    factor_kind: oracle
-    design_role: oracle
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: enum
-    value_type: enum
-    values: [hit, miss]
-    display_values:
-      hit: 命中
-      miss: 不命中
-    aliases: [命中结果, 预期匹配结果, 是否命中]
-    downstream_methods: [oracle-design]
-    status: active
-
-  - factor_id: FAC-PKT-SRC-IP
-    factor_name: 报文源IPv4
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: ip_address
+    owner_object: OBJ-PR-RULE
+    domain_model: object_instance
     value_type: string
-    aliases: [源IP, 源地址, 报文源地址]
-    downstream_methods: [P-Parameter, C-Combination]
+    domain_expr:
+      reference:
+        target: ngfw-objects/FAC-OBJ-TIME
+    domain_expr:
+      reference:
+        default: any
+        target: ngfw-objects/FAC-OBJ-TIME
+    aliases: [时间对象, time_obj, 时间计划]
+    applicable_when: "policy route rule time object configured"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
     sample_definitions:
-      - sample_id: SRC_IP_MATCH
-        sample_class: positive_function
-        expr: "from_rule.src_ip.valid_member"
-        applicability:
-          config_test: not_applicable
-          function_test: positive
-      - sample_id: SRC_IP_MISMATCH
-        sample_class: negative_function
-        expr: "not_in(rule.src_ip)"
-        applicability:
-          config_test: not_applicable
-          function_test: negative
+      - sample_id: PR_TIME_ANY
+        sample_class: valid_config
+        description: "不指定时间对象，规则始终生效。默认值。"
+        representative_values: ["any"]
+        expr: 'any'
+        materialized_value: "any"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_TIME_VALID
+        sample_class: valid_config
+        description: "引用设备上已存在的时间对象。"
+        representative_values: ["work_hours", "maintenance_window"]
+        expr: 'from_target().accepted'
+        materialized_value: "work_hours"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PR_TIME_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的时间对象名称。"
+        representative_values: ["not_exist_time"]
+        expr: 'from_target().invalid_config'
+        materialized_value: "not_exist_time"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PR_TIME_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。"
+        representative_values: [""]
+        expr: 'from_target().invalid_format'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
     usage_profiles:
       config_test:
-        policy: not_applicable
+        accepted_config_samples: [PR_TIME_ANY, PR_TIME_VALID]
+        rejected_config_samples: [PR_TIME_NOT_EXIST, PR_TIME_NAME_INVALID]
       function_test:
-        positive_samples: [SRC_IP_MATCH]
-        negative_samples: [SRC_IP_MISMATCH]
-    status: active
+        precondition_samples: [PR_TIME_VALID]
 
-  - factor_id: FAC-PKT-DST-IP
-    factor_name: 报文目的IPv4
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: ip_address
-    value_type: string
-    aliases: [目的IP, 目的地址, 报文目的地址]
-    downstream_methods: [P-Parameter, C-Combination]
-    sample_definitions:
-      - sample_id: DST_IP_MATCH
-        sample_class: positive_function
-        expr: "from_rule.dst_ip.valid_member"
-        applicability:
-          config_test: not_applicable
-          function_test: positive
-      - sample_id: DST_IP_MISMATCH
-        sample_class: negative_function
-        expr: "not_in(rule.dst_ip)"
-        applicability:
-          config_test: not_applicable
-          function_test: negative
-    usage_profiles:
-      config_test:
-        policy: not_applicable
-      function_test:
-        positive_samples: [DST_IP_MATCH]
-        negative_samples: [DST_IP_MISMATCH]
-    status: active
-
-  - factor_id: FAC-PKT-PROTOCOL
-    factor_name: 报文协议
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: enum
-    value_type: enum
-    values: [ip, tcp, udp, icmp, ftp, http, other-app]
-    aliases: [协议, 服务类型, 应用协议]
-    status: active
-
-  - factor_id: FAC-PKT-SRC-PORT
-    factor_name: 报文源端口
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: range
-    value_type: integer
-    domain_expr: "int[1,65535]"
-    downstream_methods: [P-Parameter, C-Combination]
-    sample_definitions:
-      - sample_id: SRC_PORT_MATCH
-        sample_class: positive_function
-        expr: "from_rule.service.src_port.valid_member"
-        applicability:
-          config_test: not_applicable
-          function_test: positive
-      - sample_id: SRC_PORT_MISMATCH
-        sample_class: negative_function
-        expr: "not_in(rule.service.src_port)"
-        applicability:
-          config_test: not_applicable
-          function_test: negative
-    usage_profiles:
-      config_test:
-        policy: not_applicable
-      function_test:
-        positive_samples: [SRC_PORT_MATCH]
-        negative_samples: [SRC_PORT_MISMATCH]
-    status: active
-
-  - factor_id: FAC-PKT-DST-PORT
-    factor_name: 报文目的端口
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: range
-    value_type: integer
-    domain_expr: "int[1,65535]"
-    downstream_methods: [P-Parameter, C-Combination]
-    sample_definitions:
-      - sample_id: DST_PORT_MATCH
-        sample_class: positive_function
-        expr: "from_rule.service.dst_port.valid_member"
-        applicability:
-          config_test: not_applicable
-          function_test: positive
-      - sample_id: DST_PORT_MISMATCH
-        sample_class: negative_function
-        expr: "not_in(rule.service.dst_port)"
-        applicability:
-          config_test: not_applicable
-          function_test: negative
-    usage_profiles:
-      config_test:
-        policy: not_applicable
-      function_test:
-        positive_samples: [DST_PORT_MATCH]
-        negative_samples: [DST_PORT_MISMATCH]
-    status: active
-
-  - factor_id: FAC-PKT-APP-ID
-    factor_name: 报文应用标识
-    factor_kind: data
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: enum
-    value_type: enum
-    values: [ftp, http, other-app, app-mismatch, app-unrecognized]
-    aliases: [应用, 应用识别, 应用对象]
-    status: active
-
-  - factor_id: FAC-DOMAIN-RESOLUTION-STATE
-    factor_name: 域名解析状态
-    factor_kind: state
-    design_role: driver
-    owner_object: OBJ-PR-TRAFFIC
-    domain_model: enum
-    value_type: enum
-    values: [resolved, unresolved, resolved-to-mismatch-ip]
-    display_values:
-      resolved: 解析成功
-      unresolved: 解析失败
-      resolved-to-mismatch-ip: 解析到不匹配IP
-    status: active
+  # ═══════════════════════════════════════════════════════
+  # 规则状态与顺序
+  # ═══════════════════════════════════════════════════════
 
   - factor_id: FAC-PR-RULE-STATE
     factor_name: 策略路由规则状态
@@ -729,8 +438,64 @@ factors:
       disabled: 禁用
       modified: 已修改
       deleted: 已删除
+    aliases: [规则状态, 启用禁用]
+    applicable_when: always
     downstream_methods: [S-State]
-    status: active
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: RULE_ENABLED
+        sample_class: positive_function
+        description: "规则已启用，正常参与匹配。"
+        representative_values: ["enabled"]
+        expr: 'enabled'
+        materialized_value: "enabled"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: RULE_DISABLED
+        sample_class: negative_function
+        description: "规则已禁用，不参与匹配。"
+        representative_values: ["disabled"]
+        expr: 'disabled'
+        materialized_value: "disabled"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-PR-RULE-EFFECTIVE-STATE
+    factor_name: 策略路由规则生效状态
+    factor_kind: state
+    design_role: oracle
+    owner_object: OBJ-PR-RULE
+    domain_model: enum
+    value_type: enum
+    values: [active, inactive]
+    display_values:
+      active: 生效中
+      inactive: 未生效
+    aliases: [生效状态, 运行时状态, effective_state]
+    applicable_when: "FAC-PR-RULE-STATE == enabled"
+    downstream_methods: [S-State, oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      规则配置存在且启用(enabled)时，是否实际参与报文匹配由运行时条件决定:
+      - 引用时间对象时，当前时间在窗口内 → active，窗口外 → inactive
+      - 引用入接口时，接口状态 UP → 才可能 active
+      - 未引用时间对象和入接口(any) → 始终 active
+      inactive 状态的规则不会产生命中计数，不会出现在转发表中。
+    sample_definitions:
+      - sample_id: EFFECTIVE_ACTIVE
+        sample_class: positive_function
+        description: "规则生效中。当前时间在时间对象窗口内（或未引用），报文可匹配该规则。"
+        representative_values: ["active"]
+        expr: 'active'
+        materialized_value: "active"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: EFFECTIVE_INACTIVE
+        sample_class: negative_function
+        description: "规则未生效。如时间对象窗口外，规则存在但不参与匹配。"
+        representative_values: ["inactive"]
+        expr: 'inactive'
+        materialized_value: "inactive"
+        applicability: {config_test: not_applicable, function_test: negative}
 
   - factor_id: FAC-PR-RULE-ORDER
     factor_name: 策略路由规则顺序
@@ -745,8 +510,26 @@ factors:
       general-before-specific: 通用规则在前
       moved-order: 移动后顺序
       default-insert-position: 默认插入位置
+    aliases: [规则顺序, 优先级顺序]
+    applicable_when: always
     downstream_methods: [P-Parameter, C-Combination]
-    status: active
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: ORDER_SPECIFIC_FIRST
+        sample_class: positive_function
+        description: "精确规则在前，优先命中精确规则。"
+        representative_values: ["specific-before-general"]
+        expr: 'specific-before-general'
+        materialized_value: "specific-before-general"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: ORDER_GENERAL_FIRST
+        sample_class: negative_function
+        description: "通用规则在前，可能遮蔽精确规则。"
+        representative_values: ["general-before-specific"]
+        expr: 'general-before-specific'
+        materialized_value: "general-before-specific"
+        applicability: {config_test: not_applicable, function_test: negative}
 
   - factor_id: FAC-PR-RULE-SCOPE
     factor_name: 策略路由规则匹配范围
@@ -760,7 +543,25 @@ factors:
       specific: 精确范围
       general: 通用范围
       overlap: 重叠范围
-    status: active
+    aliases: [规则范围, 匹配范围]
+    applicable_when: always
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: SCOPE_SPECIFIC
+        sample_class: valid_member
+        description: "精确匹配范围。如 /32 主机路由。"
+        representative_values: ["specific"]
+        expr: 'specific'
+        materialized_value: "specific"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: SCOPE_OVERLAP
+        sample_class: valid_member
+        description: "两条规则 IP 范围有重叠。"
+        representative_values: ["overlap"]
+        expr: 'overlap'
+        materialized_value: "overlap"
+        applicability: {config_test: not_applicable, function_test: positive}
 
   - factor_id: FAC-PR-EXPECTED-HIT-RULE
     factor_name: 预期命中规则
@@ -774,459 +575,273 @@ factors:
       rule-a: 命中规则A
       rule-b: 命中规则B
       none: 不命中任何策略路由规则
-    status: active
+    aliases: [命中规则, 预期规则]
+    applicable_when: "multiple overlapping rules"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: HIT_RULE_A
+        sample_class: positive_function
+        description: "预期命中规则A。"
+        representative_values: ["rule-a"]
+        expr: 'rule-a'
+        materialized_value: "rule-a"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: HIT_NONE
+        sample_class: negative_function
+        description: "预期不命中任何策略路由规则。"
+        representative_values: ["none"]
+        expr: 'none'
+        materialized_value: "none"
+        applicability: {config_test: not_applicable, function_test: negative}
 
-  - factor_id: FAC-COUNTER-TARGET
-    factor_name: 命中计数操作对象
-    factor_kind: control
+  # ═══════════════════════════════════════════════════════
+  # 流量匹配语义
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-TRAFFIC-LAYER-TYPE
+    factor_name: 流量层级类型
+    factor_kind: data
     design_role: driver
-    owner_object: OBJ-PR-DFX
+    owner_object: OBJ-PR-TRAFFIC
     domain_model: enum
     value_type: enum
-    values: [single-rule, all-rules]
+    domain_expr:
+      reference_targets:
+        l2-non-ip: [ngfw-traffic/FAC-PKT-L2-DMAC, ngfw-traffic/FAC-PKT-L2-SMAC]
+        ip: [ngfw-traffic/FAC-PKT-SRC-IP, ngfw-traffic/FAC-PKT-DST-IP]
+        tcp: [ngfw-traffic/FAC-PKT-SRC-IP, ngfw-traffic/FAC-PKT-DST-IP, ngfw-traffic/FAC-PKT-PROTOCOL]
+        udp: [ngfw-traffic/FAC-PKT-SRC-IP, ngfw-traffic/FAC-PKT-DST-IP, ngfw-traffic/FAC-PKT-PROTOCOL]
+        application: [ngfw-traffic/FAC-PKT-APP-ID]
+    values: [l2-non-ip, ip, tcp, udp, application]
     display_values:
-      single-rule: 单条规则
-      all-rules: 全部规则
-    status: active
+      l2-non-ip: 二层非IP流
+      ip: IP流
+      tcp: TCP流
+      udp: UDP流
+      application: 应用流
+    aliases: [业务流类型, 流量类型, 报文类型]
+    downstream_methods: [C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: LAYER_IP
+        sample_class: positive_function
+        description: "纯IP流匹配。"
+        representative_values: ["ip"]
+        expr: 'ip'
+        materialized_value: "ip"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: LAYER_TCP
+        sample_class: positive_function
+        description: "TCP流匹配，可进一步匹配端口。"
+        representative_values: ["tcp"]
+        expr: 'tcp'
+        materialized_value: "tcp"
+        applicability: {config_test: not_applicable, function_test: positive}
 
-  - factor_id: FAC-COUNTER-ACTION
-    factor_name: 命中计数操作
-    factor_kind: control
+  - factor_id: FAC-TRAFFIC-IP-MATCH
+    factor_name: IP 匹配状态
+    factor_kind: data
     design_role: driver
-    owner_object: OBJ-PR-DFX
+    owner_object: OBJ-PR-TRAFFIC
     domain_model: enum
     value_type: enum
-    values: [query, clear-single, clear-all]
+    domain_expr:
+      reference_targets: [ngfw-traffic/FAC-PKT-SRC-IP, ngfw-traffic/FAC-PKT-DST-IP]
+    values: [src-dst-match, src-ip-mismatch, dst-ip-mismatch, both-ip-mismatch]
     display_values:
-      query: 查看
-      clear-single: 单条清零
-      clear-all: 全部清零
-    status: active
+      src-dst-match: 源IP和目的IP均匹配
+      src-ip-mismatch: 源IP不匹配
+      dst-ip-mismatch: 目的IP不匹配
+      both-ip-mismatch: 源IP和目的IP均不匹配
+    aliases: [IP匹配, 地址匹配状态]
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: IP_MATCH
+        sample_class: positive_function
+        description: "源IP和目的IP均匹配规则。期望 hit。"
+        representative_values: ["src-dst-match"]
+        expr: 'src-dst-match'
+        materialized_value: "src-dst-match"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: IP_MISMATCH
+        sample_class: negative_function
+        description: "IP不匹配规则。期望 miss。"
+        representative_values: ["src-ip-mismatch"]
+        expr: 'src-ip-mismatch'
+        materialized_value: "src-ip-mismatch"
+        applicability: {config_test: not_applicable, function_test: negative}
 
-  - factor_id: FAC-COUNTER-DELTA
-    factor_name: 命中计数变化
+  - factor_id: FAC-TRAFFIC-SERVICE-MATCH
+    factor_name: 服务匹配状态
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-PR-TRAFFIC
+    domain_model: enum
+    value_type: enum
+    domain_expr:
+      reference_targets: [ngfw-traffic/FAC-PKT-PROTOCOL, ngfw-traffic/FAC-PKT-SRC-PORT, ngfw-traffic/FAC-PKT-DST-PORT]
+    values: [service-match, service-type-mismatch, src-port-mismatch, dst-port-mismatch]
+    display_values:
+      service-match: 服务类型和端口均匹配
+      service-type-mismatch: 服务类型不匹配
+      src-port-mismatch: 源端口不匹配
+      dst-port-mismatch: 目的端口不匹配
+    aliases: [服务匹配, 端口匹配, 协议端口匹配]
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: SVC_MATCH
+        sample_class: positive_function
+        description: "协议类型和端口均匹配。期望 hit。"
+        representative_values: ["service-match"]
+        expr: 'service-match'
+        materialized_value: "service-match"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: SVC_MISMATCH
+        sample_class: negative_function
+        description: "服务不匹配。期望 miss。"
+        representative_values: ["service-type-mismatch"]
+        expr: 'service-type-mismatch'
+        materialized_value: "service-type-mismatch"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-TRAFFIC-APP-MATCH
+    factor_name: 应用匹配状态
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-PR-TRAFFIC
+    domain_model: enum
+    value_type: enum
+    domain_expr:
+      reference_targets: [ngfw-traffic/FAC-PKT-APP-ID]
+    values: [ftp-match, http-match, other-app-match, app-mismatch, app-unrecognized]
+    display_values:
+      ftp-match: FTP流
+      http-match: HTTP流
+      other-app-match: 其他应用流
+      app-mismatch: 应用不匹配
+      app-unrecognized: 应用未识别
+    aliases: [应用匹配, 应用识别]
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: APP_MATCH
+        sample_class: positive_function
+        description: "应用匹配规则。期望 hit。"
+        representative_values: ["ftp-match"]
+        expr: 'ftp-match'
+        materialized_value: "ftp-match"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: APP_MISMATCH
+        sample_class: negative_function
+        description: "应用不匹配。期望 miss。"
+        representative_values: ["app-mismatch"]
+        expr: 'app-mismatch'
+        materialized_value: "app-mismatch"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-EXPECTED-MATCH-RESULT
+    factor_name: 预期命中结果
     factor_kind: oracle
     design_role: oracle
-    owner_object: OBJ-PR-DFX
+    owner_object: OBJ-PR-TRAFFIC
     domain_model: enum
     value_type: enum
-    values: [increase, no-change, single-cleared, all-cleared, re-increase]
+    values: [hit, miss]
     display_values:
-      increase: 增加
-      no-change: 不增加
-      single-cleared: 单条归零
-      all-cleared: 全部归零
-      re-increase: 清零后重新增加
-    status: active
+      hit: 命中
+      miss: 不命中
+    aliases: [命中结果, 预期匹配结果]
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: EXPECTED_HIT
+        sample_class: positive_function
+        description: "预期命中策略路由规则，报文按策略转发。"
+        representative_values: ["hit"]
+        expr: 'hit'
+        materialized_value: "hit"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: EXPECTED_MISS
+        sample_class: negative_function
+        description: "预期不命中策略路由规则。"
+        representative_values: ["miss"]
+        expr: 'miss'
+        materialized_value: "miss"
+        applicability: {config_test: not_applicable, function_test: negative}
 
-  - factor_id: FAC-LOG-OP-TYPE
-    factor_name: 日志操作类型
-    factor_kind: control
-    design_role: driver
-    owner_object: OBJ-PR-DFX
-    domain_model: enum
-    value_type: enum
-    values: [create, modify, enable, disable, delete]
-    display_values:
-      create: 新增
-      modify: 修改
-      enable: 启用
-      disable: 禁用
-      delete: 删除
-    status: active
-
-  - factor_id: FAC-LOG-FIELD-COMPLETENESS
-    factor_name: 日志字段完整性
-    factor_kind: oracle
-    design_role: oracle
-    owner_object: OBJ-PR-DFX
-    domain_model: enum
-    value_type: enum
-    values: [complete, missing-actor, missing-object, missing-action, missing-result, missing-time]
-    display_values:
-      complete: 字段完整
-      missing-actor: 缺操作者
-      missing-object: 缺对象
-      missing-action: 缺动作
-      missing-result: 缺结果
-      missing-time: 缺时间
-    status: active
-
-  - factor_id: FAC-HA-ROLE
-    factor_name: HA角色
-    factor_kind: state
-    design_role: driver
-    owner_object: OBJ-PR-HA
-    domain_model: enum
-    value_type: enum
-    values: [primary, standby]
-    display_values:
-      primary: 主设备
-      standby: 备设备
-    status: active
-
-  - factor_id: FAC-HA-SYNC-STATE
-    factor_name: HA配置同步状态
-    factor_kind: state
-    design_role: driver
-    owner_object: OBJ-PR-HA
-    domain_model: enum
-    value_type: enum
-    values: [synced, not-synced, partially-synced]
-    display_values:
-      synced: 已同步
-      not-synced: 未同步
-      partially-synced: 部分同步
-    status: active
-
-  - factor_id: FAC-HA-FAILOVER-ACTION
-    factor_name: HA切换动作
-    factor_kind: control
-    design_role: driver
-    owner_object: OBJ-PR-HA
-    domain_model: enum
-    value_type: enum
-    values: [trigger-failover, recover-primary, fallback]
-    display_values:
-      trigger-failover: 触发主故障切换
-      recover-primary: 主设备恢复
-      fallback: 回切
-    status: active
-
-  - factor_id: FAC-HA-EXPECTED-ACTIVE-DEVICE
-    factor_name: 预期承载设备
-    factor_kind: oracle
-    design_role: oracle
-    owner_object: OBJ-PR-HA
-    domain_model: enum
-    value_type: enum
-    values: [primary-active, standby-active, unchanged]
-    display_values:
-      primary-active: 主设备承载
-      standby-active: 备设备承载
-      unchanged: 不切换或保持当前承载
-    status: active
-
-traffic_samples:
-  - sample_id: TRAFFIC_L2_NON_IP_MATCH
-    sample_class: positive_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: l2-non-ip
-      FAC-EXPECTED-MATCH-RESULT: hit
-    materialization:
-      frame_type: l2_non_ip
-    usage:
-      function_test: positive
-  - sample_id: TRAFFIC_IP_MATCH
-    sample_class: positive_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: ip
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-EXPECTED-MATCH-RESULT: hit
-    materialization:
-      src_ip: from_rule.src_ip.valid_member
-      dst_ip: from_rule.dst_ip.valid_member
-      protocol: ip
-    usage:
-      function_test: positive
-  - sample_id: TRAFFIC_TCP_MATCH
-    sample_class: positive_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: tcp
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-TRAFFIC-SERVICE-MATCH: service-match
-      FAC-EXPECTED-MATCH-RESULT: hit
-    materialization:
-      src_ip: from_rule.src_ip.valid_member
-      dst_ip: from_rule.dst_ip.valid_member
-      protocol: tcp
-      src_port: from_rule.service.src_port.valid_member
-      dst_port: from_rule.service.dst_port.valid_member
-    usage:
-      function_test: positive
-  - sample_id: TRAFFIC_UDP_MATCH
-    sample_class: positive_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: udp
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-TRAFFIC-SERVICE-MATCH: service-match
-      FAC-EXPECTED-MATCH-RESULT: hit
-    materialization:
-      src_ip: from_rule.src_ip.valid_member
-      dst_ip: from_rule.dst_ip.valid_member
-      protocol: udp
-      src_port: from_rule.service.src_port.valid_member
-      dst_port: from_rule.service.dst_port.valid_member
-    usage:
-      function_test: positive
-  - sample_id: TRAFFIC_FTP_MATCH
-    sample_class: positive_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: application
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-TRAFFIC-APP-MATCH: ftp-match
-      FAC-EXPECTED-MATCH-RESULT: hit
-    materialization:
-      application: ftp
-    usage:
-      function_test: positive
-  - sample_id: TRAFFIC_HTTP_MATCH
-    sample_class: positive_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: application
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-TRAFFIC-APP-MATCH: http-match
-      FAC-EXPECTED-MATCH-RESULT: hit
-    materialization:
-      application: http
-    usage:
-      function_test: positive
-  - sample_id: TRAFFIC_OTHER_APP_MATCH
-    sample_class: positive_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: application
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-TRAFFIC-APP-MATCH: other-app-match
-      FAC-EXPECTED-MATCH-RESULT: hit
-    materialization:
-      application: other_app_from_rule
-    usage:
-      function_test: positive
-  - sample_id: TRAFFIC_SRC_IP_MISMATCH
-    sample_class: negative_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: ip
-      FAC-TRAFFIC-IP-MATCH: src-ip-mismatch
-      FAC-TRAFFIC-SERVICE-MATCH: service-match
-      FAC-EXPECTED-MATCH-RESULT: miss
-    materialization:
-      src_ip: not_in(rule.src_ip)
-      dst_ip: from_rule.dst_ip.valid_member
-      protocol: from_rule.service.protocol
-    usage:
-      function_test: negative
-  - sample_id: TRAFFIC_DST_IP_MISMATCH
-    sample_class: negative_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: ip
-      FAC-TRAFFIC-IP-MATCH: dst-ip-mismatch
-      FAC-TRAFFIC-SERVICE-MATCH: service-match
-      FAC-EXPECTED-MATCH-RESULT: miss
-    materialization:
-      src_ip: from_rule.src_ip.valid_member
-      dst_ip: not_in(rule.dst_ip)
-      protocol: from_rule.service.protocol
-    usage:
-      function_test: negative
-  - sample_id: TRAFFIC_SERVICE_TYPE_MISMATCH
-    sample_class: negative_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: ip
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-TRAFFIC-SERVICE-MATCH: service-type-mismatch
-      FAC-EXPECTED-MATCH-RESULT: miss
-    materialization:
-      src_ip: from_rule.src_ip.valid_member
-      dst_ip: from_rule.dst_ip.valid_member
-      protocol: not_in(rule.service.protocol)
-    usage:
-      function_test: negative
-  - sample_id: TRAFFIC_SRC_PORT_MISMATCH
-    sample_class: negative_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: tcp
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-TRAFFIC-SERVICE-MATCH: src-port-mismatch
-      FAC-EXPECTED-MATCH-RESULT: miss
-    materialization:
-      src_ip: from_rule.src_ip.valid_member
-      dst_ip: from_rule.dst_ip.valid_member
-      protocol: tcp
-      src_port: not_in(rule.service.src_port)
-      dst_port: from_rule.service.dst_port.valid_member
-    usage:
-      function_test: negative
-  - sample_id: TRAFFIC_DST_PORT_MISMATCH
-    sample_class: negative_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: tcp
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-TRAFFIC-SERVICE-MATCH: dst-port-mismatch
-      FAC-EXPECTED-MATCH-RESULT: miss
-    materialization:
-      src_ip: from_rule.src_ip.valid_member
-      dst_ip: from_rule.dst_ip.valid_member
-      protocol: tcp
-      src_port: from_rule.service.src_port.valid_member
-      dst_port: not_in(rule.service.dst_port)
-    usage:
-      function_test: negative
-  - sample_id: TRAFFIC_APP_MISMATCH
-    sample_class: negative_function
-    factors:
-      FAC-TRAFFIC-LAYER-TYPE: application
-      FAC-TRAFFIC-IP-MATCH: src-dst-match
-      FAC-TRAFFIC-APP-MATCH: app-mismatch
-      FAC-EXPECTED-MATCH-RESULT: miss
-    materialization:
-      application: not_in(rule.application)
-    usage:
-      function_test: negative
-
+# ═══════════════════════════════════════════════════════
+# 约束
+# ═══════════════════════════════════════════════════════
 constraints:
-  - constraint_id: C-L3-EGRESS-001
-    description: 下一跳模式使用下一跳关联接口类型
-    if: "FAC-L3-EGRESS-MODE == next-hop"
-    require: [FAC-L3-NH-IF-TYPE]
-    forbid: [FAC-L3-OUTIF-TYPE]
-  - constraint_id: C-L3-EGRESS-002
-    description: 出接口模式使用出接口接口类型
-    if: "FAC-L3-EGRESS-MODE == out-interface"
-    require: [FAC-L3-OUTIF-TYPE]
-    forbid: [FAC-L3-NH-IF-TYPE]
-  - constraint_id: C-L3-EGRESS-003
-    description: 下一跳模式支持的接口类型
-    if: "FAC-L3-EGRESS-MODE == next-hop"
-    allowed_values:
-      FAC-L3-NH-IF-TYPE: [physical, sub-interface, aggregate, bvi, tunnel]
-  - constraint_id: C-L3-EGRESS-004
-    description: 出接口模式支持的接口类型
-    if: "FAC-L3-EGRESS-MODE == out-interface"
-    allowed_values:
-      FAC-L3-OUTIF-TYPE: [tunnel, pppoe]
-  - constraint_id: C-L3-EGRESS-005
-    description: 失效检测方式只在不可达场景展开
-    if: "FAC-L3-REACHABILITY == unreachable"
-    require: [FAC-L3-FAIL-DETECT-METHOD]
-  - constraint_id: C-CONFIG-VS-FUNCTION-001
-    description: 配置拒绝样本不得作为功能用例前置
-    if: "sample.applicability.config_test == rejected"
-    forbid_usage:
-      function_test: [precondition, positive, negative]
-  - constraint_id: C-TRAFFIC-001
-    description: 功能反向流量不是配置非法值
-    if: "sample_class == negative_function"
-    require_usage:
-      function_test: negative
-    forbid_usage:
-      config_test: [accepted, rejected]
-  - constraint_id: C-RUNTIME-VS-CONFIG-001
-    description: 报文运行时输入因子不参与配置合法性覆盖
-    if: "owner_object == OBJ-PR-TRAFFIC and factor_id starts_with FAC-PKT-"
-    require_usage:
-      config_test: not_applicable
-    forbid_usage:
-      config_test: [accepted, rejected]
-  - constraint_id: C-RULE-CONFIG-001
-    description: 规则配置字段合法性由 OBJ-PR-RULE 配置因子承载
-    if: "config_test in [accepted, rejected] for source/destination/service fields"
-    require_owner_object: OBJ-PR-RULE
-    forbid_owner_object: OBJ-PR-TRAFFIC
+  - constraint_id: C-PR-NAME-001
+    description: "所有引用型字段的名称格式非法由 common-network/FAC-CONFIG-NAME 统一定义"
+    if: "sample_class == invalid_format and domain_model == object_instance"
+    reuse: common-network/FAC-CONFIG-NAME.rejected
 
-capability_matrices:
-  - matrix_id: M-L3-EGRESS-INTERFACE
-    matrix_name: 策略路由三层转发出口接口能力矩阵
-    rows:
-      - egress_mode: next-hop
-        interface_factor: FAC-L3-NH-IF-TYPE
-        interface_type: physical
-        display: 物理口
-        valid: true
-      - egress_mode: next-hop
-        interface_factor: FAC-L3-NH-IF-TYPE
-        interface_type: sub-interface
-        display: 子接口
-        valid: true
-      - egress_mode: next-hop
-        interface_factor: FAC-L3-NH-IF-TYPE
-        interface_type: aggregate
-        display: 聚合口
-        valid: true
-      - egress_mode: next-hop
-        interface_factor: FAC-L3-NH-IF-TYPE
-        interface_type: bvi
-        display: BVI接口
-        valid: true
-      - egress_mode: next-hop
-        interface_factor: FAC-L3-NH-IF-TYPE
-        interface_type: tunnel
-        display: 隧道口
-        valid: true
-      - egress_mode: out-interface
-        interface_factor: FAC-L3-OUTIF-TYPE
-        interface_type: tunnel
-        display: 隧道口
-        valid: true
-      - egress_mode: out-interface
-        interface_factor: FAC-L3-OUTIF-TYPE
-        interface_type: pppoe
-        display: PPPoE接口
-        valid: true
-
+# ═══════════════════════════════════════════════════════
+# 因子组
+# ═══════════════════════════════════════════════════════
 factor_groups:
-  - group_id: L3_EGRESS_NEXT_HOP
-    group_name: 下一跳模式三层转发接口覆盖
-    factors: [FAC-L3-EGRESS-MODE, FAC-L3-NH-IF-TYPE, FAC-L3-IF-CAPABILITY, FAC-L3-REACHABILITY, FAC-L3-EXPECTED-FWD-PATH]
-    fixed_values:
-      FAC-L3-EGRESS-MODE: next-hop
-    coverage_strategy:
-      positive: FAC-L3-NH-IF-TYPE 每个有效接口类型至少覆盖一次
-      failover: 选择物理口和隧道口作为代表覆盖不可达/恢复，除非风险要求全覆盖
-      oracle: 转发路径必须能证明走策略路由下一跳
-  - group_id: L3_EGRESS_OUT_INTERFACE
-    group_name: 出接口模式三层转发接口覆盖
-    factors: [FAC-L3-EGRESS-MODE, FAC-L3-OUTIF-TYPE, FAC-L3-IF-CAPABILITY, FAC-L3-REACHABILITY, FAC-L3-EXPECTED-FWD-PATH]
-    fixed_values:
-      FAC-L3-EGRESS-MODE: out-interface
-    coverage_strategy:
-      positive: FAC-L3-OUTIF-TYPE 中隧道口和 PPPoE 接口均必须覆盖
-      failover: 隧道口和 PPPoE 接口都建议覆盖 Down/恢复，因为状态机制不同
-      oracle: 转发路径必须能证明走配置的出接口
-  - group_id: L3_EGRESS_FAILOVER
-    group_name: 出口不可达和故障恢复
-    factors: [FAC-L3-EGRESS-MODE, FAC-L3-REACHABILITY, FAC-L3-FAIL-DETECT-METHOD, FAC-L3-EXPECTED-FWD-PATH]
-    coverage_strategy:
-      positive: 可达状态确认策略转发
-      negative: IP-LINK 和接口Down 均覆盖
-      recovery: 恢复后验证重新参与转发或按产品定义处理
-  - group_id: TRAFFIC_MATCHING
-    group_name: 策略路由业务流量匹配性
-    factors: [FAC-TRAFFIC-LAYER-TYPE, FAC-TRAFFIC-IP-MATCH, FAC-TRAFFIC-SERVICE-MATCH, FAC-TRAFFIC-APP-MATCH, FAC-EXPECTED-MATCH-RESULT]
-    usage_profiles:
-      config_test:
-        policy: not_applicable
-      function_test:
-        positive_samples: [TRAFFIC_L2_NON_IP_MATCH, TRAFFIC_IP_MATCH, TRAFFIC_TCP_MATCH, TRAFFIC_UDP_MATCH, TRAFFIC_FTP_MATCH, TRAFFIC_HTTP_MATCH, TRAFFIC_OTHER_APP_MATCH]
-        negative_samples: [TRAFFIC_SRC_IP_MISMATCH, TRAFFIC_DST_IP_MISMATCH, TRAFFIC_SERVICE_TYPE_MISMATCH, TRAFFIC_SRC_PORT_MISMATCH, TRAFFIC_DST_PORT_MISMATCH, TRAFFIC_APP_MISMATCH]
-  - group_id: CONFIG_FIELD_VALIDITY
+  - group_id: PR_CONFIG_FIELD_VALIDITY
     group_name: 策略路由配置字段合法性
-    factors: [FAC-CONFIG-NAME, FAC-PR-RULE-SRC-IP, FAC-PR-RULE-DST-IP, FAC-PR-RULE-PROTOCOL, FAC-PR-RULE-SRC-PORT, FAC-PR-RULE-DST-PORT, FAC-L3-NH-WEIGHT]
-    usage_profiles:
-      config_test:
-        policy: accepted_rejected_required
-      function_test:
-        policy: accepted_samples_only_as_precondition
+    factors:
+      - FAC-PR-RULE-IN-INTERFACE
+      - FAC-PR-RULE-SRC-NETWORK
+      - FAC-PR-RULE-DST-NETWORK
+      - FAC-PR-RULE-SERVICE
+      - FAC-PR-RULE-APP-LIST
+      - FAC-PR-RULE-APP-TAG
+      - FAC-PR-RULE-TIME-OBJ
+    external_factors:
+      - factor_id: ngfw-objects/FAC-OBJ-ADDRESS
+        role: "源/目的网络的地址对象引用"
+      - factor_id: ngfw-objects/FAC-OBJ-ADDRESS-GROUP
+        role: "源/目的网络的地址组引用"
+      - factor_id: ngfw-objects/FAC-OBJ-SERVICE
+        role: "服务对象引用"
+      - factor_id: ngfw-objects/FAC-OBJ-SERVICE-GROUP
+        role: "服务组引用"
+      - factor_id: ngfw-objects/FAC-OBJ-APPLICATION
+        role: "应用对象引用"
+      - factor_id: ngfw-objects/FAC-OBJ-APP-TAG
+        role: "应用标签引用"
+      - factor_id: ngfw-objects/FAC-OBJ-TIME
+        role: "时间对象引用"
+      - factor_id: common-network/FAC-CONFIG-NAME
+        role: "所有名称格式非法值"
     coverage_strategy:
-      positive: 每个配置字段至少选择一个 accepted 样本作为可下发配置
-      negative: 每个配置字段的 rejected 样本只验证配置拒绝
-      boundary: range/string_pattern 字段必须覆盖边界最小值、边界最大值和越界值
-  - group_id: POLICY_RULE_ORDER
+      positive: "每个配置字段至少选择一个 accepted 样本"
+      negative: "每个字段的 rejected 样本只验证配置拒绝"
+      boundary: "组件型字段覆盖 switch 两个分支"
+
+  - group_id: PR_RULE_ORDER
     group_name: 策略路由重叠规则命中判定
-    factors: [FAC-PR-RULE-ORDER, FAC-PR-RULE-SCOPE, FAC-PR-RULE-STATE, FAC-PR-EXPECTED-HIT-RULE]
+    factors: [FAC-PR-RULE-ORDER, FAC-PR-RULE-SCOPE, FAC-PR-RULE-STATE, FAC-PR-RULE-EFFECTIVE-STATE, FAC-PR-EXPECTED-HIT-RULE]
     coverage_strategy:
       parameter: 使用判定表覆盖顺序、范围、启用状态与预期命中规则
-  - group_id: DFX_COUNTER
-    group_name: 命中计数展示和清零
-    factors: [FAC-COUNTER-TARGET, FAC-COUNTER-ACTION, FAC-COUNTER-DELTA]
+
+  - group_id: PR_TRAFFIC_MATCHING
+    group_name: 策略路由业务流量匹配性
+    depends_on:
+      factor: ngfw-traffic/FAC-PKT-VALIDITY-MODE
+      required_value: policy_match
+    factors: [FAC-TRAFFIC-LAYER-TYPE, FAC-TRAFFIC-IP-MATCH,
+              FAC-TRAFFIC-SERVICE-MATCH, FAC-TRAFFIC-APP-MATCH,
+              FAC-EXPECTED-MATCH-RESULT]
     coverage_strategy:
-      data: 覆盖查看、单条清零、全部清零、清零后重新增加
-  - group_id: DFX_LOG_AUDIT
-    group_name: 操作日志审计
-    factors: [FAC-LOG-OP-TYPE, FAC-LOG-FIELD-COMPLETENESS]
-    coverage_strategy:
-      data: 覆盖新增、修改、启用、禁用、删除及字段完整性
-  - group_id: HA_POLICY_ROUTE
-    group_name: 策略路由HA同步与切换
-    factors: [FAC-HA-ROLE, FAC-HA-SYNC-STATE, FAC-HA-FAILOVER-ACTION, FAC-HA-EXPECTED-ACTIVE-DEVICE]
-    coverage_strategy:
-      state: 覆盖主备同步、主故障切换、恢复与回切
+      positive: 各层级正向匹配 + 命中
+      negative: 各层级反向不匹配 + 不命中
+
+# ═══════════════════════════════════════════════════════
+# 被引用方反向记录
+# ═══════════════════════════════════════════════════════
+external_consumers: []

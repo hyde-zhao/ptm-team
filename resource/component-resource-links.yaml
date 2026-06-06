@@ -4,10 +4,6 @@ components:
     component_type: agent
     resources:
       - resource_type: factor-library
-        library_id: common-network
+        library_id: all
         install_policy: required
-        reason: "通用网络、协议、地址、端口、接口状态等基础因子供测试设计复用。"
-      - resource_type: factor-library
-        library_id: ngfw-policy-routing
-        install_policy: recommended
-        reason: "NGFW 策略路由领域因子供策略路由类特性复用。"
+        reason: "公共因子库整体安装——通用网络、命名对象、流量构造、接口、路由、策略路由、负载均衡、HA、DFX 全部因子供测试设计复用。"

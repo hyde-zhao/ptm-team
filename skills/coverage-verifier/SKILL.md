@@ -4,8 +4,8 @@ description: >-
   双层覆盖率验证：校验需求层（SR→TP→LC→TD→PC）与测试点层（TP→LC/设计过程→PC）的完整覆盖，
   校验 topology_bindings 回链，并保留 trace / gap / fact_status 字段。
   触发词包括：覆盖检查、覆盖率、覆盖验证、需求覆盖。
-  适用场景：MFQ 分析的 coverage 阶段。
-argument-hint: "无需参数，自动扫描 analysis/coverage 所需输入"
+  适用场景：PPDCS 的 coverage 子步骤。
+argument-hint: "无需参数，自动扫描 ppdcs/coverage 所需输入"
 user-invokable: true
 status: active
 ---
@@ -15,23 +15,23 @@ status: active
 在所有设计 Skill 完成后，输出 **双层覆盖报告 + 未覆盖项清单**，并确保 STORY-06 / STORY-07 的**完整过程工件**被消费，而不是只看最终 PC：
 
 1. **需求层**：校验 `SR → TP → LC → TD → PC` 是否完整闭环；
-2. **测试点层**：校验 `TP → LC / design/ppdcs / design/pc` 是否落地为可执行 PC；
-3. 校验 PC 中的真实设备、端口、链路均可回链到 LC `topology_bindings` 和 `analysis/scenarios/confirmed-scenarios.md`；
+2. **测试点层**：校验 `TP → LC / ppdcs/ppdcs / ppdcs/pc` 是否落地为可执行 PC；
+3. 校验 PC 中的真实设备、端口、链路均可回链到 LC `topology_bindings` 和 `kym/scenarios/confirmed-scenarios.md`；
 4. 保留并透传 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `confirmation_gap_refs`, `fact_status`；
 5. 对缺口输出结构化原因，而不是只给覆盖率数字。
 
 ## 适用范围
 
-- 适用阶段：MFQ 的 coverage 阶段
-- 输入：`analysis/scenarios/`、`analysis/integration/`、`design/ppdcs/`、`design/pc/`、`process/REQUIREMENTS.md`
-- 输出：`analysis/coverage/`
+- 适用阶段：PPDCS 的 coverage 子步骤
+- 输入：`kym/scenarios/`、`mfq/integration/`、`ppdcs/ppdcs/`、`ppdcs/pc/`、`process/REQUIREMENTS.md`
+- 输出：`ppdcs/coverage/`
 
 ## 前置条件
 
 - [ ] `process/REQUIREMENTS.md` 可读取
-- [ ] `analysis/integration/all-test-points.md`、`logic-cases.md`、`test-data.md`、`coverage-matrix.md` 已生成
-- [ ] `analysis/scenarios/confirmed-scenarios.md` 已生成；依赖组网的场景有 `topology_ref` 和拓扑产物
-- [ ] `design/ppdcs/` 与 `design/pc/` 下已存在各 LC 单文件
+- [ ] `mfq/integration/all-test-points.md`、`logic-cases.md`、`test-data.md`、`coverage-matrix.md` 已生成
+- [ ] `kym/scenarios/confirmed-scenarios.md` 已生成；依赖组网的场景有 `topology_ref` 和拓扑产物
+- [ ] `ppdcs/ppdcs/` 与 `ppdcs/pc/` 下已存在各 LC 单文件
 - [ ] 上游 LC / TD / PC 已保留 trace、gap、topology、fact_status 字段
 
 ## 必须消费的输入契约
@@ -41,8 +41,8 @@ status: active
 | 来源 | 必收字段 | 用途 |
 |------|----------|------|
 | `process/REQUIREMENTS.md` | `SR/REQ 编号`, 需求描述 | 需求层覆盖基线 |
-| `analysis/scenarios/confirmed-scenarios.md` | `scenario_id`, `review_status=confirmed`, `topology_ref`, `topology_role`, `device_id`, `port_id`, `link_id`, `source`, `fact_status` | 真实组网对象回链基线 |
-| `analysis/scenarios/<scene-id>/topology.yaml` | `topology_ref`, devices, ports, links | 校验设备/端口/链路存在性 |
+| `kym/scenarios/confirmed-scenarios.md` | `scenario_id`, `review_status=confirmed`, `topology_ref`, `topology_role`, `device_id`, `port_id`, `link_id`, `source`, `fact_status` | 真实组网对象回链基线 |
+| `kym/scenarios/<scene-id>/topology.yaml` | `topology_ref`, devices, ports, links | 校验设备/端口/链路存在性 |
 | `all-test-points.md` | `TP-ID`, `关联SR`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 需求→测试点映射 |
 | `logic-cases.md` | `LC-ID`, `source_tp_ids`, `关联SR`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_binding_status`, `topology_gap_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 测试点→逻辑用例映射与拓扑绑定 |
 | `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `topology_binding_refs`, `scenario_refs`, `action_source_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | LC→TD 落地与数据链校验 |
@@ -52,11 +52,11 @@ status: active
 
 | 来源 | 必收字段 | 用途 |
 |------|----------|------|
-| `design/ppdcs/<basename>.md`（process/state） | `recommended_feature`, `design_skill`, `path_id / state_path_id`, `coverage_goal`, `td_ref`, `topology_role_refs`, `topology_binding_refs`, `trace_refs`, `scenario_refs`, `action_source_refs`, `confirmation_gap_refs`, `fact_status` | 校验 TP 是否真正进入设计过程 |
-| `design/ppdcs/<basename>.md`（parameter/data/combination） | `design_skill`, `rule_id / value_class / combo_id / data_row_id`, `factor_refs`, `topology_role_refs`, `topology_binding_refs`, `td_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 校验完整过程已进入覆盖链 |
-| `design/pc/<basename>.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_bindings`, `topology_materialization`, `confirmation_gap_refs`, `fact_status` | 校验最终 PC 覆盖与真实组网回链 |
+| `ppdcs/ppdcs/<basename>.md`（process/state） | `recommended_feature`, `design_skill`, `path_id / state_path_id`, `coverage_goal`, `td_ref`, `topology_role_refs`, `topology_binding_refs`, `trace_refs`, `scenario_refs`, `action_source_refs`, `confirmation_gap_refs`, `fact_status` | 校验 TP 是否真正进入设计过程 |
+| `ppdcs/ppdcs/<basename>.md`（parameter/data/combination） | `design_skill`, `rule_id / value_class / combo_id / data_row_id`, `factor_refs`, `topology_role_refs`, `topology_binding_refs`, `td_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 校验完整过程已进入覆盖链 |
+| `ppdcs/pc/<basename>.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_bindings`, `topology_materialization`, `confirmation_gap_refs`, `fact_status` | 校验最终 PC 覆盖与真实组网回链 |
 
-> 不允许只统计 `design/pc/*.md` 数量就判定“已覆盖”；必须确认 LC 在 `design/ppdcs/*.md` 中已有可审计过程。
+> 不允许只统计 `ppdcs/pc/*.md` 数量就判定”已覆盖”；必须确认 LC 在 `ppdcs/ppdcs/*.md` 中已有可审计过程。
 
 ## 执行流程
 
@@ -66,16 +66,16 @@ status: active
 2. 从 `all-test-points.md` 建立 `SR → TP` 索引；
 3. 从 `logic-cases.md` 建立 `TP → LC` 索引；
 4. 从 `test-data.md` 建立 `LC → TD` 索引；
-5. 从 `design/pc/*.md` 建立 `LC → PC` 索引；
-6. 从 `design/ppdcs/*.md` 建立 `LC → 设计过程证据` 索引；
+5. 从 `ppdcs/pc/*.md` 建立 `LC → PC` 索引；
+6. 从 `ppdcs/ppdcs/*.md` 建立 `LC → 设计过程证据` 索引；
 7. 从 `confirmed-scenarios.md` 和 `topology.yaml` 建立 `scenario_id/topology_ref/topology_role → 真实设备/端口/链路` 索引。
 
 ### 步骤 2：校验设计过程完整性
 
 对每个 LC，至少确认：
 
-- 存在 `design/ppdcs/<basename>.md`
-- 存在 `design/pc/<basename>.md`
+- 存在 `ppdcs/ppdcs/<basename>.md`
+- 存在 `ppdcs/pc/<basename>.md`
 - PPDCS 文件中存在可回链的 `path / state_path / rule / value_class / combo / data_row`
 - PC 文件中 `logic_case_id` 与 LC 对齐
 - PC 文件中的真实 `device_id / port_id / link_id` 能解析到 LC `topology_bindings`
@@ -125,7 +125,7 @@ status: active
 对每个 TP：
 
 1. 确认是否进入某个 LC；
-2. 确认该 LC 是否在 `design/ppdcs/<basename>.md` 中有实际设计证据；
+2. 确认该 LC 是否在 `ppdcs/ppdcs/<basename>.md` 中有实际设计证据；
 3. 确认是否至少落成 1 个 PC；
 4. 输出覆盖状态：
    - `covered-direct`
@@ -167,7 +167,7 @@ status: active
 
 - 缺 LC
 - 缺 TD
-- 缺 `design/ppdcs/<basename>.md`
+- 缺 `ppdcs/ppdcs/<basename>.md`
 - 缺 PC
 - 因 `confirmation_gap_refs` 无法确认
 
@@ -215,7 +215,7 @@ status: active
 
 ## 公共因子库补充契约
 
-- coverage-verifier 必须读取 `analysis/factor-usage/factor-library-lock.yaml`，并按 lock 指定版本校验 `factor_bindings`。
+- coverage-verifier 必须读取 `mfq/factor-usage/factor-library-lock.yaml`，并按 lock 指定版本校验 `factor_bindings`。
 - 覆盖报告必须补充因子覆盖：active 因子引用、factor_group 必测样本、配置拒绝样本、功能正反向样本、CAE 占位符 `sample_id` 存在性。
 - `factor_id` 或 `sample_id` 在 lock 指定公共库中不存在时，不得静默修复，必须输出缺口或阻断项。
 - `candidate` 因子进入最终 PC 前未确认时，必须输出风险。
@@ -224,7 +224,7 @@ status: active
 
 - `topology_bindings` 与 `factor_bindings` 并行存在；不得把 `DUT.port1`、`TG.port1` 或 link 实例写成公共因子、`factor_id`、`sample_id`、`values`。
 - CAE / TP 阶段只能引用 `topology_role_refs`，例如 `client`, `dut-ingress`, `dut-egress`, `server`；真实设备、端口和链路只能由 LC `topology_bindings` 或 PC 物化阶段引入。
-- 覆盖检查必须读取 `analysis/scenarios/confirmed-scenarios.md` 和对应 `topology.yaml`，逐条校验 PC 真实对象：
+- 覆盖检查必须读取 `kym/scenarios/confirmed-scenarios.md` 和对应 `topology.yaml`，逐条校验 PC 真实对象：
   - `PC.physical_case_id -> PC.logic_case_id -> LC.topology_bindings.binding_id` 可解析；
   - `LC.topology_bindings.scenario_id/topology_ref/source` 可回链到 `confirmed-scenarios.md`；
   - `device_id / port_id / link_id` 存在于已确认 `topology.yaml`；
@@ -245,7 +245,7 @@ status: active
 ## 验收标准
 
 - [ ] 输出需求层与测试点层双层覆盖报告
-- [ ] 覆盖检查消费 `logic-cases.md`、`test-data.md`、`design/ppdcs/*.md` 与 `design/pc/*.md`
+- [ ] 覆盖检查消费 `logic-cases.md`、`test-data.md`、`ppdcs/ppdcs/*.md` 与 `ppdcs/pc/*.md`
 - [ ] 报告保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_binding_status`, `confirmation_gap_refs`, `fact_status`
 - [ ] PC 真实端口、设备和链路均可回链到 LC `topology_bindings` 与 `confirmed-scenarios.md`
 - [ ] 未覆盖项与设计缺口被单独列出

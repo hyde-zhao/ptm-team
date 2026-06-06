@@ -21,18 +21,18 @@ status: active
 
 ## 适用范围
 
-> 统一输出规则：本 Skill 的方法过程写入 `design/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
+> 统一输出规则：本 Skill 的方法过程写入 `ppdcs/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `ppdcs/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
 
 
 - 适用阶段：MFQ 的 design 阶段
 - 输入：
-  - `analysis/integration/design-plan.md`
-  - `analysis/plan/design-planner-reasoning.md`
-  - `analysis/integration/logic-cases.md`
-  - `analysis/integration/test-data.md`
-  - `analysis/scenarios/confirmed-scenarios.md`
+  - `process/plan/design-plan.md`
+  - `process/plan/design-planner-reasoning.md`
+  - `mfq/integration/logic-cases.md`
+  - `mfq/integration/test-data.md`
+  - `kym/scenarios/confirmed-scenarios.md`
   - `process/REQUIREMENTS.md` / `process/HLD.md`（仅作为边界与术语基线）
-- 输出：`design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
+- 输出：`ppdcs/ppdcs/<basename>.md` 与 `ppdcs/pc/<basename>.md`
 
 ## 前置条件
 
@@ -50,6 +50,7 @@ status: active
 |------|----------|------|
 | `design-plan.md` | `LC-ID`, `逻辑用例标题`, `PPDCS特征`, `推荐方法`, `设计Skill`, `主信号`, `候选特征`, `排除摘要`, `关键trace`, `待确认事项` | 决定 LC 是否进入 `process-design`，并记录设计上下文 |
 | `design-planner-reasoning.md` | `recommended_feature`, `recommended_method`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `scenario_refs`, `scenario_chain_refs`, `td_refs`, `test_object_refs`, `factor_refs`, `uncertain_facts` | 复核为何采用流程图法，并保留待确认事实 |
+| `directory-structure.md` | `### 三级目录`, 四级/五级目录层级映射 | 回查完整 `三级→四级→五级` 层级链，用于构造输出文件名 |
 
 ### 2. STORY-04 / 上游场景与 trace 契约
 
@@ -204,11 +205,11 @@ PC 由 `覆盖策略选中的 path × data_overlay_set` 生成。
 ## 输出文件结构
 
 ```text
-design/ppdcs/<basename>.md
-design/pc/<basename>.md
+ppdcs/ppdcs/<basename>.md
+ppdcs/pc/<basename>.md
 ```
 
-### `design/ppdcs/<basename>.md`
+### `ppdcs/ppdcs/<basename>.md`
 
 至少包含：
 
@@ -226,7 +227,7 @@ design/pc/<basename>.md
 - PC Derivation Summary
 - Uncertain Facts / Confirmation Gaps
 
-### `design/pc/<basename>.md`
+### `ppdcs/pc/<basename>.md`
 
 只输出最终 PC，但每条 PC 必须回链：
 
@@ -281,6 +282,34 @@ flowchart TD
 - 同一 LC 若同时存在强 `S-State` 信号，需在设计上下文中写明为何仍按流程法建模
 - 不得把 TOPO 实例或真实端口写成流程分支条件、路径数据或状态值；它们只能通过 `topology_bindings` 旁路进入 PC 物化。
 
+## 方法论细则（用户可定制）
+
+> 以下为设计方法的指导框架。用户可根据项目特点和领域知识补充具体规则。
+> 详细的 PPDCS 方法论参见 `ppdcs-analysis-step-by-step.md`。
+
+### 流程图法设计步骤
+
+**目标**：基于逻辑用例的动作路径和场景链，构建可追溯的流程模型，并通过路径枚举实现分支覆盖。
+
+**核心步骤**：
+1. 从 LC 动作路径和 confirmed-scenarios 还原流程节点（前置/动作/决策/观察/结束）
+2. 建立节点清单，标注节点类型、source_op_id、trace_refs 和 fact_status
+3. 绘制 Mermaid flowchart，明确决策点和分支条件
+4. 枚举全部路径：主路径 ≥1 条，每个独立决策分支 ≥1 条
+5. 为每条路径分配触发数据（来自 test-data.md），形成 data_overlay_set
+6. 定义覆盖策略并裁剪路径集，裁剪原因必须显式记录
+
+**关键决策点**：
+- 何时加入异常路径、回退路径、循环路径：仅当需求/HLD/reasoning 已明确时
+- 路径裁剪标准：被裁剪路径必须给出理由；因上游缺口无法确定的路径标记 `[待确认]`
+- TD.status=needs-confirmation 时：不得定值，只能保留 `[待确认]`
+
+**示例**（防火墙领域）：
+以日志保存配置为例，流程节点包含：进入配置页面→输入保存天数→输入文件大小→选择备份路径→点击保存→观察结果。决策点为"保存天数是否合法"和"备份路径是否可写"，分别生成有效/无效分支路径。
+
+**下游影响**：
+路径枚举表直接决定 PC 生成（path_id × data_overlay_set → PC）；覆盖策略的裁剪决策影响覆盖率验证（coverage-verifier 会检查裁剪理由是否充分）；fact_status=needs-confirmation 的路径在 GATE-4 覆盖率检查中不参与已覆盖计数。
+
 ## 验收标准
 
 - [ ] 同时消费 `design-plan.md` 与 `design-planner-reasoning.md`
@@ -289,5 +318,5 @@ flowchart TD
 - [ ] 路径表保留 `scenario_chain_refs / confirmation_gap_refs / fact_status`
 - [ ] `TD.status=needs-confirmation` 未被静默定值
 - [ ] 物理用例字段骨架与 `state-design` 一致
-- [ ] 输出采用 `design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
+- [ ] 输出采用 `ppdcs/ppdcs/<basename>.md` 与 `ppdcs/pc/<basename>.md`
 - [ ] 已消费 LC `topology_bindings`；真实端口物化保留来源和 `fact_status`，且未进入 factor/data/state value

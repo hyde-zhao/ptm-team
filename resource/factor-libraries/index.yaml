@@ -12,15 +12,92 @@ libraries:
     change_log: common-network/factor-change-log.md
     compatible_consumers: [ptm-tde]
     checksum: pending
+    note: "library_doc/groups_doc/change_log 需根据更新后的 factor-library.yaml 重新生成"
+
   - library_id: ngfw-policy-routing
     resource_type: factor-library
     display_name: "NGFW 策略路由因子库"
     domain: ngfw-policy-routing
-    version: 0.2.1
-    status: active
+    version: 0.2.0
+    status: candidate
     path: ngfw-policy-routing/factor-library.yaml
     library_doc: ngfw-policy-routing/factor-library.md
     groups_doc: ngfw-policy-routing/factor-groups.md
     change_log: ngfw-policy-routing/factor-change-log.md
     compatible_consumers: [ptm-tde]
+    checksum: pending
+    note: "已从研究区同步大量新增因子（L3 出口模式等）；library_doc/groups_doc/change_log 需根据更新后的 factor-library.yaml 重新生成"
+
+  - library_id: ngfw-objects
+    resource_type: factor-library
+    display_name: "NGFW 设备命名对象因子库"
+    domain: ngfw-objects
+    version: 0.1.0
+    status: candidate
+    path: ngfw-objects/factor-library.yaml
+    compatible_consumers: [ptm-tde, ngfw-policy-routing]
+    checksum: pending
+
+  - library_id: ngfw-traffic
+    resource_type: factor-library
+    display_name: "NGFW 流量构造因子库"
+    domain: ngfw-traffic
+    version: 0.1.0
+    status: candidate
+    path: ngfw-traffic/factor-library.yaml
+    compatible_consumers: [ptm-tde, ngfw-policy-routing, ngfw-ipv4-route]
+    checksum: pending
+
+  - library_id: ngfw-ipv4-route
+    resource_type: factor-library
+    display_name: "NGFW IPv4 路由因子库"
+    domain: ngfw-ipv4-route
+    version: 0.1.0
+    status: candidate
+    path: ngfw-ipv4-route/factor-library.yaml
+    library_doc: ngfw-ipv4-route/factor-library.md
+    groups_doc: ngfw-ipv4-route/factor-groups.md
+    change_log: ngfw-ipv4-route/factor-change-log.md
+    compatible_consumers: [ptm-tde, ngfw-policy-routing]
+    checksum: pending
+
+  - library_id: ngfw-interface
+    resource_type: factor-library
+    display_name: "NGFW 接口因子库"
+    domain: ngfw-interface
+    version: 0.1.0
+    status: candidate
+    path: ngfw-interface/factor-library.yaml
+    change_log: ngfw-interface/factor-change-log.md
+    compatible_consumers: [ptm-tde, ngfw-policy-routing, ngfw-ha]
+    checksum: pending
+
+  - library_id: ngfw-ha
+    resource_type: factor-library
+    display_name: "NGFW HA 高可用因子库"
+    domain: ngfw-ha
+    version: 0.1.0
+    status: candidate
+    path: ngfw-ha/factor-library.yaml
+    compatible_consumers: [ptm-tde, ngfw-policy-routing]
+    checksum: pending
+
+  - library_id: ngfw-dfx
+    resource_type: factor-library
+    display_name: "NGFW DFX 因子库"
+    domain: ngfw-dfx
+    version: 0.1.0
+    status: candidate
+    path: ngfw-dfx/factor-library.yaml
+    compatible_consumers: [ptm-tde, ngfw-policy-routing]
+    checksum: pending
+
+  - library_id: ngfw-load-balance
+    resource_type: factor-library
+    display_name: "NGFW 链路负载均衡因子库"
+    domain: ngfw-load-balance
+    version: 0.1.0
+    status: candidate
+    path: ngfw-load-balance/factor-library.yaml
+    compatible_consumers: [ptm-tde, ngfw-policy-routing]
     checksum: pending

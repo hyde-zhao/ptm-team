@@ -1,0 +1,880 @@
+# NGFW 流量构造因子库
+# 研究区 — ngfw-traffic
+# 流量因子描述"构造什么样的报文"，是跨特性公共资产。
+# 路由转发、策略匹配、安全策略、NAT 等均消费此库。
+
+schema_version: 1
+library_id: ngfw-traffic
+version: 0.1.0
+status: candidate
+description: "NGFW 流量构造公共因子库，覆盖 L1~L4 报文构造维度。"
+
+factors:
+
+  # ═══════════════════════════════════════════════════════
+  # L1 物理层
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-PKT-L1-CRC
+    factor_name: 帧 CRC 校验
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [valid, error]
+    display_values:
+      valid: CRC正确
+      error: CRC错误
+    aliases: [CRC错误, 帧校验, 错误帧]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「二层转发」动态MAC流程图 path1 提取: CRC错包 → 不学习MAC表项。
+      valid 表示正常帧，error 表示 CRC 校验失败的坏帧。
+    sample_definitions:
+      - sample_id: CRC_VALID
+        sample_class: positive_function
+        description: "CRC 校验正确的正常帧。"
+        representative_values: ["校验正确"]
+        expr: 'valid'
+        materialized_value: "valid"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: CRC_ERROR
+        sample_class: negative_function
+        description: "CRC 校验失败的坏帧。期望设备丢弃或不学习。"
+        representative_values: ["校验失败"]
+        expr: 'error'
+        materialized_value: "error"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [CRC_VALID]
+        negative_samples: [CRC_ERROR]
+
+  # ═══════════════════════════════════════════════════════
+  # L2 链路层
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-PKT-L2-DMAC
+    factor_name: 目的 MAC 类型
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [unicast_known, unicast_unknown, broadcast, multicast]
+    display_values:
+      unicast_known: 已知单播
+      unicast_unknown: 未知单播
+      broadcast: 广播
+      multicast: 组播
+    aliases: [目的MAC, DMAC类型, 目的MAC地址类型]
+    applicable_when: always
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「二层转发」MAC转发流程图提取:
+      - 已知单播: MAC转发表中存在匹配表项 → 按表项转发
+      - 未知单播: MAC转发表中不存在 → VLAN域内泛洪
+      - 广播: ff:ff:ff:ff:ff:ff → VLAN域内泛洪
+      - 组播: 01:00:5e:xx:xx:xx → VLAN域内泛洪（不学习）
+    sample_definitions:
+      - sample_id: DMAC_UNICAST_KNOWN
+        sample_class: positive_function
+        description: "已知单播。MAC转发表中存在匹配表项，按表项端口转发。"
+        representative_values: ["00:11:22:33:44:55 (转发表中存在)"]
+        expr: 'from_topology.mac_table.known'
+        materialized_value: "known_unicast"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: DMAC_UNICAST_UNKNOWN
+        sample_class: negative_function
+        description: "未知单播。MAC转发表中不存在，VLAN域内泛洪。"
+        representative_values: ["aa:bb:cc:dd:ee:ff (转发表中不存在)"]
+        expr: 'from_topology.mac_table.unknown'
+        materialized_value: "unknown_unicast"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: DMAC_BROADCAST
+        sample_class: negative_function
+        description: "广播 MAC。ff:ff:ff:ff:ff:ff，VLAN域内泛洪。"
+        representative_values: ["ff:ff:ff:ff:ff:ff"]
+        expr: 'broadcast'
+        materialized_value: "ff:ff:ff:ff:ff:ff"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: DMAC_MULTICAST
+        sample_class: negative_function
+        description: "组播 MAC。01:00:5e 前缀，不学习MAC表项。"
+        representative_values: ["01:00:5e:00:00:01"]
+        expr: 'multicast'
+        materialized_value: "01:00:5e:00:00:01"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [DMAC_UNICAST_KNOWN]
+        negative_samples: [DMAC_UNICAST_UNKNOWN, DMAC_BROADCAST, DMAC_MULTICAST]
+
+  - factor_id: FAC-PKT-L2-SMAC
+    factor_name: 源 MAC 类型
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [unicast, broadcast, multicast]
+    display_values:
+      unicast: 单播
+      broadcast: 广播
+      multicast: 组播
+    aliases: [源MAC, SMAC类型, 源MAC地址类型]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「二层转发」动态MAC流程图 path1 提取:
+      - 单播: 正常学习MAC表项
+      - 广播/组播: 不学习MAC表项
+    sample_definitions:
+      - sample_id: SMAC_UNICAST
+        sample_class: positive_function
+        description: "单播源MAC。设备学习该MAC表项。"
+        representative_values: ["00:11:22:33:44:55"]
+        expr: 'unicast'
+        materialized_value: "unicast"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: SMAC_BROADCAST
+        sample_class: negative_function
+        description: "广播源MAC。设备不学习。"
+        representative_values: ["ff:ff:ff:ff:ff:ff"]
+        expr: 'broadcast'
+        materialized_value: "broadcast"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: SMAC_MULTICAST
+        sample_class: negative_function
+        description: "组播源MAC。设备不学习。"
+        representative_values: ["01:00:5e:00:00:01"]
+        expr: 'multicast'
+        materialized_value: "multicast"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [SMAC_UNICAST]
+        negative_samples: [SMAC_BROADCAST, SMAC_MULTICAST]
+
+  - factor_id: FAC-PKT-L2-VLAN
+    factor_name: VLAN 封装
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [untagged, single_tagged, double_tagged]
+    display_values:
+      untagged: 不带VLAN
+      single_tagged: 一层VLAN
+      double_tagged: 两层VLAN
+    aliases: [VLAN层数, VLAN标签, 带VLAN, QinQ]
+    applicable_when: always
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「二层转发」VLAN隔离 和「路由转发」带VLAN报文转发 提取。
+      与端口模式(access/trunk)和VLAN ID交叉组合决定报文是否被转发。
+      - untagged: 不带任何VLAN标签
+      - single_tagged: 带一层VLAN标签（VLAN ID ∈ [0,4095]）
+      - double_tagged: 带两层VLAN标签（外层+内层，QinQ场景）
+    sample_definitions:
+      - sample_id: VLAN_UNTAGGED
+        sample_class: positive_function
+        description: "不带VLAN标签的报文。access口不打标签转发，trunk口打PVID转发。"
+        representative_values: ["无VLAN标签"]
+        expr: 'untagged'
+        materialized_value: "untagged"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: VLAN_SINGLE_TAGGED
+        sample_class: positive_function
+        description: "带一层VLAN标签。与端口PVID或trunk allowlist匹配则转发。"
+        representative_values: ["VLAN 100"]
+        expr: 'single_tagged(vlan_id=1..4094)'
+        materialized_value: "vlan_100"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: VLAN_DOUBLE_TAGGED
+        sample_class: negative_function
+        description: "带两层VLAN标签(QinQ)。外层匹配则处理内层。"
+        representative_values: ["外层100, 内层200"]
+        expr: 'double_tagged(outer=1..4094, inner=1..4094)'
+        materialized_value: "outer_100_inner_200"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [VLAN_UNTAGGED, VLAN_SINGLE_TAGGED]
+        negative_samples: [VLAN_DOUBLE_TAGGED]
+
+  # ═══════════════════════════════════════════════════════
+  # L3 网络层
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-PKT-L3-ABNORMAL-SIP
+    factor_name: 异常源 IP
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [zero_network, class_d, class_e, all_f, loopback_127, all_zero]
+    display_values:
+      zero_network: 0.x.x.x (零网段)
+      class_d: D类组播 (224~239)
+      class_e: E类保留 (240~255)
+      all_f: 全F (255.255.255.255)
+      loopback_127: 127环回段
+      all_zero: 全0 (0.0.0.0)
+    aliases: [异常源IP, 非法SIP, 异常报文源IP]
+    applicable_when: "FAC-PKT-VALIDITY-MODE == ip_forwarding"
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由转发」异常报文检测提取。所有类型期望设备丢弃报文。
+      区分于 IP 配置因子的 invalid 值:
+      配置因子 invalid 是"输入框拒绝的值"(如 D 类地址在配置界面被拦截)，
+      本因子是"构造报文中不会正常出现的值"(如全 F 永远不会是合法 SIP)。
+      E类、全F、全0 不在任何 IP 配置因子的 invalid 中，属于纯协议层异常。
+    sample_definitions:
+      - sample_id: SIP_ZERO_NETWORK
+        sample_class: negative_function
+        description: "源IP为0.x.x.x零网段地址。期望丢弃。"
+        representative_values: ["0.0.0.1", "0.255.255.255"]
+        expr: 'zero_network'
+        materialized_value: "0.0.0.1"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: SIP_CLASS_D
+        sample_class: negative_function
+        description: "源IP为D类组播地址(224.0.0.0~239.255.255.255)。期望丢弃。"
+        representative_values: ["224.0.0.1", "239.255.255.254"]
+        expr: 'class_d'
+        materialized_value: "224.0.0.1"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: SIP_CLASS_E
+        sample_class: negative_function
+        description: "源IP为E类保留地址(240.0.0.0~255.255.255.254)。期望丢弃。"
+        representative_values: ["240.0.0.1", "255.255.255.254"]
+        expr: 'class_e'
+        materialized_value: "240.0.0.1"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: SIP_ALL_F
+        sample_class: negative_function
+        description: "源IP为全F(255.255.255.255)受限广播地址。期望丢弃。"
+        representative_values: ["255.255.255.255"]
+        expr: 'all_f'
+        materialized_value: "255.255.255.255"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: SIP_LOOPBACK_127
+        sample_class: negative_function
+        description: "源IP为127.x.x.x环回地址。期望丢弃。"
+        representative_values: ["127.0.0.1", "127.255.255.254"]
+        expr: 'loopback_127'
+        materialized_value: "127.0.0.1"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: SIP_ALL_ZERO
+        sample_class: negative_function
+        description: "源IP为全0(0.0.0.0)。期望丢弃。"
+        representative_values: ["0.0.0.0"]
+        expr: 'all_zero'
+        materialized_value: "0.0.0.0"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        negative_samples:
+          [SIP_ZERO_NETWORK, SIP_CLASS_D, SIP_CLASS_E, SIP_ALL_F, SIP_LOOPBACK_127, SIP_ALL_ZERO]
+
+  - factor_id: FAC-PKT-L3-TTL
+    factor_name: IP TTL 值
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [ttl_0, ttl_1, ttl_normal]
+    display_values:
+      ttl_0: TTL=0
+      ttl_1: TTL=1
+      ttl_normal: TTL正常 (>1)
+    aliases: [TTL, 跳数, 生存时间]
+    applicable_when: "FAC-PKT-VALIDITY-MODE == ip_forwarding"
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由转发」异常IP头部检测提取。
+      TTL=0: 报文已过期，期望丢弃。
+      TTL=1: 经过一跳后过期，下一跳设备应丢弃。
+      PC 阶段物化时，TTL正常值取 64 或 128 等典型值。
+    sample_definitions:
+      - sample_id: TTL_0
+        sample_class: negative_function
+        description: "TTL=0，报文已过期。期望丢弃。"
+        representative_values: ["0"]
+        expr: '0'
+        materialized_value: "0"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: TTL_1
+        sample_class: negative_function
+        description: "TTL=1，经过一跳后过期。期望下一跳设备丢弃。"
+        representative_values: ["1"]
+        expr: '1'
+        materialized_value: "1"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: TTL_NORMAL
+        sample_class: positive_function
+        description: "TTL正常值，如64或128。正常转发。"
+        representative_values: ["64", "128"]
+        expr: 'random_choice([64,128,255], seed=case_id)'
+        materialized_value: "64"
+        applicability: {config_test: not_applicable, function_test: positive}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [TTL_NORMAL]
+        negative_samples: [TTL_0, TTL_1]
+
+  - factor_id: FAC-PKT-L3-CHECKSUM
+    factor_name: IP 头部校验和
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [correct, error]
+    display_values:
+      correct: 校验正确
+      error: 校验错误
+    aliases: [checksum, IP校验]
+    applicable_when: "FAC-PKT-VALIDITY-MODE == ip_forwarding"
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由转发」异常IP头部检测提取。
+      校验错误 → 期望丢弃。校验正确 → 正常转发。
+    sample_definitions:
+      - sample_id: CHECKSUM_CORRECT
+        sample_class: positive_function
+        description: "IP头部校验和正确。正常处理。"
+        representative_values: ["正确"]
+        expr: 'correct'
+        materialized_value: "correct"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: CHECKSUM_ERROR
+        sample_class: negative_function
+        description: "IP头部校验和错误。期望丢弃。"
+        representative_values: ["错误"]
+        expr: 'error'
+        materialized_value: "error"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [CHECKSUM_CORRECT]
+        negative_samples: [CHECKSUM_ERROR]
+
+  - factor_id: FAC-PKT-L3-FRAGMENT
+    factor_name: IP 分片
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [no_fragment, fragment_normal, fragment_offset_error, fragment_duplicate]
+    display_values:
+      no_fragment: 不分片
+      fragment_normal: 正常分片
+      fragment_offset_error: 分片偏移错误
+      fragment_duplicate: 重复分片
+    aliases: [IP分片, 分片报文, fragment]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      预埋因子。当前 Excel (IPv4路由 + 二层转发) 未覆盖分片场景，
+      但分片是 IP 协议栈的基础异常类型，后续安全策略、NAT 等特性会用到。
+      - no_fragment: 标准不分片报文
+      - fragment_normal: 正常分片，offset 正确递增
+      - fragment_offset_error: 偏移量重叠或越界
+      - fragment_duplicate: 同一 offset 重复发送
+    sample_definitions:
+      - sample_id: FRAG_NONE
+        sample_class: positive_function
+        description: "标准不分片IP报文。"
+        representative_values: ["不分片"]
+        expr: 'no_fragment'
+        materialized_value: "no_fragment"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FRAG_NORMAL
+        sample_class: positive_function
+        description: "正常IP分片，offset正确递增。期望正常重组。"
+        representative_values: ["MTU=1500, 分两片"]
+        expr: 'fragment_normal'
+        materialized_value: "fragment_normal"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FRAG_OFFSET_ERROR
+        sample_class: negative_function
+        description: "分片偏移量重叠或越界。期望丢弃。"
+        representative_values: ["offset重叠"]
+        expr: 'fragment_offset_error'
+        materialized_value: "offset_error"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: FRAG_DUPLICATE
+        sample_class: negative_function
+        description: "重复分片(同offset重复发送)。期望正确处理或丢弃。"
+        representative_values: ["重复第二个分片"]
+        expr: 'fragment_duplicate'
+        materialized_value: "duplicate"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [FRAG_NONE, FRAG_NORMAL]
+        negative_samples: [FRAG_OFFSET_ERROR, FRAG_DUPLICATE]
+
+  # ═══════════════════════════════════════════════════════
+  # 控制因子: 有效/无效判定模式
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-PKT-VALIDITY-MODE
+    factor_name: 有效/无效判定模式
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [ip_forwarding, policy_match]
+    display_values:
+      ip_forwarding: IP转发模式
+      policy_match: 策略匹配模式
+    aliases: [有效性判定模式, 报文有效无效判定, validity_mode]
+    applicable_when: always
+    downstream_methods: [C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      IP 转发模式下，"无效"指报文本身违反协议规范（如 SIP=0、TTL=0、CRC错误），
+      设备应丢弃报文。此时只判断报文格式合法性。
+      策略匹配模式下，"无效"指报文格式合法但未命中策略规则（如 SIP 不在规则源IP
+      集合中），报文应走默认策略动作。此时任一字段不匹配即为"无效"。
+      本因子不是样本级因子，不生成独立样本。消费方根据 mode 选择消费哪些
+      异常流量因子的 positive/negative 样本。
+    sample_definitions:
+      - sample_id: MODE_IP_FORWARDING
+        sample_class: valid_member
+        description: "IP转发模式。仅判断报文格式合法性。异常SIP/TTL/checksum/fragment 期望丢弃。"
+        representative_values: ["ip_forwarding"]
+        expr: 'ip_forwarding'
+        materialized_value: "ip_forwarding"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: MODE_POLICY_MATCH
+        sample_class: valid_member
+        description: "策略匹配模式。报文格式合法但任一策略字段不匹配即判定为 miss。"
+        representative_values: ["policy_match"]
+        expr: 'policy_match'
+        materialized_value: "policy_match"
+        applicability: {config_test: not_applicable, function_test: precondition}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        precondition_samples: [MODE_IP_FORWARDING, MODE_POLICY_MATCH]
+
+# ═══════════════════════════════════════════════════════
+# 约束
+# ═══════════════════════════════════════════════════════
+constraints:
+  # L3 异常因子只在 IP 转发模式下生效
+  - constraint_id: C-TRAFFIC-VALIDITY-001
+    description: "异常SIP/TTL/checksum 仅在 IP 转发模式下消费"
+    if: "FAC-PKT-VALIDITY-MODE == policy_match"
+    forbid: [FAC-PKT-L3-ABNORMAL-SIP, FAC-PKT-L3-TTL, FAC-PKT-L3-CHECKSUM]
+
+  # 所有流量因子不参与配置合法性
+  - constraint_id: C-TRAFFIC-RUNTIME-001
+    description: "流量构造因子均为运行时输入，不参与配置合法性覆盖"
+    if: "owner_object == OBJ-NET-PACKET and factor_id starts_with FAC-PKT-"
+    require_usage:
+      config_test: not_applicable
+    forbid_usage:
+      config_test: [accepted, rejected]
+
+# ═══════════════════════════════════════════════════════
+# 因子组
+# ═══════════════════════════════════════════════════════
+factor_groups:
+
+  - group_id: L1_PHYSICAL_FRAME
+    group_name: L1 物理帧完整性
+    factors: [FAC-PKT-L1-CRC]
+    coverage_strategy:
+      positive: CRC 正确帧
+      negative: CRC 错误帧 → 丢弃或不学习
+
+  - group_id: L2_ETHERNET_HEADER
+    group_name: L2 以太网帧头
+    factors: [FAC-PKT-L2-DMAC, FAC-PKT-L2-SMAC, FAC-PKT-L2-VLAN]
+    coverage_strategy:
+      positive: 已知单播 + 单播SMAC + 不带/带一层VLAN
+      negative: 未知单播/广播/组播DMAC + 广播/组播SMAC + 两层VLAN
+
+  - group_id: L3_IP_ABNORMAL
+    group_name: L3 IP 异常报文
+    factors: [FAC-PKT-L3-ABNORMAL-SIP, FAC-PKT-L3-TTL, FAC-PKT-L3-CHECKSUM, FAC-PKT-L3-FRAGMENT]
+    coverage_strategy:
+      positive: 正常TTL + 正确checksum + 不分片
+      negative: 每种异常类型至少覆盖一次（仅 ip_forwarding 模式）
+
+  - group_id: TRAFFIC_VALIDITY
+    group_name: 有效/无效流量判定模式
+    factors: [FAC-PKT-VALIDITY-MODE]
+    coverage_strategy:
+      ip_forwarding: 消费 L1/L2/L3 异常因子的 negative 样本
+      policy_match: 消费 FAC-PKT-SRC-IP 等匹配因子的 mismatch 样本
+  # ═══════════════════════════════════════════════════════
+  # 报文构造因子（从 ngfw-policy-routing 迁移）
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-PKT-SRC-IP
+    factor_name: 报文源 IPv4
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: ip_address
+    value_type: string
+    aliases: [源IP, 源地址, 报文源地址]
+    applicable_when: "FAC-PKT-VALIDITY-MODE == policy_match"
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从 ngfw-policy-routing 迁移。报文源IP，用于策略匹配的正面/负面流量样本。
+      positive: 从规则定义的源IP有效成员中取 → 匹配
+      negative: 不在规则源IP集合中 → 不匹配
+    sample_definitions:
+      - sample_id: PKT_SRC_IP_MATCH
+        sample_class: positive_function
+        description: "报文源IP在规则定义的源IP集合中。期望命中。"
+        representative_values: ["<IP_ADDRESS> (在规则内)"]
+        expr: 'from_rule.src_ip.valid_member'
+        materialized_value: "<IP_ADDRESS>"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: PKT_SRC_IP_MISMATCH
+        sample_class: negative_function
+        description: "报文源IP不在规则定义的源IP集合中。期望不命中。"
+        representative_values: ["<IP_ADDRESS> (不在规则内)"]
+        expr: 'not_in(rule.src_ip)'
+        materialized_value: "<IP_ADDRESS>"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [PKT_SRC_IP_MATCH]
+        negative_samples: [PKT_SRC_IP_MISMATCH]
+
+  - factor_id: FAC-PKT-DST-IP
+    factor_name: 报文目的 IPv4
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: ip_address
+    value_type: string
+    aliases: [目的IP, 目的地址, 报文目的地址]
+    applicable_when: "FAC-PKT-VALIDITY-MODE == policy_match"
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: PKT_DST_IP_MATCH
+        sample_class: positive_function
+        description: "报文目的IP在规则定义的目的IP集合中。期望命中。"
+        representative_values: ["<IP_ADDRESS> (在规则内)"]
+        expr: 'from_rule.dst_ip.valid_member'
+        materialized_value: "<IP_ADDRESS>"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: PKT_DST_IP_MISMATCH
+        sample_class: negative_function
+        description: "报文目的IP不在规则定义的目的IP集合中。期望不命中。"
+        representative_values: ["<IP_ADDRESS> (不在规则内)"]
+        expr: 'not_in(rule.dst_ip)'
+        materialized_value: "<IP_ADDRESS>"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [PKT_DST_IP_MATCH]
+        negative_samples: [PKT_DST_IP_MISMATCH]
+
+  - factor_id: FAC-PKT-PROTOCOL
+    factor_name: 报文协议
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [ip, tcp, udp, icmp, ftp, http, other-app]
+    aliases: [协议, 服务类型, 应用协议]
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: PKT_PROTO_TCP
+        sample_class: positive_function
+        description: "报文协议为 TCP。"
+        representative_values: ["tcp"]
+        expr: 'tcp'
+        materialized_value: "tcp"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: PKT_PROTO_UDP
+        sample_class: positive_function
+        description: "报文协议为 UDP。"
+        representative_values: ["udp"]
+        expr: 'udp'
+        materialized_value: "udp"
+        applicability: {config_test: not_applicable, function_test: positive}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [PKT_PROTO_TCP, PKT_PROTO_UDP]
+
+  - factor_id: FAC-PKT-SRC-PORT
+    factor_name: 报文源端口
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[1,65535]"
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: PKT_SRC_PORT_MATCH
+        sample_class: positive_function
+        description: "报文源端口在规则定义的源端口集合中。期望命中。"
+        representative_values: ["12345 (等于规则值)"]
+        expr: 'from_rule.service.src_port.valid_member'
+        materialized_value: "12345"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: PKT_SRC_PORT_MISMATCH
+        sample_class: negative_function
+        description: "报文源端口不在规则定义的源端口集合中。期望不命中。"
+        representative_values: ["54321 (不等于规则值)"]
+        expr: 'not_in(rule.service.src_port)'
+        materialized_value: "54321"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [PKT_SRC_PORT_MATCH]
+        negative_samples: [PKT_SRC_PORT_MISMATCH]
+
+  - factor_id: FAC-PKT-DST-PORT
+    factor_name: 报文目的端口
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[1,65535]"
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: PKT_DST_PORT_MATCH
+        sample_class: positive_function
+        description: "报文目的端口在规则定义的目的端口集合中。期望命中。"
+        representative_values: ["8080 (等于规则值)"]
+        expr: 'from_rule.service.dst_port.valid_member'
+        materialized_value: "8080"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: PKT_DST_PORT_MISMATCH
+        sample_class: negative_function
+        description: "报文目的端口不在规则定义的目的端口集合中。期望不命中。"
+        representative_values: ["9090 (不等于规则值)"]
+        expr: 'not_in(rule.service.dst_port)'
+        materialized_value: "9090"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [PKT_DST_PORT_MATCH]
+        negative_samples: [PKT_DST_PORT_MISMATCH]
+
+  - factor_id: FAC-PKT-APP-ID
+    factor_name: 报文应用标识
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [ftp, http, other-app, app-mismatch, app-unrecognized]
+    aliases: [应用, 应用识别, 应用对象]
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: PKT_APP_FTP
+        sample_class: positive_function
+        description: "报文被识别为 FTP 应用。"
+        representative_values: ["ftp"]
+        expr: 'ftp'
+        materialized_value: "ftp"
+        applicability: {config_test: not_applicable, function_test: positive}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [PKT_APP_FTP]
+
+  - factor_id: FAC-DOMAIN-RESOLUTION-STATE
+    factor_name: 域名解析状态
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-NET-PACKET
+    domain_model: enum
+    value_type: enum
+    values: [resolved, unresolved, resolved-to-mismatch-ip]
+    display_values:
+      resolved: 解析成功
+      unresolved: 解析失败
+      resolved-to-mismatch-ip: 解析到不匹配IP
+    aliases: [域名解析, DNS状态]
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: DNS_RESOLVED
+        sample_class: positive_function
+        description: "域名解析成功，解析结果在规则IP范围内。"
+        representative_values: ["resolved"]
+        expr: 'resolved'
+        materialized_value: "resolved"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: DNS_UNRESOLVED
+        sample_class: negative_function
+        description: "域名解析失败，规则无法生效。"
+        representative_values: ["unresolved"]
+        expr: 'unresolved'
+        materialized_value: "unresolved"
+        applicability: {config_test: not_applicable, function_test: negative}
+    usage_profiles:
+      config_test:
+        policy: not_applicable
+      function_test:
+        positive_samples: [DNS_RESOLVED]
+        negative_samples: [DNS_UNRESOLVED]
+
+# ═══════════════════════════════════════════════════════
+# 流量样本（从 ngfw-policy-routing 迁移）
+# ═══════════════════════════════════════════════════════
+traffic_samples:
+  - sample_id: TRAFFIC_IP_MATCH
+    sample_class: positive_function
+    factors:
+      FAC-TRAFFIC-LAYER-TYPE: ip
+      FAC-TRAFFIC-IP-MATCH: src-dst-match
+      FAC-EXPECTED-MATCH-RESULT: hit
+    materialization:
+      src_ip: from_rule.src_ip.valid_member
+      dst_ip: from_rule.dst_ip.valid_member
+      protocol: ip
+    usage:
+      function_test: positive
+  - sample_id: TRAFFIC_TCP_MATCH
+    sample_class: positive_function
+    factors:
+      FAC-TRAFFIC-LAYER-TYPE: tcp
+      FAC-TRAFFIC-IP-MATCH: src-dst-match
+      FAC-TRAFFIC-SERVICE-MATCH: service-match
+      FAC-EXPECTED-MATCH-RESULT: hit
+    materialization:
+      src_ip: from_rule.src_ip.valid_member
+      dst_ip: from_rule.dst_ip.valid_member
+      protocol: tcp
+      src_port: from_rule.service.src_port.valid_member
+      dst_port: from_rule.service.dst_port.valid_member
+    usage:
+      function_test: positive
+  - sample_id: TRAFFIC_SRC_IP_MISMATCH
+    sample_class: negative_function
+    factors:
+      FAC-TRAFFIC-LAYER-TYPE: ip
+      FAC-TRAFFIC-IP-MATCH: src-ip-mismatch
+      FAC-EXPECTED-MATCH-RESULT: miss
+    materialization:
+      src_ip: not_in(rule.src_ip)
+      dst_ip: from_rule.dst_ip.valid_member
+      protocol: from_rule.service.protocol
+    usage:
+      function_test: negative
+  - sample_id: TRAFFIC_DST_IP_MISMATCH
+    sample_class: negative_function
+    factors:
+      FAC-TRAFFIC-LAYER-TYPE: ip
+      FAC-TRAFFIC-IP-MATCH: dst-ip-mismatch
+      FAC-EXPECTED-MATCH-RESULT: miss
+    materialization:
+      src_ip: from_rule.src_ip.valid_member
+      dst_ip: not_in(rule.dst_ip)
+      protocol: from_rule.service.protocol
+    usage:
+      function_test: negative
+  - sample_id: TRAFFIC_SRC_PORT_MISMATCH
+    sample_class: negative_function
+    factors:
+      FAC-TRAFFIC-LAYER-TYPE: tcp
+      FAC-TRAFFIC-IP-MATCH: src-dst-match
+      FAC-TRAFFIC-SERVICE-MATCH: src-port-mismatch
+      FAC-EXPECTED-MATCH-RESULT: miss
+    materialization:
+      src_ip: from_rule.src_ip.valid_member
+      dst_ip: from_rule.dst_ip.valid_member
+      protocol: tcp
+      src_port: not_in(rule.service.src_port)
+      dst_port: from_rule.service.dst_port.valid_member
+    usage:
+      function_test: negative
+  - sample_id: TRAFFIC_DST_PORT_MISMATCH
+    sample_class: negative_function
+    factors:
+      FAC-TRAFFIC-LAYER-TYPE: tcp
+      FAC-TRAFFIC-IP-MATCH: src-dst-match
+      FAC-TRAFFIC-SERVICE-MATCH: dst-port-mismatch
+      FAC-EXPECTED-MATCH-RESULT: miss
+    materialization:
+      src_ip: from_rule.src_ip.valid_member
+      dst_ip: from_rule.dst_ip.valid_member
+      protocol: tcp
+      src_port: from_rule.service.src_port.valid_member
+      dst_port: not_in(rule.service.dst_port)
+    usage:
+      function_test: negative

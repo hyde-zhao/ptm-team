@@ -29,15 +29,15 @@ C-Combination 是 PPDCS 五特征之一：
 
 ## 适用范围
 
-> 统一输出规则：本 Skill 的方法过程写入 `design/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
+> 统一输出规则：本 Skill 的方法过程写入 `ppdcs/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `ppdcs/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
 
 
 - 适用阶段：MFQ 的 design 阶段
-- 设计输入：`analysis/integration/design-plan.md`
-- reasoning 输入：`analysis/plan/design-planner-reasoning.md`
-- 上游 trace 输入：`analysis/integration/logic-cases.md`、`analysis/integration/test-data.md`
-- PPDCS 基线：`analysis/m-analysis/ppdcs-annotation.md`
-- 输出：`design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
+- 设计输入：`process/plan/design-plan.md`
+- reasoning 输入：`process/plan/design-planner-reasoning.md`
+- 上游 trace 输入：`mfq/integration/logic-cases.md`、`mfq/integration/test-data.md`
+- PPDCS 基线：`mfq/m-analysis/ppdcs-annotation.md`
+- 输出：`ppdcs/ppdcs/<basename>.md` 与 `ppdcs/pc/<basename>.md`
 
 ## 必收输入契约（STORY-05 / STORY-04）
 
@@ -47,6 +47,7 @@ C-Combination 是 PPDCS 五特征之一：
 | `design-planner-reasoning.md` | `recommended_feature`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `factor_refs`, `uncertain facts` | 判断为何需要组合压缩，而不是 Parameter / Data |
 | `logic-cases.md` | `动作路径`, `因子-取值表`, `topology_bindings`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 形成 factor catalog、拓扑绑定目录与叠加位置 |
 | `test-data.md` | `TD-ID`, `factor_ref`, `value_set`, `status`, `confirmation_gap_refs` | 提取各因子取值集与待确认边界 |
+| `directory-structure.md` | `### 三级目录`, 四级/五级目录层级映射 | 回查完整 `三级→四级→五级` 层级链，用于构造输出文件名 |
 
 ## 前置条件
 
@@ -59,7 +60,7 @@ C-Combination 是 PPDCS 五特征之一：
 
 1. 若任一因子值域、约束或工具可用性不明确，必须保留 `[待确认]`。
 2. 若 manual fallback 后无法证明覆盖完整，`fact_status` 必须为 `needs-confirmation`。
-3. `uncertain facts`、`confirmation_gap_refs`、`uncovered_pairs` 必须进入 `design/ppdcs/<basename>.md`。
+3. `uncertain facts`、`confirmation_gap_refs`、`uncovered_pairs` 必须进入 `ppdcs/ppdcs/<basename>.md`。
 4. 不得因为没有外部工具就只输出“建议 Pairwise”而不输出实际过程工件。
 
 ## 五步用例设计过程
@@ -210,11 +211,11 @@ C-Combination 是 PPDCS 五特征之一：
 ## 输出目录结构
 
 ```text
-design/ppdcs/<basename>.md
-design/pc/<basename>.md
+ppdcs/ppdcs/<basename>.md
+ppdcs/pc/<basename>.md
 ```
 
-`design/ppdcs/<basename>.md` 至少包含：
+`ppdcs/ppdcs/<basename>.md` 至少包含：
 1. `design-plan.md` 与 `design-planner-reasoning.md` 的输入对齐结果；
 2. factor catalog；
 3. 约束表；
@@ -255,6 +256,33 @@ design/pc/<basename>.md
 - manual fallback 无法证明覆盖完整时，必须保留 `uncovered_pairs` 和 `needs-confirmation`
 - 无效值通常单独验证，不与无效值彼此组合
 - 常见误用：把 `DUT.port1 / TG.port2` 当成 Pairwise 取值。真实端口是 PC 物化目标，不是组合因子值。
+
+## 方法论细则（用户可定制）
+
+> 以下为设计方法的指导框架。用户可根据项目特点和领域知识补充具体规则。
+> 详细的 PPDCS 方法论参见 `ppdcs-analysis-step-by-step.md`。
+
+### 组合法设计步骤
+
+**目标**：对多因子组合爆炸场景，通过约束建模和压缩策略（Pairwise/正交/全组合）生成有效覆盖的因子组合，并通过 PICT 模型或显式 fallback 输出可审计的组合过程。
+
+**核心步骤**：
+1. 从 LC 因子-取值表和 test-data 形成 factor catalog，计算全组合数
+2. 识别因子间约束：IF/THEN 条件、互斥关系、依赖关系，形成约束模型
+3. 根据全组合数和约束复杂度选择压缩策略：全组合数 ≤12 → 全组合；≥4 且全组合大 → Pairwise；水平数整齐且有阵列模板 → 正交
+4. 检测外部组合工具（如 PICT）；若可用，生成 PICT 模型文件并运行；若不可用，执行显式 manual-greedy-pairwise fallback
+5. 输出 pair coverage checklist；未覆盖对记录为 uncovered_pairs 并降级 fact_status
+
+**关键决策点**：
+- Pairwise vs 正交 vs 全组合选择标准：全组合数阈值、因子水平数均匀度、约束密度
+- PICT 模型文件构建规则：因子定义语法、约束表达式（IF/THEN）、种子组合
+- fallback 覆盖率评估：greedy-pairwise 无法保证的覆盖对必须在 checklist 中显式暴露
+
+**示例**（防火墙领域）：
+以日志外发服务器配置为例，4 个因子（服务器数量 1/2/4/8、协议 syslog/restAPI、发送模式 单播/并发/轮询、加密 off/tls），全组合 4×2×3×2=48 过大。约束 CT-01：协议=restAPI 时端口字段不适用。压缩策略选 Pairwise，PICT 生成约 12 条组合，pair coverage checklist 验证全部因子对覆盖。
+
+**下游影响**：
+combo/data_row 分配表直接决定 PC 生成（combo_id → data_row → PC）；pair coverage checklist 的 uncovered_pairs 在 GATE-4 覆盖率检查中触发告警；PICT 模型文件作为 PPDCS 过程工件持久化；needs-confirmation 组合生成的 PC 不参与已覆盖计数。
 
 ## 验收标准
 

@@ -1,0 +1,634 @@
+# NGFW 设备命名对象因子库
+# 研究区 — ngfw-objects
+# 地址对象、地址组、MAC对象、域名对象、地区对象、服务对象、服务组、
+# 应用对象、应用标签、时间对象 — 是设备级命名资源。
+# 策略路由、安全策略、NAT、QoS 等所有特性均消费此库。
+
+schema_version: 1
+library_id: ngfw-objects
+version: 0.1.0
+status: candidate
+description: "NGFW 设备命名对象公共因子库。覆盖所有可被规则引用的对象类型。"
+
+factors:
+
+  # ═══════════════════════════════════════════════════════
+  # 1. 地址对象
+  # API: /api/v1/ippool (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-ADDRESS
+    factor_name: 地址对象
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: address
+      api: /api/v1/ippool
+      stored_in: topology.address_objects
+    aliases: [IP地址对象, ippool, 网络对象]
+    applicable_when: "rule references address object"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      地址对象是 IP 网段/地址的命名集合。可包含多个 network (ipaddr + mask)
+      和排除网段 (exclnetworks)。被策略路由、安全策略等引用为源/目的地址。
+    sample_definitions:
+      - sample_id: ADDR_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的地址对象名称。"
+        representative_values: ["office_net", "dmz_servers", "internal_hosts"]
+        expr: 'from_topology.address_objects.any'
+        materialized_value: "office_net"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: ADDR_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的地址对象名称。配置应被拒绝。"
+        representative_values: ["not_exist_addr_obj"]
+        expr: 'from_topology.address_objects.nonexistent'
+        materialized_value: "not_exist_addr_obj"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: ADDR_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: ["", "超长名称...", "name@bad"]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [ADDR_EXISTING]
+        rejected_config_samples: [ADDR_NOT_EXIST, ADDR_NAME_INVALID]
+      function_test:
+        precondition_samples: [ADDR_EXISTING]
+
+  # ═══════════════════════════════════════════════════════
+  # 2. 地址组对象
+  # API: /api/v1/ippool/group (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-ADDRESS-GROUP
+    factor_name: 地址组对象
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: address_group
+      api: /api/v1/ippool/group
+      stored_in: topology.address_groups
+      members: ngfw-objects/FAC-OBJ-ADDRESS
+    aliases: [地址组, ippool group, 网络对象组]
+    applicable_when: "rule references address group"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      地址组是地址对象的命名集合。成员字段 ippools 引用已存在的地址对象名称。
+    sample_definitions:
+      - sample_id: ADDR_GROUP_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的地址组名称。"
+        representative_values: ["internal_networks", "partner_networks"]
+        expr: 'from_topology.address_groups.any'
+        materialized_value: "internal_networks"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: ADDR_GROUP_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的地址组名称。配置应被拒绝。"
+        representative_values: ["not_exist_addr_group"]
+        expr: 'from_topology.address_groups.nonexistent'
+        materialized_value: "not_exist_addr_group"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: ADDR_GROUP_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: ["", "超长名称..."]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [ADDR_GROUP_EXISTING]
+        rejected_config_samples: [ADDR_GROUP_NOT_EXIST, ADDR_GROUP_NAME_INVALID]
+      function_test:
+        precondition_samples: [ADDR_GROUP_EXISTING]
+
+  # ═══════════════════════════════════════════════════════
+  # 3. MAC 地址对象
+  # API: /api/v1/macpool (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-MAC
+    factor_name: MAC 地址对象
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: mac_address
+      api: /api/v1/macpool
+      stored_in: topology.mac_objects
+    aliases: [MAC对象, macpool]
+    applicable_when: "rule references MAC object"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: MAC_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的 MAC 地址对象名称。"
+        representative_values: ["trusted_macs", "corp_devices"]
+        expr: 'from_topology.mac_objects.any'
+        materialized_value: "trusted_macs"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: MAC_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的 MAC 对象名称。配置应被拒绝。"
+        representative_values: ["not_exist_mac"]
+        expr: 'from_topology.mac_objects.nonexistent'
+        materialized_value: "not_exist_mac"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: MAC_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: ["", "超长名称..."]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [MAC_EXISTING]
+        rejected_config_samples: [MAC_NOT_EXIST, MAC_NAME_INVALID]
+      function_test:
+        precondition_samples: [MAC_EXISTING]
+
+  # ═══════════════════════════════════════════════════════
+  # 4. 域名对象
+  # API: /api/v1/domainpool (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-DOMAIN
+    factor_name: 域名对象
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: domain
+      api: /api/v1/domainpool
+      stored_in: topology.domain_objects
+    aliases: [domain对象, domainpool, 域名]
+    applicable_when: "rule references domain object"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      域名对象支持通配符（如 *.test.com）和精确域名。
+    sample_definitions:
+      - sample_id: DOMAIN_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的域名对象名称。"
+        representative_values: ["internal_sites", "corp_web"]
+        expr: 'from_topology.domain_objects.any'
+        materialized_value: "internal_sites"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: DOMAIN_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的域名对象名称。配置应被拒绝。"
+        representative_values: ["not_exist_domain"]
+        expr: 'from_topology.domain_objects.nonexistent'
+        materialized_value: "not_exist_domain"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: DOMAIN_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: ["", "超长名称..."]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [DOMAIN_EXISTING]
+        rejected_config_samples: [DOMAIN_NOT_EXIST, DOMAIN_NAME_INVALID]
+      function_test:
+        precondition_samples: [DOMAIN_EXISTING]
+
+  # ═══════════════════════════════════════════════════════
+  # 5. 地区对象
+  # API: /api/v1/geoip/custom (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-GEOIP
+    factor_name: 地区对象
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: geoip
+      api: /api/v1/geoip/custom
+      stored_in: topology.geoip_objects
+    aliases: [GEOIP对象, 地理位置对象, 国家地区对象]
+    applicable_when: "rule references geoip object"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      GEOIP 对象按国家/省份/城市匹配流量来源/目的地。自定义 GEOIP 支持精确 IP 映射。
+    sample_definitions:
+      - sample_id: GEOIP_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的地区对象名称。"
+        representative_values: ["CN_Chongqing", "US_California", "blocked_regions"]
+        expr: 'from_topology.geoip_objects.any'
+        materialized_value: "CN_Chongqing"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: GEOIP_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的地区对象名称。配置应被拒绝。"
+        representative_values: ["not_exist_geoip"]
+        expr: 'from_topology.geoip_objects.nonexistent'
+        materialized_value: "not_exist_geoip"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: GEOIP_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: ["", "超长名称..."]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [GEOIP_EXISTING]
+        rejected_config_samples: [GEOIP_NOT_EXIST, GEOIP_NAME_INVALID]
+      function_test:
+        precondition_samples: [GEOIP_EXISTING]
+
+  # ═══════════════════════════════════════════════════════
+  # 6. 服务对象
+  # API: /api/v1/servicepool (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-SERVICE
+    factor_name: 服务对象
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: service
+      api: /api/v1/servicepool
+      stored_in: topology.service_objects
+    aliases: [服务, servicepool, 协议端口对象]
+    applicable_when: "rule references service object"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      服务对象定义协议+端口范围。支持多段 range，CUSTOM 类型为自定义服务。
+    sample_definitions:
+      - sample_id: SVC_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的服务对象名称。"
+        representative_values: ["服务0001", "web_service", "database_ports"]
+        expr: 'from_topology.service_objects.any'
+        materialized_value: "服务0001"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: SVC_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的服务对象名称。配置应被拒绝。"
+        representative_values: ["not_exist_service"]
+        expr: 'from_topology.service_objects.nonexistent'
+        materialized_value: "not_exist_service"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: SVC_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: ["", "超长名称..."]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [SVC_EXISTING]
+        rejected_config_samples: [SVC_NOT_EXIST, SVC_NAME_INVALID]
+      function_test:
+        precondition_samples: [SVC_EXISTING]
+
+  # ═══════════════════════════════════════════════════════
+  # 7. 服务组对象
+  # API: /api/v1/servicepool/group (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-SERVICE-GROUP
+    factor_name: 服务组对象
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: service_group
+      api: /api/v1/servicepool/group
+      stored_in: topology.service_groups
+      members: ngfw-objects/FAC-OBJ-SERVICE
+    aliases: [服务组, servicepool group]
+    applicable_when: "rule references service group"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: SVC_GROUP_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的服务组名称。"
+        representative_values: ["common_services", "web_and_db"]
+        expr: 'from_topology.service_groups.any'
+        materialized_value: "common_services"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: SVC_GROUP_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的服务组名称。配置应被拒绝。"
+        representative_values: ["not_exist_svc_group"]
+        expr: 'from_topology.service_groups.nonexistent'
+        materialized_value: "not_exist_svc_group"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: SVC_GROUP_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: [""]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [SVC_GROUP_EXISTING]
+        rejected_config_samples: [SVC_GROUP_NOT_EXIST, SVC_GROUP_NAME_INVALID]
+      function_test:
+        precondition_samples: [SVC_GROUP_EXISTING]
+
+  # ═══════════════════════════════════════════════════════
+  # 8. 应用对象
+  # API: /api/v1/customappobj (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-APPLICATION
+    factor_name: 应用对象
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: application
+      api: /api/v1/customappobj
+      stored_in: topology.application_objects
+    aliases: [应用, customappobj, 自定义应用]
+    applicable_when: "rule references application object"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      自定义应用对象。支持 TCP/UDP 协议特征匹配。
+    sample_definitions:
+      - sample_id: APP_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的应用对象名称。"
+        representative_values: ["tcp应用", "custom_ftp", "internal_tool"]
+        expr: 'from_topology.application_objects.any'
+        materialized_value: "tcp应用"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: APP_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的应用对象名称。配置应被拒绝。"
+        representative_values: ["not_exist_app"]
+        expr: 'from_topology.application_objects.nonexistent'
+        materialized_value: "not_exist_app"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: APP_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: [""]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [APP_EXISTING]
+        rejected_config_samples: [APP_NOT_EXIST, APP_NAME_INVALID]
+      function_test:
+        precondition_samples: [APP_EXISTING]
+
+  # ═══════════════════════════════════════════════════════
+  # 9. 应用标签
+  # API: /api/v1/customappobjtag (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-APP-TAG
+    factor_name: 应用标签
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: application_tag
+      api: /api/v1/customappobjtag
+      stored_in: topology.app_tags
+      members: ngfw-objects/FAC-OBJ-APPLICATION
+    aliases: [应用标签组, customappobjtag, app标签]
+    applicable_when: "rule references application tag"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      应用标签是应用对象的命名集合。成员 appobjkeys 引用已存在的应用对象。
+    sample_definitions:
+      - sample_id: APP_TAG_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的应用标签名称。"
+        representative_values: ["web_apps", "database_apps", "blocked_apps"]
+        expr: 'from_topology.app_tags.any'
+        materialized_value: "web_apps"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: APP_TAG_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的应用标签名称。配置应被拒绝。"
+        representative_values: ["not_exist_tag"]
+        expr: 'from_topology.app_tags.nonexistent'
+        materialized_value: "not_exist_tag"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: APP_TAG_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: [""]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [APP_TAG_EXISTING]
+        rejected_config_samples: [APP_TAG_NOT_EXIST, APP_TAG_NAME_INVALID]
+      function_test:
+        precondition_samples: [APP_TAG_EXISTING]
+
+  # ═══════════════════════════════════════════════════════
+  # 10. 时间对象
+  # API: /api/v1/timeobject (POST/GET/DELETE/PUT)
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-TIME
+    factor_name: 时间对象
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: object_instance
+    value_type: string
+    domain_expr:
+      object_type: time
+      api: /api/v1/timeobject
+      stored_in: topology.time_objects
+      schedule_types: [oneshot, day, week, month]
+    aliases: [时间对象, timeobject, 计划对象, 调度对象]
+    applicable_when: "rule references time object"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      时间对象定义策略生效的时间范围。支持四种计划类型:
+      - oneshot: 一次性计划 (指定起止日期时间)
+      - day: 日计划 (每日的起止时间段，可多段)
+      - week: 周计划 (每周指定工作日的起止时间段)
+      - month: 月计划 (引用日计划 + 指定日期)
+    sample_definitions:
+      - sample_id: TIME_EXISTING
+        sample_class: valid_config
+        description: "设备上已存在的时间对象名称。"
+        representative_values: ["test1", "test-d", "tets-w", "test-m", "work_hours", "maintenance_window"]
+        expr: 'from_topology.time_objects.any'
+        materialized_value: "work_hours"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: TIME_NOT_EXIST
+        sample_class: invalid_config
+        description: "设备上不存在的时间对象名称。配置应被拒绝。"
+        representative_values: ["not_exist_time"]
+        expr: 'from_topology.time_objects.nonexistent'
+        materialized_value: "not_exist_time"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: TIME_NAME_INVALID
+        sample_class: invalid_format
+        description: "名称格式非法。复用 FAC-CONFIG-NAME 的无效格式。"
+        representative_values: [""]
+        expr: 'from_factor(common-network/FAC-CONFIG-NAME).rejected'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [TIME_EXISTING]
+        rejected_config_samples: [TIME_NOT_EXIST, TIME_NAME_INVALID]
+      function_test:
+        precondition_samples: [TIME_EXISTING]
+
+# ═══════════════════════════════════════════════════════
+# 约束
+# ═══════════════════════════════════════════════════════
+constraints:
+  # 所有对象因子的名称格式非法统一由 FAC-CONFIG-NAME 定义
+  - constraint_id: C-OBJ-NAME-001
+    description: "所有对象名称的格式非法值由 common-network/FAC-CONFIG-NAME.rejected 统一定义"
+    if: "owner_object == OBJ-NET-OBJECT and sample_class == invalid_format"
+    reuse: common-network/FAC-CONFIG-NAME.rejected
+
+  # 对象引用完整性
+  - constraint_id: C-OBJ-REF-001
+    description: "地址组成员必须引用已存在的地址对象"
+    if: "FAC-OBJ-ADDRESS-GROUP selected"
+    require_condition: "group.ippools[i] in topology.address_objects"
+
+  - constraint_id: C-OBJ-REF-002
+    description: "服务组成员必须引用已存在的服务对象"
+    if: "FAC-OBJ-SERVICE-GROUP selected"
+    require_condition: "group.servicepools[i] in topology.service_objects"
+
+  - constraint_id: C-OBJ-REF-003
+    description: "应用标签成员必须引用已存在的应用对象"
+    if: "FAC-OBJ-APP-TAG selected"
+    require_condition: "tag.appobjkeys[i].appname in topology.application_objects"
+
+  # 月计划引用的日计划
+  - constraint_id: C-OBJ-TIME-001
+    description: "月计划中的 planday 必须引用已存在的日计划时间对象"
+    if: "FAC-OBJ-TIME selected and scheduletype == month"
+    require_condition: "planday in topology.time_objects[scheduletype=day]"
+
+# ═══════════════════════════════════════════════════════
+# 因子组
+# ═══════════════════════════════════════════════════════
+factor_groups:
+  - group_id: OBJ_IP_NETWORK
+    group_name: IP 网络对象
+    factors: [FAC-OBJ-ADDRESS, FAC-OBJ-ADDRESS-GROUP]
+    coverage_strategy:
+      positive: 地址对象和地址组各覆盖一个已存在名称
+      negative: 不存在的名称 + 名称格式非法
+
+  - group_id: OBJ_IDENTITY
+    group_name: 标识对象
+    factors: [FAC-OBJ-MAC, FAC-OBJ-DOMAIN, FAC-OBJ-GEOIP]
+    coverage_strategy:
+      positive: 每种对象覆盖一个已存在名称
+      negative: 不存在的名称 + 名称格式非法
+
+  - group_id: OBJ_SERVICE
+    group_name: 服务对象
+    factors: [FAC-OBJ-SERVICE, FAC-OBJ-SERVICE-GROUP]
+    coverage_strategy:
+      positive: 服务对象和服务组各覆盖一个已存在名称
+      negative: 不存在的名称 + 名称格式非法
+
+  - group_id: OBJ_APPLICATION
+    group_name: 应用对象
+    factors: [FAC-OBJ-APPLICATION, FAC-OBJ-APP-TAG]
+    coverage_strategy:
+      positive: 应用对象和应用标签各覆盖一个已存在名称
+      negative: 不存在的名称 + 名称格式非法
+
+  - group_id: OBJ_TIME
+    group_name: 时间对象
+    factors: [FAC-OBJ-TIME]
+    coverage_strategy:
+      positive: 覆盖四种计划类型各至少一次
+      negative: 不存在的时间对象名称 + 名称格式非法
+
+  - group_id: OBJ_ALL
+    group_name: 全部对象集合
+    factors: [FAC-OBJ-ADDRESS, FAC-OBJ-ADDRESS-GROUP, FAC-OBJ-MAC,
+              FAC-OBJ-DOMAIN, FAC-OBJ-GEOIP, FAC-OBJ-SERVICE,
+              FAC-OBJ-SERVICE-GROUP, FAC-OBJ-APPLICATION,
+              FAC-OBJ-APP-TAG, FAC-OBJ-TIME]
+    coverage_strategy:
+      minimal: 每个对象各覆盖一个 valid + 一个 invalid
+
+external_consumers:
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-SRC-NETWORK
+    samples_used: [accepted, invalid_config, invalid_format]
+    switch_case: false
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-SRC-NETWORK
+    samples_used: [accepted, invalid_config, invalid_format]
+    switch_case: true
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-DST-NETWORK
+    samples_used: [accepted, invalid_config, invalid_format]
+    switch_case: false
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-DST-NETWORK
+    samples_used: [accepted, invalid_config, invalid_format]
+    switch_case: true
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-SERVICE
+    samples_used: [accepted, invalid_config, invalid_format]
+    switch_case: false
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-SERVICE
+    samples_used: [accepted, invalid_config, invalid_format]
+    switch_case: true
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-APP-LIST
+    samples_used: [accepted, invalid_config, invalid_format]
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-APP-TAG
+    samples_used: [accepted, invalid_config, invalid_format]
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-TIME-OBJ
+    samples_used: [accepted, invalid_config, invalid_format]

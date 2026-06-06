@@ -16,11 +16,45 @@
 
 ```text
 resource/factor-libraries/
-├── index.yaml
-├── _proposals/
-├── common-network/
-└── ngfw-policy-routing/
+├── README.md                         # 本文件 — 公共因子库总说明
+├── STANDARDS.md                      # 因子建模标准（必读）
+├── index.yaml                        # 因子库索引（版本、状态、路径、消费者）
+│
+├── _templates/                       # 因子库标准模板
+│   ├── README.md
+│   ├── factor-library.yaml.tmpl
+│   ├── factor-library.md.tmpl
+│   ├── factor-groups.md.tmpl
+│   └── factor-change-log.md.tmpl
+│
+├── _proposals/                       # 候选因子回流提案区
+│   ├── README.md
+│   └── from-tgfw-ipv4-route-candidates.yaml
+│
+├── common-network/                   # 通用网络因子库
+├── ngfw-objects/                     # NGFW 设备命名对象因子库
+├── ngfw-traffic/                     # NGFW 流量构造因子库
+├── ngfw-interface/                   # NGFW 接口因子库
+├── ngfw-ipv4-route/                  # NGFW IPv4 路由因子库
+├── ngfw-policy-routing/              # NGFW 策略路由因子库
+├── ngfw-load-balance/                # NGFW 链路负载均衡因子库
+├── ngfw-ha/                          # NGFW HA 高可用因子库
+└── ngfw-dfx/                         # NGFW DFX 因子库
 ```
+
+### 因子库一览
+
+| 库 ID | 显示名称 | 版本 | 状态 | 消费者 |
+|-------|---------|------|------|--------|
+| `common-network` | 通用网络因子库 | 0.1.0 | active | ptm-tde |
+| `ngfw-objects` | NGFW 设备命名对象因子库 | 0.1.0 | candidate | ptm-tde, ngfw-policy-routing |
+| `ngfw-traffic` | NGFW 流量构造因子库 | 0.1.0 | candidate | ptm-tde, ngfw-policy-routing, ngfw-ipv4-route |
+| `ngfw-interface` | NGFW 接口因子库 | 0.1.0 | candidate | ptm-tde, ngfw-policy-routing, ngfw-ha |
+| `ngfw-ipv4-route` | NGFW IPv4 路由因子库 | 0.1.0 | candidate | ptm-tde, ngfw-policy-routing |
+| `ngfw-policy-routing` | NGFW 策略路由因子库 | 0.2.0 | candidate | ptm-tde |
+| `ngfw-load-balance` | NGFW 链路负载均衡因子库 | 0.1.0 | candidate | ptm-tde, ngfw-policy-routing |
+| `ngfw-ha` | NGFW HA 高可用因子库 | 0.1.0 | candidate | ptm-tde, ngfw-policy-routing |
+| `ngfw-dfx` | NGFW DFX 因子库 | 0.1.0 | candidate | ptm-tde, ngfw-policy-routing |
 
 ## 核心对象
 

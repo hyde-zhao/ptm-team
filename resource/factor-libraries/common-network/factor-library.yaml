@@ -59,3 +59,202 @@ factors:
     constraints: []
     downstream_methods: [D-Data, C-Combination]
     status: active
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-CONFIG-NAME — 配置对象名称（从 ngfw-policy-routing 迁移）
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-CONFIG-NAME
+    factor_name: 配置对象名称
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-GENERIC-CONFIG
+    domain_model: string_pattern
+    value_type: string
+    domain_expr:
+      length: "1..31"
+      charset: [uppercase_letter, lowercase_letter, digit, chinese, hyphen, dot]
+      regex: "^[A-Za-z0-9\\u4e00-\\u9fa5\\-.]{1,31}$"
+    aliases: [名称, 对象名称, 规则名称, 配置名称]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从 ngfw-policy-routing 迁移。所有命名对象的名称格式非法值统一由此处定义。
+      地址对象、服务对象、应用对象等的名称格式非法均引用本因子的 rejected 样本。
+    sample_definitions:
+      - sample_id: NAME_MIN_LEN
+        sample_class: min_length
+        description: "名称最小长度 1 个字符。"
+        representative_values: ["A"]
+        expr: "string(charset=allowed,length=1)"
+        materialized_value: "A"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NAME_MAX_LEN
+        sample_class: max_length
+        description: "名称最大长度 31 个字符。"
+        representative_values: ["AbcDefGhijKlmnOpqRstUvwXyz12345"]
+        expr: "string(charset=allowed,length=31)"
+        materialized_value: "AbcDefGhijKlmnOpqRstUvwXyz12345"
+        applicability: {config_test: accepted, function_test: not_preferred}
+      - sample_id: NAME_MIXED_CHARSET
+        sample_class: charset_mixed
+        description: "名称混合字符集（大小写字母+数字+中文+连字符+点号），长度 12~20。"
+        representative_values: ["Ab9-策略.route", "路由规则-001.v2"]
+        expr: "string(include=[upper,lower,digit,chinese,hyphen,dot],length=12..20,seed=case_id)"
+        materialized_value: "Ab9-策略.route"
+        applicability: {config_test: accepted, function_test: preferred_precondition}
+      - sample_id: NAME_EMPTY
+        sample_class: below_min_length
+        description: "名称为空字符串。配置应被拒绝。"
+        representative_values: [""]
+        expr: "string(length=0)"
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: NAME_TOO_LONG
+        sample_class: above_max_length
+        description: "名称超过最大长度 32 个字符。配置应被拒绝。"
+        representative_values: ["Abcdefghijklmnopqrstuvwxyz123456"]
+        expr: "string(charset=allowed,length=32)"
+        materialized_value: "Abcdefghijklmnopqrstuvwxyz123456"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: NAME_INVALID_CHAR
+        sample_class: invalid_charset
+        description: "名称包含非法字符（如 @）。配置应被拒绝。"
+        representative_values: ["name@001", "test#rule"]
+        expr: "string(include=['@'],length=8)"
+        materialized_value: "name@001"
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [NAME_MIN_LEN, NAME_MAX_LEN, NAME_MIXED_CHARSET]
+        rejected_config_samples: [NAME_EMPTY, NAME_TOO_LONG, NAME_INVALID_CHAR]
+      function_test:
+        precondition_samples: [NAME_MIXED_CHARSET]
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-CFG-QUERY-PAGE — 分页查询参数
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-CFG-QUERY-PAGE
+    factor_name: 分页查询参数
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-GENERIC-CONFIG
+    domain_model: range
+    value_type: integer
+    domain_expr:
+      page: "int[0,N]"
+      size: "int[0,40]"
+    aliases: [分页, page, size, 翻页, 查询分页]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      通用分页查询参数。所有多记录查询接口共用（路由、地址对象、服务对象等）。
+      page=0 且 size=0 时返回全部记录（特殊行为）。
+    sample_definitions:
+      - sample_id: QP_PAGE_NORMAL
+        sample_class: valid_config
+        description: "正常分页。第 1 页，每页 10 条。"
+        representative_values: ["page=1, size=10"]
+        expr: 'page=1, size=10'
+        materialized_value: "page=1, size=10"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: QP_PAGE_LAST
+        sample_class: valid_config
+        description: "查询最后一页。"
+        representative_values: ["page=N, size=10"]
+        expr: 'page=last, size=10'
+        materialized_value: "page=last, size=10"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: QP_PAGE_ALL
+        sample_class: valid_config
+        description: "page=0 且 size=0，返回全部记录的特殊行为。"
+        representative_values: ["page=0, size=0"]
+        expr: 'page=0, size=0'
+        materialized_value: "page=0, size=0"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: QP_PAGE_ZERO
+        sample_class: invalid_config
+        description: "仅 page=0，size 不为 0。无效。"
+        representative_values: ["page=0, size=10"]
+        expr: 'page=0, size=10'
+        materialized_value: "page=0, size=10"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: QP_SIZE_ZERO
+        sample_class: invalid_config
+        description: "仅 size=0，page 不为 0。无效。"
+        representative_values: ["page=1, size=0"]
+        expr: 'page=1, size=0'
+        materialized_value: "page=1, size=0"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: QP_PAGE_EXCEED
+        sample_class: invalid_config
+        description: "page 超出有效范围。"
+        representative_values: ["page=99999, size=10"]
+        expr: 'page=exceed, size=10'
+        materialized_value: "page=99999, size=10"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: QP_SIZE_EXCEED
+        sample_class: invalid_config
+        description: "size 超出有效范围。"
+        representative_values: ["page=1, size=99999"]
+        expr: 'page=1, size=exceed'
+        materialized_value: "page=1, size=99999"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: QP_PAGE_NON_NUMERIC
+        sample_class: invalid_format
+        description: "page 为非数字值。"
+        representative_values: ["page=abc"]
+        expr: 'page=non_numeric'
+        materialized_value: "page=abc"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: QP_SIZE_NON_NUMERIC
+        sample_class: invalid_format
+        description: "size 为非数字值。"
+        representative_values: ["size=abc"]
+        expr: 'size=non_numeric'
+        materialized_value: "size=abc"
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [QP_PAGE_NORMAL, QP_PAGE_ALL]
+        rejected_config_samples: [QP_PAGE_ZERO, QP_SIZE_ZERO, QP_PAGE_EXCEED,
+                                   QP_SIZE_EXCEED, QP_PAGE_NON_NUMERIC, QP_SIZE_NON_NUMERIC]
+      function_test:
+        precondition_samples: [QP_PAGE_NORMAL]
+
+# ═══════════════════════════════════════════════════════
+# 外部消费方（被谁引用）
+# ═══════════════════════════════════════════════════════
+external_consumers:
+  - consumer: ngfw-objects/FAC-OBJ-ADDRESS
+    samples_used: [invalid_format]
+    note: "地址对象名称格式非法复用"
+  - consumer: ngfw-objects/FAC-OBJ-ADDRESS-GROUP
+    samples_used: [invalid_format]
+  - consumer: ngfw-objects/FAC-OBJ-MAC
+    samples_used: [invalid_format]
+  - consumer: ngfw-objects/FAC-OBJ-DOMAIN
+    samples_used: [invalid_format]
+  - consumer: ngfw-objects/FAC-OBJ-GEOIP
+    samples_used: [invalid_format]
+  - consumer: ngfw-objects/FAC-OBJ-SERVICE
+    samples_used: [invalid_format]
+  - consumer: ngfw-objects/FAC-OBJ-SERVICE-GROUP
+    samples_used: [invalid_format]
+  - consumer: ngfw-objects/FAC-OBJ-APPLICATION
+    samples_used: [invalid_format]
+  - consumer: ngfw-objects/FAC-OBJ-APP-TAG
+    samples_used: [invalid_format]
+  - consumer: ngfw-objects/FAC-OBJ-TIME
+    samples_used: [invalid_format]
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-IN-INTERFACE
+    samples_used: [invalid_format]
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-SRC-NETWORK
+    samples_used: [invalid_format]
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-DST-NETWORK
+    samples_used: [invalid_format]
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-SERVICE
+    samples_used: [invalid_format]

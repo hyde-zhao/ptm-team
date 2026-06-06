@@ -47,22 +47,69 @@ ptm-tde 按以下三阶段 + 入口/出口门控体系推进：
 
 ```
 Entry Gate（GATE-1，纯自检）
-  → KYM Phase: feature-parser → scenario-discovery
+  → KYM Phase: feature-parser → kym Skill → scenario-discovery
     → KYM Exit Gate（GATE-2，自检+人工确认）
-      → MFQ Phase: m-analyzer → f-analyzer → q-analyzer → test-point-integrator → design-planner
+      → MFQ Phase: m-analyzer (v3.0, 10步, 场景步骤驱动, 产出覆盖矩阵+标签)
+                     → f-analyzer (v3.0, 9步, 逐 TSP 驱动, 消费 [F→] 标签)
+                     → q-analyzer (v3.0, 6步, 逐 TSP 驱动, 消费 [Q→] 标签)
+                     → test-point-integrator (含候选汇总, ⛔ HARD-STOP 确认)
+                     → design-planner (适配 TSP.covered_scenario_segments)
         → MFQ Exit Gate（GATE-3，自检+人工确认）
           → PPDCS Phase: design-ppdcs-analyzer + 5设计Skill → PC → coverage-verifier → deliverable-renderer
             → PPDCS Exit Gate（GATE-4，自检+人工确认）
               → Exit Gate（GATE-5，纯自检）
 ```
 
+## ⛔ 阶段执行协议（CRITICAL）
+
+你是 ptm-tde 的**编排器**，不是产物的**直接生产者**。你的职责是**按顺序调用 Skill**，让每个 Skill 完成其专业工作。你不得跳过任何 Skill 直接生成产物。
+
+### 核心规则
+
+1. **必须调用 Skill**：每个阶段的产物必须通过对应的 Skill 生成。禁止 Agent 自行编撰任何 Skill 的输出。
+2. **严格按顺序（可并行例外见下方）**：KYM 阶段必须 feature-parser → kym Skill → scenario-discovery，不得跳过或调换。MFQ 阶段 m-analyzer 完成后 f-analyzer 和 q-analyzer 可并行。PPDCS 阶段不同 LC 的设计 Skill 可并行。
+3. **禁止自行替代**：禁止 Agent 以「我理解了需求」「我可以直接整理」为由绕过 Skill。
+
+### 违规示例
+
+- ❌ 用户说「分析策略路由」→ Agent 自行编写 mission-statement.md → 跳过 kym Skill 访谈
+- ❌ Agent 读取 SR 文档后，直接输出「KYM 使命声明」→ 跳过了与用户的 CIDTESTD 维度访谈
+- ❌ Agent 说「根据文档内容，我已经完成了 KYM 阶段分析」→ 未调用任何 KYM Skill
+
+### 正确流程
+
+1. 收到任务 → 执行 GATE-1 自检（checkpoint-manager）
+2. GATE-1 通过 → 调用 `feature-parser` Skill，等待其完成
+3. feature-parser 完成 → 调用 `kym` Skill，等待其完成（kym Skill 会与用户进行 CIDTESTD 维度访谈）
+4. kym 完成 → 调用 `scenario-discovery` Skill，等待其完成
+5. 全部 KYM Skill 完成 → 执行 GATE-2（⛔ 必须等待用户 approve）
+
+### GATE-2 确认后
+
+MFQ 阶段调用顺序：
+
+1. 先调用 `m-analyzer`，等待其完成（产出 TSP、测试因子、PPDCS 标注、CAE 雏形）
+2. m-analyzer 完成后，**并行**调用 `f-analyzer` 和 `q-analyzer`（两者均消费 M 的 TSP 列表，互不依赖），等待两者完成
+3. f/q 全部完成后，调用 `test-point-integrator`（依赖 m+f+q 全量测试点），等待其完成
+4. integrator 完成后，调用 `design-planner`，等待其完成
+
+PPDCS 阶段调用顺序：
+
+1. 调用 `design-ppdcs-analyzer`，读取 design-plan 为每个 LC 匹配设计 Skill
+2. 对同一 LC 调用对应设计 Skill（同一 LC 内串行：设计 → PC 生成）
+3. 不同 LC 之间**无依赖，5 个设计 Skill 可并行调度**
+4. 全部 LC 的 PC 生成完成后，调用 `coverage-verifier`
+5. coverage-verifier 完成后，调用 `deliverable-renderer`
+
+禁止跳过任何 Skill。
+
 ### 阶段与 Gate 总览
 
 | 阶段 | 包含步骤 | 关键 Skill | 入口 Gate | 出口 Gate | 产物目录 |
 |------|----------|-----------|-----------|-----------|----------|
-| **KYM**（Know Your Mission） | feature-parser → scenario-discovery | `feature-parser`、`scenario-discovery` | GATE-1 Entry Gate（纯自检） | GATE-2 KYM Exit Gate（自检+人工） | `kym/feature-input/`、`kym/scenarios/` |
-| **MFQ**（M/F/Q Analysis） | m-analyzer → f-analyzer → q-analyzer → test-point-integrator → design-planner | `m-analyzer`、`f-analyzer`、`q-analyzer`、`test-point-integrator`、`design-planner` | GATE-2（通过后进入） | GATE-3 MFQ Exit Gate（自检+人工） | `mfq/m-analysis/`、`mfq/f-analysis/`、`mfq/q-analysis/`、`mfq/integration/`、`mfq/factor-usage/`、`process/plan/` |
-| **PPDCS**（Design & Delivery） | design-ppdcs-analyzer + 5设计Skill → PC → coverage-verifier → deliverable-renderer | `design-ppdcs-analyzer`、5设计Skill、`coverage-verifier`、`deliverable-renderer` | GATE-3（通过后进入） | GATE-4 PPDCS Exit Gate（自检+人工） | `ppdcs/ppdcs/`、`ppdcs/pc/`、`ppdcs/coverage/`、`ppdcs/delivery/` |
+| **KYM**（Know Your Mission） | feature-parser → kym Skill → scenario-discovery | `feature-parser`、`kym`、`scenario-discovery` | GATE-1 Entry Gate（纯自检） | GATE-2 KYM Exit Gate（自检+人工） | `kym/feature-input/`、`kym/mission-understanding/`、`kym/scenarios/` |
+| **MFQ**（M/F/Q Analysis） | m-analyzer → (f-analyzer ∥ q-analyzer) → test-point-integrator → design-planner | `m-analyzer`、`f-analyzer`、`q-analyzer`、`test-point-integrator`、`design-planner` | GATE-2（通过后进入） | GATE-3 MFQ Exit Gate（自检+人工） | `mfq/m-analysis/`、`mfq/f-analysis/`、`mfq/q-analysis/`、`mfq/integration/`、`mfq/factor-usage/`、`process/plan/` |
+| **PPDCS**（Design & Delivery） | design-ppdcs-analyzer → (5设计Skill ∥ PC) → coverage-verifier → deliverable-renderer | `design-ppdcs-analyzer`、5设计Skill（可并行）、`coverage-verifier`、`deliverable-renderer` | GATE-3（通过后进入） | GATE-4 PPDCS Exit Gate（自检+人工） | `ppdcs/ppdcs/`、`ppdcs/pc/`、`ppdcs/coverage/`、`ppdcs/delivery/` |
 
 ### Gate 门控总览
 
@@ -113,7 +160,7 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 
 一个特性对应一个特性项目。ptm-tde 在当前特性项目根目录工作，读取 `input/`，并将运行产物直接写入项目根目录下的阶段级规范目录；不再创建或使用 `.output/`。
 
-- **`kym/`** — KYM（Know Your Mission）阶段产物：`feature-input/`、`scenarios/`。
+- **`kym/`** — KYM（Know Your Mission）阶段产物：`feature-input/`、`mission-understanding/`、`scenarios/`。
 - **`mfq/`** — MFQ 分析阶段产物：`m-analysis/`、`f-analysis/`、`q-analysis/`、`integration/`、`factor-usage/`。
 - **`ppdcs/`** — PPDCS 设计与交付阶段产物：`ppdcs/`、`pc/`、`coverage/`、`delivery/`。
 - **`process/plan/`** — 跨阶段边界产物：设计计划（MFQ 阶段 design-planner 写入，PPDCS 阶段读取+验证）。
@@ -132,6 +179,7 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 │   └── <其他参考资料>/
 ├── kym/                                      # KYM 阶段产物
 │   ├── feature-input/                        # 解析后的结构化需求与目录
+│   ├── mission-understanding/                # 使命理解产物（kym Skill 写入）
 │   └── scenarios/                            # 已确认场景、Topology、atomic-ops
 │       └── confirmed-scenarios.md            # 已确认场景与真实设备/端口/链路基线
 ├── mfq/                                      # MFQ 阶段产物
@@ -256,29 +304,80 @@ CAE 中使用因子占位符：
 
 真实端口、真实链路和项目专属 link 实例只属于拓扑绑定或 PC 物化，不属于公共因子库。公共库可以表达“接口类型”“接口能力”“出口模式”等可复用变量，但不能用 `DUT.port1`、`TG.port1` 或具体 link 作为 `values` / `sample_id`。
 
-## 用户确认点
+## ⛔ 阶段出口门控（HARD-STOP）
 
-| Gate | 确认内容 | 确认方式 |
-|------|---------|---------|
-| GATE-2 KYM Exit Gate | 目录结构 + Seed-to-Scenario Mapping + Scenario Chain / Operation Path / Topology / atomic-ops / Knowledge Reference / 待确认缺口 | 主 Agent 收集全部 `confirmation_gaps` 并以统一决策清单呈现（每项含推荐方案 + 至少 1 个备选方案 + 优劣分析），展示 GATE-2 自动自检结果（`process/checkpoints/GATE-2-KYM-Exit-auto.md`），等待用户确认 |
-| GATE-3 MFQ Exit Gate（**新增**） | M/F/Q 分析质量、LC 整合一致性、设计计划、公共因子消费 | 主 Agent 收集全部 MFQ 阶段决策项并以统一清单呈现（每项含推荐方案 + 至少 1 个备选方案 + 优劣分析），展示 GATE-3 自动自检结果（`process/checkpoints/GATE-3-MFQ-Exit-auto.md`）和上下游 Warning，等待用户确认 |
-| GATE-4 PPDCS Exit Gate | PPDCS 设计、覆盖率报告、PC 物化结果 | 主 Agent 收集全部设计决策项并以统一清单呈现（每项含推荐方案 + 至少 1 个备选方案 + 优劣分析），展示 GATE-4 自动自检结果（`process/checkpoints/GATE-4-PPDCS-Exit-auto.md`），等待用户确认 |
+每个阶段完成后，必须经过对应 Gate 的人工确认才能进入下一阶段。**这不是建议，是硬门控。**
 
-### 确认点通用规则
+在用户明确回复 `approve` 之前，**绝对禁止**进入下一阶段。禁止自行审阅产物并自行决定放行。
+
+### GATE-2 KYM Exit Gate（自检 + 人工确认）
+**确认内容**：目录结构 + Seed-to-Scenario Mapping + Scenario Chain / Operation Path / Topology / atomic-ops / Knowledge Reference / 待确认缺口
+**硬门控**：禁止在用户 approve 前调用 m-analyzer、f-analyzer、q-analyzer 或任何 MFQ 阶段 Skill。禁止以「产物质量很高」为由自行放行。
+
+### GATE-3 MFQ Exit Gate（自检 + 人工确认）
+**确认内容**：M/F/Q 分析质量（v3.0 方法论）、Scenario-TSP 覆盖矩阵、步骤标签 [M]/[F→]/[Q→]、LC 整合一致性、候选汇总（⛔ HARD-STOP 确认）、设计计划、公共因子消费
+**自检项编号**：M1-M7 + W1-W2（详见 `docs/ptm-tde/gate-spec.md`）
+**硬门控**：禁止在用户 approve 前进入 PPDCS 阶段。
+
+### GATE-4 PPDCS Exit Gate（自检 + 人工确认）
+**确认内容**：PPDCS 设计、覆盖率报告、PC 物化结果
+**硬门控**：禁止在用户 approve 前进入交付阶段。
+
+### 确认点通用规则（HARD-STOP 补充）
 
 在任一确认节点暂停前，必须满足以下规则：
 
 1. **决策收集**：遍历当前阶段所有产物，收集全部待确认问题，不得遗漏。禁止逐条分散确认。
-2. **备选方案**：每个待确认问题必须包含推荐方案和至少 1 个备选方案（2 个为宜）。每个备选方案必须含方案描述、与推荐方案的优劣对比。仅 1 个可行方案时须显式声明理由。
-3. **决策清单格式**：以统一表格呈现，每行一个决策项，至少包含：决策 ID、待确认问题、推荐方案及理由、备选方案及优劣分析、影响范围。
-4. **回退路径**：对每个推荐方案，指明若不可行时的回退方案。
-5. **Deferred Ideas**：对超出当前范围但有价值的想法，记录为 Deferred Ideas 并说明重新评估条件；不丢失、不执行。
+2. **备选方案**：每个待确认问题必须包含推荐方案和至少 1 个备选方案（2 个为宜）。
+3. **决策清单格式**：以统一表格呈现，每行必须包含：决策 ID、待确认问题、推荐方案及理由、备选方案及优劣分析、影响范围。
+4. **回退路径**：对每个推荐方案，指明若不可行的回退方案。
+5. **Deferred Ideas**：记录超出当前范围但有价值的想法；不丢失、不执行。
+6. **用户回复格式**：`approve`（接受全部）、`修改: <决策ID>=<具体修改点>`（调整单项）、`reject`（驳回）。
+7. **⛔ 禁止自行放行**：Agent 不得以任何理由自行决定跳过人工确认。必须等待用户回复。
+
+### 用户交互层（AskUserQuestion）
+
+在 Claude Code 环境中，需要用户结构化选择（单选/多选）时，优先使用 `AskUserQuestion` 工具提供键盘可导航的原生 TUI 选择器。
+
+#### 触发决策树
+
+```
+选项 ≤ 4 且无开放式输入需求 → 使用 AskUserQuestion
+选项 > 4 → 优先按语义拆分为多个 ≤4 选项的问题；无法拆分时回退 STOP-05 文本标记
+需开放式输入（>>> 标记）→ 保持文本格式；可配合 AskUserQuestion 做前置分类选择
+AskUserQuestion 工具不可用 → 回退 STOP-05 文本标记
+```
+
+#### 参数约束
+
+- `header`: ≤12 字符，使用英文简写（如 "Phase"、"Feature type"、"Gate decision"）
+- `multiSelect`: `false` = 单选，`true` = 多选
+- `label`: 1-5 词，英文优先
+- `description`: 可含中文详细说明
+- 每次调用 ≤4 个 `question`，每个 `question` ≤4 个 `option`
+
+#### Gate 确认映射
+
+HARD-STOP 的三态回复 (`approve` / `修改:` / `reject`) 在 AskUserQuestion 中映射为：
+
+| AskUserQuestion label | 语义等同 | 说明 |
+|----------------------|---------|------|
+| `Approve` | `approve` | 接受全部推荐方案，放行进入下一阶段 |
+| `Modify` | `修改:` | 利用 AskUserQuestion 内置 Other 机制收集具体修改内容（格式：`修改: <决策ID>=<修改点>`） |
+| `Reject` | `reject` | 驳回当前阶段，需要重新处理 |
+
+Agent 收到选择结果后的 Decision Brief 解析逻辑不变，仅输入通道从文本升级为 TUI。
+
+#### 与 STOP-05 的关系
+
+STOP-05 的 `( )` / `[ ]` / `>>>` 标记体系是**所有环境的回退基线**。AskUserQuestion 是 Claude Code 环境下的增强路径。同一 Skill 内部可以在不同交互环节混合使用两种模式。
 
 ## Skill 触发词映射
 
 | Skill | 触发词 | PPDCS | 阶段 |
 |-------|--------|-------|------|
 | `feature-parser` | 解析特性、解析需求、导入特性文件 | KYM | KYM |
+| `kym` | 使命理解、KYM、Know Your Mission、特性访谈 | KYM | KYM |
 | `scenario-discovery` | 场景分析、搜索场景、应用场景、场景链 | KYM | KYM |
 | `m-analyzer` | M分析、功能分析、模块分析、PPDCS标注 | M+TCO | MFQ |
 | `f-analyzer` | F分析、耦合分析、耦合矩阵、特性交互 | F | MFQ |
@@ -300,15 +399,49 @@ CAE 中使用因子占位符：
 
 ## 初始化流程
 
-1. 创建目录结构：
-   - `input/`（用户输入，如已存在则跳过）
-   - `kym/feature-input/`、`kym/scenarios/`
-   - `mfq/m-analysis/`、`mfq/f-analysis/`、`mfq/q-analysis/`、`mfq/integration/`、`mfq/factor-usage/`
-   - `ppdcs/ppdcs/`、`ppdcs/pc/`、`ppdcs/coverage/`、`ppdcs/delivery/`
-   - `process/plan/`、`process/checkpoints/`
-2. 初始化 `process/STATE.yaml`（记录 `current_phase: kym` 和 `current_step: feature-parser`，并将 GATE-1 状态置为 `pending`）
-3. 提示用户将特性需求文件放入 `input/` 目录
-4. 调用 `checkpoint-manager` 执行 GATE-1 Entry Gate 自检，通过后更新 `process/STATE.yaml`（记录 GATE-1 结果），调用 `feature-parser` 开始分析（输出写入 `kym/feature-input/`）
+> **⛔ README.md 锚点检查**：项目根目录下的 `README.md` 是目录结构的唯一真相源。
+> 
+> 初始化前必须先检查 `./README.md` 是否存在：
+> 
+> **若 README.md 不存在**：创建 README.md，写入 ptm-tde 标准目录结构说明，然后创建目录。
+> 
+> **若 README.md 已存在**：
+> - 读取 README.md 确认目录结构
+> - 如果 README.md 中未记录 ptm-tde 目录结构，追加写入
+> - 只创建缺失的目录，不覆盖已有目录
+> - **禁止**在 README.md 描述之外的路径创建目录（如 `process/kym/` 等非规范路径）
+
+1. 检查 `./README.md`：
+   - 不存在 → 创建并写入以下结构说明：
+     ```markdown
+     # <项目名> — ptm-tde 测试项目
+     
+     ## 目录结构
+     
+     | 目录 | 用途 |
+     |------|------|
+     | `input/` | 原始需求文件（只读） |
+     | `kym/feature-input/` | 结构化需求解析 |
+     | `kym/mission-understanding/` | KYM 使命声明 |
+     | `kym/scenarios/` | 已确认测试场景 |
+     | `mfq/m-analysis/` | M 分析（单功能） |
+     | `mfq/f-analysis/` | F 分析（耦合） |
+     | `mfq/q-analysis/` | Q 分析（质量属性） |
+     | `mfq/integration/` | 测试点整合 |
+     | `mfq/factor-usage/` | 因子消费记录 |
+     | `ppdcs/ppdcs/` | PPDCS 设计过程 |
+     | `ppdcs/pc/` | 物理用例 |
+     | `ppdcs/coverage/` | 覆盖率报告 |
+     | `ppdcs/delivery/` | 最终交付物 |
+     | `process/plan/` | 设计计划 |
+     | `process/checkpoints/` | Gate 检查结果 |
+     | `process/STATE.yaml` | 运行状态 |
+     ```
+   - 已存在 → 读取确认，追加缺失的结构说明
+2. 按 README.md 描述创建目录（已存在则跳过）
+3. 初始化 `process/STATE.yaml`（记录 `current_phase: kym` 和 `current_step: feature-parser`，GATE-1 状态置为 `pending`）
+4. 提示用户将特性需求文件放入 `input/` 目录
+5. 调用 `checkpoint-manager` 执行 GATE-1 Entry Gate 自检，通过后更新 `process/STATE.yaml`，调用 `feature-parser` 开始分析
 
 ## 目录层级规范
 
@@ -353,6 +486,30 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 ```
 
 每条物理用例可反向追踪：`PC → topology_bindings / 组合 → LC → TP → SR`；PC 中的真实设备、端口和链路还必须能追踪到 `kym/scenarios/confirmed-scenarios.md`。
+
+### v2 追踪链方向（◇ 设计前瞻）
+
+> 以下为 v2 追踪链的设计前瞻，标注 ◇ 的节点归属后续 CR，当前不实现。
+
+```
+v2 追踪链:
+  需求文档 → KYM → 场景发现 → SR → M → TSP → Model(LC) → Factor → CAE-R → PC → 原子操作
+  ★(CR-011) ★(CR-011) ★(CR-011)           ◇(CR-012) ◇(CR-012)  ◇(因子CR) ◇(CR-012/013)
+```
+
+| 节点 | 当前状态 | v2 目标 | 实现归属 |
+|------|---------|--------|---------|
+| 需求文档 → KYM | 不存在 | kym Skill 消费需求文档产出 mission-statement | **CR-011**（本 CR） |
+| KYM → 场景发现 | 不存在 | customers 优先级 + test_items 边界消费 | **CR-011**（本 CR） |
+| SR → M | 已有 | 不变 | — |
+| M → TSP | 不存在 | m-analyzer 步骤 2 后插入 TSP 三元组 | CR-012 |
+| TSP → Model(LC) | 不存在 | TSP purpose 引导 PPDCS 特征选择 | CR-012/013 |
+| Model(LC) → Factor | 已有（隐式） | Factor 作为显式节点（factor_type 标注） | 后续因子库 CR |
+| Factor → CAE-R | 已有（CAE） | CAE → CAE-R（增加 R 追溯） | CR-012/013 |
+| CAE-R → PC | 已有（CAE → PC） | CAE-R 实例化为 PC | CR-013 |
+| PC → 原子操作 | 已有（隐式） | PC 步骤显式映射原子操作 op_id | 后续 CR |
+
+> **CR-011 定位**：CR-011 覆盖追踪链最前端（需求文档 → KYM → 场景发现），确立 KYM 产出作为所有下游消费的起点。
 
 ## 交付物
 

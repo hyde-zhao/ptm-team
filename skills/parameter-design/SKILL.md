@@ -31,15 +31,15 @@ P-Parameter 是 PPDCS 五特征之一：
 
 ## 适用范围
 
-> 统一输出规则：本 Skill 的方法过程写入 `design/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
+> 统一输出规则：本 Skill 的方法过程写入 `ppdcs/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `ppdcs/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
 
 
 - 适用阶段：MFQ 的 design 阶段
-- 设计输入：`analysis/integration/design-plan.md`
-- reasoning 输入：`analysis/plan/design-planner-reasoning.md`
-- 上游 trace 输入：`analysis/integration/logic-cases.md`、`analysis/integration/test-data.md`
-- PPDCS 基线：`analysis/m-analysis/ppdcs-annotation.md`
-- 输出：`design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
+- 设计输入：`process/plan/design-plan.md`
+- reasoning 输入：`process/plan/design-planner-reasoning.md`
+- 上游 trace 输入：`mfq/integration/logic-cases.md`、`mfq/integration/test-data.md`
+- PPDCS 基线：`mfq/m-analysis/ppdcs-annotation.md`
+- 输出：`ppdcs/ppdcs/<basename>.md` 与 `ppdcs/pc/<basename>.md`
 
 ## 必收输入契约（STORY-05 / STORY-04）
 
@@ -49,10 +49,11 @@ P-Parameter 是 PPDCS 五特征之一：
 | `design-planner-reasoning.md` | `recommended_feature`, `recommended_method`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `factor_refs`, `trace refs`, `uncertain facts` | 读取推荐原因和不确定事实，不得只消费计划表 |
 | `logic-cases.md` | `动作路径`, `因子-取值表`, `topology_bindings`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `trace_refs`, `fact_status` | 形成 factor catalog、拓扑绑定目录与 LC 叠加骨架 |
 | `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `source_section`, `trace_refs`, `confirmation_gap_refs`, `status` | 提取参数值域、边界值、待确认项 |
+| `directory-structure.md` | `### 三级目录`, 四级/五级目录层级映射 | 回查完整 `三级→四级→五级` 层级链，用于构造输出文件名 |
 
 若 `design-plan.md` 与 `design-planner-reasoning.md` 不一致：
 - 不得自行选一份静默覆盖另一份；
-- 必须在 `design/ppdcs/<basename>.md` 中保留差异；
+- 必须在 `ppdcs/ppdcs/<basename>.md` 中保留差异；
 - 当前 LC 的 `fact_status` 降级为 `needs-confirmation`。
 
 ## 前置条件
@@ -178,17 +179,17 @@ P-Parameter 是 PPDCS 五特征之一：
 
 PC 物化拓扑要求：
 - 若 PC 需要写入真实端口或 TOPO 实例，只能从 LC `topology_bindings` 或上游已确认拓扑来源物化；
-- `design/ppdcs/<basename>.md` 必须记录 `topology_binding_ref / materialized_object / source_ref / fact_status`；
+- `ppdcs/ppdcs/<basename>.md` 必须记录 `topology_binding_ref / materialized_object / source_ref / fact_status`；
 - 不得把物化后的 `DUT.port*`、`TG.port*`、link/TOPO 实例回填为参数值域或判定表条件。
 
 ## 输出目录结构
 
 ```text
-design/ppdcs/<basename>.md
-design/pc/<basename>.md
+ppdcs/ppdcs/<basename>.md
+ppdcs/pc/<basename>.md
 ```
 
-`design/ppdcs/<basename>.md` 至少包含：
+`ppdcs/ppdcs/<basename>.md` 至少包含：
 1. 来自 `design-plan.md` 的推荐摘要；
 2. 来自 `design-planner-reasoning.md` 的 primary/candidate/exclusion/uncertain facts；
 3. factor catalog；
@@ -222,6 +223,33 @@ design/pc/<basename>.md
 - Parameter 关注**确定性规则**；若主要矛盾变为取值范围，应回退 D-Data；若主要矛盾变为组合压缩，应回退 C-Combination
 - `—` / Don't Care 必须说明为什么“不影响结果”
 - 常见误用：把 `DUT.port1/TG.port2` 当作“接口参数值”写入判定表。正确做法是保留逻辑参数或拓扑角色，并在 PC 阶段通过 `topology_bindings` 物化真实端口。
+
+## 方法论细则（用户可定制）
+
+> 以下为设计方法的指导框架。用户可根据项目特点和领域知识补充具体规则。
+> 详细的 PPDCS 方法论参见 `ppdcs-analysis-step-by-step.md`。
+
+### 判定表法设计步骤
+
+**目标**：基于参数因子和业务规则，通过判定结构（判定表/因果图/决策树）建模参数间的确定性约束关系，生成覆盖全部规则触发组合的 PC。
+
+**核心步骤**：
+1. 从 LC 因子-取值表和 test-data 形成 factor catalog，标注 factor_type、值域、fact_status
+2. 抽取参数取值范围的边界和约束（imply/mutex/priority），形成规则清单
+3. 根据规则复杂度选择判定结构：参数 ≤4 且规则直观 → 判定表；逻辑嵌套复杂 → 因果图→判定表；条件分层明显 → 决策树
+4. 构建判定结构并逐列验证每条规则的覆盖情况
+5. 将每条规则映射为 data row，叠加到 LC 步骤位置形成 PC seed
+
+**关键决策点**：
+- 判定表 vs 因果图 vs 决策树的选择标准：参数数量、规则嵌套深度、条件分层程度
+- 规则优先级冲突处理：显式列出 priority 字段；无法判定时输出候选结构并标记 `[待确认]`
+- 约束类型分类：imply（蕴含）、mutex（互斥）、dependency（依赖）
+
+**示例**（防火墙领域）：
+以日志权限管理为例，因子为"用户角色"（管理员/操作员/审计员）和"操作类型"（查看/修改/删除）。判定表中 Rule-01 为"管理员+修改→允许"，Rule-02 为"操作员+删除→拒绝"。P1 优先级规则优先覆盖，P3 的 Don't Care 验证放在后期。
+
+**下游影响**：
+判定结构直接决定 PC 生成（每条规则 × data_row → PC）；规则优先级影响 PC 优先级分配；needs-confirmation 规则生成的 PC 在 GATE-4 覆盖率验证中不参与已覆盖计数；未覆盖规则组合在 coverage-verifier 中触发告警。
 
 ## 验收标准
 

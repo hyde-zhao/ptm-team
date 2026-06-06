@@ -1,0 +1,1738 @@
+# NGFW IPv4路由因子库
+# 研究区 — ngfw-ipv4-route
+# 来源: TGFW V60R001C00 IPv4路由特性测试用例
+
+schema_version: 1
+library_id: ngfw-ipv4-route
+version: 0.1.0
+status: candidate
+description: "NGFW IPv4路由公共因子库，覆盖静态路由配置、路由转发表、直连路由、路由转发、单臂路由和等价路由场景。"
+
+factors:
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-L3-EGRESS-MODE — 三层转发出口选择模式
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-L3-EGRESS-MODE
+    factor_name: 三层转发出口选择模式
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-RT-EGRESS
+    domain_model: enum
+    value_type: enum
+    values: [next-hop, out-interface]
+    display_values:
+      next-hop: 下一跳
+      out-interface: 出接口
+    aliases: [出口模式, 转发出口类型, 三层转发出口类型]
+    applicable_when: always
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      与发布区 ngfw-policy-routing 的 FAC-L3-EGRESS-MODE 完全一致。
+      下一跳模式: 通过下一跳 IP 查找出接口，需要下一跳与接口 IP 同网段。
+      出接口模式: 直接指定出接口，仅支持 Tunnel 和 PPPoE。
+    sample_definitions:
+      - sample_id: EGRESS_NEXT_HOP
+        sample_class: valid_member
+        description: "下一跳模式。路由关联下一跳 IP，系统查找匹配的接口。"
+        representative_values: ["next-hop"]
+        expr: 'next-hop'
+        materialized_value: "next-hop"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: EGRESS_OUT_INTERFACE
+        sample_class: valid_member
+        description: "出接口模式。路由直接指定出接口，仅 Tunnel/PPPoE 可用。"
+        representative_values: ["out-interface"]
+        expr: 'out-interface'
+        materialized_value: "out-interface"
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [EGRESS_NEXT_HOP, EGRESS_OUT_INTERFACE]
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-DST-NETWORK — 目的网络地址
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-DST-NETWORK
+    factor_name: 目的网络地址
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-STATIC-ROUTE
+    domain_model: ip_network
+    value_type: string
+    domain_expr:
+      version: ipv4
+      semantic_constraints:
+        unicast_only: true
+        exclude_loopback: false
+        exclude_multicast: false
+        prefix_range: "0..32"
+    aliases: [目的地址, 目的网段, 路由目的, 目的IP地址]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      # ── 有效类: 字面量 ──
+      - sample_id: DST_DEFAULT
+        sample_class: valid_config
+        description: "默认路由，匹配任意目的IP。0.0.0.0/0 是唯一取值。"
+        representative_values: ["0.0.0.0/0"]
+        expr: 'ip_net("0.0.0.0/0")'
+        materialized_value: "0.0.0.0/0"
+        applicability: {config_test: accepted, function_test: precondition}
+      # ── 有效类: 地址类+掩码范围 ──
+      - sample_id: DST_CLASS_A
+        sample_class: valid_config
+        description: "A类单播网段。IP首段 1~126，掩码 1~31 位。"
+        representative_values: ["<IP_ADDRESS>/8", "42.173.89.0/24", "126.255.255.0/31"]
+        expr: 'ip_net(class=a, prefix=1..31)'
+        materialized_value: "<IP_ADDRESS>/8"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: DST_CLASS_B
+        sample_class: valid_config
+        description: "B类单播网段。IP首段 128~191，掩码 1~31 位。"
+        representative_values: ["<IP_ADDRESS>/12", "150.100.50.0/24", "191.255.255.0/31"]
+        expr: 'ip_net(class=b, prefix=1..31)'
+        materialized_value: "<IP_ADDRESS>/12"
+        applicability: {config_test: accepted, function_test: precondition}
+      # ── 有效类: 主机路由 ──
+      - sample_id: DST_HOST_B
+        sample_class: valid_config
+        description: "B类主机路由，掩码 32 位。精确匹配单个IP。"
+        representative_values: ["223.255.255.255/32", "128.0.0.1/32", "191.255.255.254/32"]
+        expr: 'ip_net(class=b, prefix=32)'
+        materialized_value: "223.255.255.255/32"
+        applicability: {config_test: accepted, function_test: preferred_precondition}
+      - sample_id: DST_HOST_A
+        sample_class: valid_config
+        description: "A类主机路由，掩码 32 位。与网段路由形成最长匹配对比。"
+        representative_values: ["1.0.0.1/32", "60.173.89.42/32", "126.255.255.254/32"]
+        expr: 'ip_net(class=a, prefix=32)'
+        materialized_value: "1.0.0.1/32"
+        applicability: {config_test: accepted, function_test: precondition}
+      # ── 有效类: 边界合法 ──
+      - sample_id: DST_CLASS_D_SHORT_PREFIX
+        sample_class: valid_config
+        description: "D类组播地址仅 1~2 位掩码时可配置。合法边界值。"
+        representative_values: ["224.0.0.0/1", "238.255.255.0/2"]
+        expr: 'ip_net(class=d, prefix=1..2)'
+        materialized_value: "224.0.0.0/1"
+        applicability: {config_test: accepted, function_test: not_applicable}
+      - sample_id: DST_LOOPBACK_SHORT_PREFIX
+        sample_class: valid_config
+        description: "127环回地址仅 1~7 位掩码时可配置。合法边界值。"
+        representative_values: ["127.0.0.0/1", "127.255.255.0/7"]
+        expr: 'ip_net(class=loopback, prefix=1..7)'
+        materialized_value: "127.0.0.0/1"
+        applicability: {config_test: accepted, function_test: not_applicable}
+      # ── 语义无效 ──
+      - sample_id: DST_CLASS_D_INVALID_PREFIX
+        sample_class: invalid_config
+        description: "D类组播地址掩码 ≥3 位。格式正确但语义非法（组播不能做单播路由目的）。"
+        representative_values: ["224.0.0.0/4", "233.45.12.0/15", "239.255.255.0/32"]
+        expr: 'ip_net(class=d, prefix=3..32, invalid=true)'
+        materialized_value: "224.0.0.0/4"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: DST_LOOPBACK_INVALID_PREFIX
+        sample_class: invalid_config
+        description: "127环回地址掩码 ≥8 位。环回地址不应作为路由目的网络。"
+        representative_values: ["127.0.0.1/8", "127.0.0.0/16", "127.255.255.255/32"]
+        expr: 'ip_net(class=loopback, prefix=8..32, invalid=true)'
+        materialized_value: "127.0.0.1/8"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      # ── 格式无效 ──
+      - sample_id: DST_EMPTY
+        sample_class: invalid_format
+        description: "目的网络为空字符串。必填字段缺失。"
+        representative_values: [""]
+        expr: 'invalid_format(type=empty)'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: DST_TOO_LONG
+        sample_class: invalid_format
+        description: "目的网络字符串超出正常IP网段长度上限。"
+        representative_values: ["<IP_ADDRESS>.10.20/24/32/extra"]
+        expr: 'invalid_format(type=too_long)'
+        materialized_value: "<IP_ADDRESS>.10.20/24/32/extra"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: DST_3_SEGMENTS
+        sample_class: invalid_format
+        description: "仅3段点分十进制，缺少一段。"
+        representative_values: ["192.168.1", "10.0.0"]
+        expr: 'invalid_format(type=wrong_segments, segments=3)'
+        materialized_value: "192.168.1"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: DST_5_SEGMENTS
+        sample_class: invalid_format
+        description: "5段点分十进制，多余一段。"
+        representative_values: ["1.2.3.4.5", "<IP_ADDRESS>.100"]
+        expr: 'invalid_format(type=wrong_segments, segments=5)'
+        materialized_value: "1.2.3.4.5"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: DST_BAD_SEPARATOR
+        sample_class: invalid_format
+        description: "IP段之间使用非点号分隔符（如中划线）。"
+        representative_values: ["192-168-1-1/24", "10:0:0:0/8"]
+        expr: 'invalid_format(type=bad_separator, sep="-")'
+        materialized_value: "192-168-1-1/24"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: DST_BAD_MASK_SEP
+        sample_class: invalid_format
+        description: "掩码前不使用正斜杠分隔（如反斜杠、冒号）。"
+        representative_values: ["<IP_ADDRESS>\\24", "<IP_ADDRESS>:8"]
+        expr: 'invalid_format(type=bad_mask_sep, sep="\\")'
+        materialized_value: "<IP_ADDRESS>\\24"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: DST_HEX_FORMAT
+        sample_class: invalid_format
+        description: "IP地址使用16进制格式，不支持。"
+        representative_values: ["0xC0A80101/24", "0x0A000001/8"]
+        expr: 'invalid_format(type=hex)'
+        materialized_value: "0xC0A80101/24"
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples:
+          [DST_DEFAULT, DST_CLASS_A, DST_CLASS_B, DST_HOST_B,
+           DST_HOST_A, DST_CLASS_D_SHORT_PREFIX, DST_LOOPBACK_SHORT_PREFIX]
+        rejected_config_samples:
+          [DST_CLASS_D_INVALID_PREFIX, DST_LOOPBACK_INVALID_PREFIX,
+           DST_EMPTY, DST_TOO_LONG, DST_3_SEGMENTS, DST_5_SEGMENTS,
+           DST_BAD_SEPARATOR, DST_BAD_MASK_SEP, DST_HEX_FORMAT]
+      function_test:
+        precondition_samples: [DST_DEFAULT, DST_CLASS_A, DST_CLASS_B, DST_HOST_B, DST_HOST_A]
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-NEXT-HOP — 下一跳地址
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-NEXT-HOP
+    factor_name: 下一跳地址
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-STATIC-ROUTE
+    domain_model: ip_address
+    value_type: string
+    domain_expr:
+      version: ipv4
+      octet_constraints:
+        octet1: "1..223"
+        octet2: "0..255"
+        octet3: "0..255"
+        octet4: "0..255"
+      semantic_constraints:
+        exclude_zero_network: true
+        exclude_loopback: true
+        exclude_multicast: true
+      reference_targets: [ngfw-interface/FAC-IF-IPV4-ADDRESS]
+      note: "下一跳必须与至少一个接口 IP 同网段，不能等于任何本机接口 IP"
+    aliases: [下一跳IP, 网关地址, next_hop]
+    applicable_when: "FAC-L3-EGRESS-MODE == next-hop"
+    downstream_methods: [D-Data, P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      # ── 有效类: 精确锚点 ──
+      - sample_id: NH_ANCHOR_MIN
+        sample_class: valid_config
+        description: "最小合法单播地址。1.0.0.0。"
+        representative_values: ["1.0.0.0"]
+        expr: 'ip_addr("1.0.0.0")'
+        materialized_value: "1.0.0.0"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_ANCHOR_MAX
+        sample_class: valid_config
+        description: "最大合法单播地址。223.255.255.255。"
+        representative_values: ["223.255.255.255"]
+        expr: 'ip_addr("223.255.255.255")'
+        materialized_value: "223.255.255.255"
+        applicability: {config_test: accepted, function_test: precondition}
+      # ── 有效类: 首段范围 ──
+      - sample_id: NH_FIRST_1_126
+        sample_class: valid_config
+        description: "首段 1~126。涵盖原 A 类单播地址范围。"
+        representative_values: ["<IP_ADDRESS>", "60.173.89.42", "126.255.255.254"]
+        expr: 'ip_addr(first=1..126)'
+        materialized_value: "<IP_ADDRESS>"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_FIRST_128_191
+        sample_class: valid_config
+        description: "首段 128~191。涵盖原 B 类单播地址范围。"
+        representative_values: ["<IP_ADDRESS>", "150.100.50.42", "191.255.255.254"]
+        expr: 'ip_addr(first=128..191)'
+        materialized_value: "<IP_ADDRESS>"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_FIRST_192_223
+        sample_class: valid_config
+        description: "首段 192~223。涵盖原 C 类单播地址范围，私网地址段。"
+        representative_values: ["<IP_ADDRESS>", "200.100.50.42", "223.255.255.254"]
+        expr: 'ip_addr(first=192..223)'
+        materialized_value: "<IP_ADDRESS>"
+        applicability: {config_test: accepted, function_test: preferred_precondition}
+      # ── 语义无效: 零网段 ──
+      - sample_id: NH_ZERO_NET
+        sample_class: invalid_config
+        description: "零网段地址。0.x.x.x 不能作为下一跳。"
+        representative_values: ["0.0.0.0", "0.0.0.1", "0.255.255.255"]
+        expr: 'ip_addr(first=0)'
+        materialized_value: "0.0.0.0"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      # ── 语义无效: D类组播 ──
+      - sample_id: NH_CLASS_D
+        sample_class: invalid_config
+        description: "D类组播地址。224.x.x.x ~ 239.x.x.x 不能作为下一跳。"
+        representative_values: ["224.0.0.1", "233.45.12.42", "239.255.255.254"]
+        expr: 'ip_addr(first=224..239)'
+        materialized_value: "224.0.0.1"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      # ── 语义无效: 127环回 ──
+      - sample_id: NH_LOOPBACK
+        sample_class: invalid_config
+        description: "127环回地址。127.x.x.x 不能作为下一跳。"
+        representative_values: ["127.0.0.1", "127.0.0.2", "127.255.255.254"]
+        expr: 'ip_addr(first=127)'
+        materialized_value: "127.0.0.1"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      # ── 语义无效: 本机接口IP ──
+      - sample_id: NH_OWN_INTERFACE_IP
+        sample_class: invalid_config
+        description: "下一跳与本机已有接口IP地址相同。配置应被拒绝。依赖拓扑上下文。"
+        representative_values: ["<IP_ADDRESS>", "<IP_ADDRESS>"]
+        expr: 'from_topology.interface_ips.any'
+        materialized_value: "<IP_ADDRESS>"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      # ── 格式无效 ──
+      - sample_id: NH_EMPTY
+        sample_class: invalid_format
+        description: "下一跳为空字符串。必填字段缺失。"
+        representative_values: [""]
+        expr: 'invalid_format(type=empty)'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: NH_TOO_LONG
+        sample_class: invalid_format
+        description: "下一跳字符串超出正常IP地址长度上限。"
+        representative_values: ["<IP_ADDRESS>.10.20"]
+        expr: 'invalid_format(type=too_long)'
+        materialized_value: "<IP_ADDRESS>.10.20"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: NH_3_SEGMENTS
+        sample_class: invalid_format
+        description: "仅3段点分十进制，缺少一段。"
+        representative_values: ["192.168.1", "10.0.0"]
+        expr: 'invalid_format(type=wrong_segments, segments=3)'
+        materialized_value: "192.168.1"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: NH_5_SEGMENTS
+        sample_class: invalid_format
+        description: "5段点分十进制，多余一段。"
+        representative_values: ["1.2.3.4.5", "<IP_ADDRESS>.100"]
+        expr: 'invalid_format(type=wrong_segments, segments=5)'
+        materialized_value: "1.2.3.4.5"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: NH_BAD_SEPARATOR
+        sample_class: invalid_format
+        description: "IP段之间使用非点号分隔符（如中划线）。"
+        representative_values: ["192-168-1-1", "10:0:0:1"]
+        expr: 'invalid_format(type=bad_separator, sep="-")'
+        materialized_value: "192-168-1-1"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: NH_HEX
+        sample_class: invalid_format
+        description: "IP地址使用16进制格式，不支持。"
+        representative_values: ["0xC0A80101", "0x0A000001"]
+        expr: 'invalid_format(type=hex)'
+        materialized_value: "0xC0A80101"
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples:
+          [NH_ANCHOR_MIN, NH_ANCHOR_MAX, NH_FIRST_1_126, NH_FIRST_128_191, NH_FIRST_192_223]
+        rejected_config_samples:
+          [NH_ZERO_NET, NH_CLASS_D, NH_LOOPBACK, NH_OWN_INTERFACE_IP,
+           NH_EMPTY, NH_TOO_LONG, NH_3_SEGMENTS, NH_5_SEGMENTS, NH_BAD_SEPARATOR, NH_HEX]
+      function_test:
+        precondition_samples: [NH_FIRST_192_223]
+    constraints:
+      - constraint_id: C-RT-NH-001
+        description: "下一跳不能是本机已有接口IP"
+        if: "next_hop in topology.interface_ips"
+        forbid_usage:
+          config_test: [accepted]
+
+# ═══════════════════════════════════════════════════════
+# 约束（库级）
+# ═══════════════════════════════════════════════════════
+constraints:
+  # 下一跳模式: 下一跳必须与至少一个接口IP同网段
+  - constraint_id: C-RT-NH-002
+    description: "下一跳必须与至少一个本机接口IP在同一网段，否则路由不在FIB中生效"
+    if: "FAC-L3-EGRESS-MODE == next-hop and FAC-RT-NEXT-HOP selected"
+    require_condition: "next_hop in subnet_of(topology.interface_ips)"
+    forbid_usage:
+      function_test: [positive]
+
+  # 出接口模式: 只允许 Tunnel/PPPoE
+  - constraint_id: C-RT-EGRESS-001
+    description: "出接口模式仅支持 Tunnel 接口和 PPPoE 接口"
+    if: "FAC-L3-EGRESS-MODE == out-interface"
+    allowed_values:
+      FAC-RT-INTERFACE-TYPE: [tunnel, pppoe]
+
+  # 下一跳模式: 禁止 Tunnel/PPPoE 作为出接口类型
+  - constraint_id: C-RT-EGRESS-002
+    description: "下一跳模式使用常规接口类型，禁止出接口模式的特殊接口"
+    if: "FAC-L3-EGRESS-MODE == next-hop"
+    forbid: [FAC-RT-OUTIF-TYPE]
+
+  # 路由唯一性
+  - constraint_id: C-RT-UNIQUENESS-001
+    description: "目的网络+下一跳相同时视为重复路由，配置拒绝"
+    if: "FAC-RT-DST-NETWORK == duplicate and FAC-RT-NEXT-HOP == duplicate"
+    forbid_usage:
+      config_test: [accepted]
+
+  # 同网段修改接口IP
+  - constraint_id: C-RT-SUBNET-001
+    description: "同网段修改接口IP不改变路由表，但改为与下一跳相同地址时修改失败"
+    if: "FAC-RT-INTERFACE-STATE in [UP, Down-to-UP] and modify_interface_ip"
+    forbid_condition: "new_interface_ip == FAC-RT-NEXT-HOP"
+
+  # ECMP 与 LB 策略的优先级
+  - constraint_id: C-RT-ECMP-LB-001
+    description: "接口被 LB 策略管理时，路由级 ECMP 不生效，以 LB 策略为准"
+    if: "FAC-RT-ECMP-ROUTE-TYPE selected and interface in ngfw-load-balance.lb.interfaces"
+    forbid: [FAC-RT-ECMP-LOAD-BALANCE, FAC-RT-ECMP-LINK-CHANGE, FAC-RT-ECMP-ROUTE-SWITCH]
+
+  # ═══════════════════════════════════════════════════════
+  # L3 出口因子（从 ngfw-policy-routing 迁移）
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-L3-NH-IF-TYPE
+    factor_name: 下一跳关联接口类型
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-EGRESS
+    domain_model: enum
+    value_type: enum
+    values: [physical, sub-interface, aggregate, bvi, tunnel]
+    display_values:
+      physical: 物理口
+      sub-interface: 子接口
+      aggregate: 聚合口
+      bvi: BVI接口
+      tunnel: 隧道口
+    aliases: [下一跳接口类型, 下一跳所在接口]
+    applicable_when: "FAC-L3-EGRESS-MODE == next-hop"
+    downstream_methods: [C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 从 ngfw-policy-routing 迁移。下一跳模式下可选接口类型。
+    sample_definitions:
+      - sample_id: NH_IF_PHYSICAL
+        sample_class: valid_member
+        description: "下一跳出接口为物理口。"
+        representative_values: ["physical"]
+        expr: 'physical'
+        materialized_value: "physical"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_IF_SUB_INTERFACE
+        sample_class: valid_member
+        description: "下一跳出接口为 L3 子接口。"
+        representative_values: ["sub-interface"]
+        expr: 'sub-interface'
+        materialized_value: "sub-interface"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_IF_AGGREGATE
+        sample_class: valid_member
+        description: "下一跳出接口为聚合口。"
+        representative_values: ["aggregate"]
+        expr: 'aggregate'
+        materialized_value: "aggregate"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_IF_BVI
+        sample_class: valid_member
+        description: "下一跳出接口为 BVI 接口。"
+        representative_values: ["bvi"]
+        expr: 'bvi'
+        materialized_value: "bvi"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_IF_TUNNEL
+        sample_class: valid_member
+        description: "下一跳出接口为隧道口。"
+        representative_values: ["tunnel"]
+        expr: 'tunnel'
+        materialized_value: "tunnel"
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [NH_IF_PHYSICAL, NH_IF_SUB_INTERFACE, NH_IF_AGGREGATE, NH_IF_BVI, NH_IF_TUNNEL]
+
+  - factor_id: FAC-L3-OUTIF-TYPE
+    factor_name: 出接口接口类型
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-EGRESS
+    domain_model: enum
+    value_type: enum
+    values: [tunnel, pppoe]
+    display_values:
+      tunnel: 隧道口
+      pppoe: PPPoE接口
+    aliases: [出接口类型, 策略路由出接口]
+    applicable_when: "FAC-L3-EGRESS-MODE == out-interface"
+    downstream_methods: [C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 从 ngfw-policy-routing 迁移。出接口模式仅支持 Tunnel 和 PPPoE。
+    sample_definitions:
+      - sample_id: OUTIF_TUNNEL
+        sample_class: valid_member
+        description: "出接口为隧道口。"
+        representative_values: ["tunnel"]
+        expr: 'tunnel'
+        materialized_value: "tunnel"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: OUTIF_PPPOE
+        sample_class: valid_member
+        description: "出接口为 PPPoE 接口。"
+        representative_values: ["pppoe"]
+        expr: 'pppoe'
+        materialized_value: "pppoe"
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [OUTIF_TUNNEL, OUTIF_PPPOE]
+
+  - factor_id: FAC-L3-IF-CAPABILITY
+    factor_name: 三层转发接口能力
+    factor_kind: constraint
+    design_role: constraint
+    owner_object: OBJ-RT-EGRESS
+    domain_model: enum
+    value_type: enum
+    values: [l3-capable, not-l3-capable]
+    display_values:
+      l3-capable: 支持三层转发
+      not-l3-capable: 不支持三层转发
+    aliases: [三层接口能力, 三层转发能力]
+    applicable_when: "FAC-L3-NH-IF-TYPE or FAC-L3-OUTIF-TYPE selected"
+    downstream_methods: [D-Data, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 约束因子。判断接口是否支持三层转发，用于下游组合阶段裁剪。
+    sample_definitions:
+      - sample_id: IF_CAP_L3
+        sample_class: valid_member
+        description: "接口支持三层转发。"
+        representative_values: ["l3-capable"]
+        expr: 'l3-capable'
+        materialized_value: "l3-capable"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: IF_CAP_NOT_L3
+        sample_class: invalid_config
+        description: "接口不支持三层转发，不应用于三层出口。"
+        representative_values: ["not-l3-capable"]
+        expr: 'not-l3-capable'
+        materialized_value: "not-l3-capable"
+        applicability: {config_test: not_applicable, function_test: not_applicable}
+
+  - factor_id: FAC-L3-REACHABILITY
+    factor_name: 三层出口可达性
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-RT-EGRESS
+    domain_model: state
+    value_type: state
+    values: [reachable, unreachable, recovered]
+    display_values:
+      reachable: 可达
+      unreachable: 不可达
+      recovered: 恢复
+    aliases: [下一跳可达性, 出口可达状态, 链路可达性]
+    applicable_when: "forwarding validation or failover validation"
+    downstream_methods: [S-State, P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: REACHABLE
+        sample_class: positive_function
+        description: "出口可达，正常转发。"
+        representative_values: ["reachable"]
+        expr: 'reachable'
+        materialized_value: "reachable"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: UNREACHABLE
+        sample_class: negative_function
+        description: "出口不可达，触发故障切换或丢包。"
+        representative_values: ["unreachable"]
+        expr: 'unreachable'
+        materialized_value: "unreachable"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: RECOVERED
+        sample_class: positive_function
+        description: "出口从不可达恢复，重新参与转发。"
+        representative_values: ["recovered"]
+        expr: 'recovered'
+        materialized_value: "recovered"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-L3-FAIL-DETECT-METHOD
+    factor_name: 失效检测方式
+    factor_kind: condition
+    design_role: driver
+    owner_object: OBJ-RT-EGRESS
+    domain_model: enum
+    value_type: enum
+    values: [ip-link, interface-down]
+    display_values:
+      ip-link: IP-LINK
+      interface-down: 接口Down
+    aliases: [故障检测方式, 下一跳失效检测方式]
+    applicable_when: "FAC-L3-REACHABILITY == unreachable"
+    downstream_methods: [P-Parameter, S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: FAIL_IP_LINK
+        sample_class: valid_member
+        description: "IP-LINK 检测失败，通过连通性探测判定不可达。"
+        representative_values: ["ip-link"]
+        expr: 'ip-link'
+        materialized_value: "ip-link"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: FAIL_INTERFACE_DOWN
+        sample_class: valid_member
+        description: "接口物理 Down，直接检测接口状态。"
+        representative_values: ["interface-down"]
+        expr: 'interface-down'
+        materialized_value: "interface-down"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-L3-EXPECTED-FWD-PATH
+    factor_name: 预期转发路径
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-RT-EGRESS
+    domain_model: enum
+    value_type: enum
+    values: [policy-next-hop, policy-out-interface, fallback-route, forward-fail]
+    display_values:
+      policy-next-hop: 按策略路由下一跳转发
+      policy-out-interface: 按策略路由出接口转发
+      fallback-route: 按静态/默认路由兜底转发
+      forward-fail: 转发失败或丢弃
+    aliases: [预期出口, 预期路径, 转发结果]
+    applicable_when: "forwarding validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: oracle 因子。只判定转发结果，不生成配置输入。
+    sample_definitions:
+      - sample_id: FWD_POLICY_NH
+        sample_class: positive_function
+        description: "报文按策略路由下一跳转发。"
+        representative_values: ["policy-next-hop"]
+        expr: 'policy-next-hop'
+        materialized_value: "policy-next-hop"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FWD_POLICY_OUTIF
+        sample_class: positive_function
+        description: "报文按策略路由出接口转发。"
+        representative_values: ["policy-out-interface"]
+        expr: 'policy-out-interface'
+        materialized_value: "policy-out-interface"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FWD_FALLBACK
+        sample_class: positive_function
+        description: "策略路由失效，走默认路由兜底。"
+        representative_values: ["fallback-route"]
+        expr: 'fallback-route'
+        materialized_value: "fallback-route"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FWD_FAIL
+        sample_class: negative_function
+        description: "所有路由失效，报文丢弃。"
+        representative_values: ["forward-fail"]
+        expr: 'forward-fail'
+        materialized_value: "forward-fail"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-PRIORITY — 路由优先级
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-PRIORITY
+    factor_name: 路由优先级
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-STATIC-ROUTE
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[1,255]"
+    aliases: [优先级, preference, 路由管理距离]
+    applicable_when: always
+    downstream_methods: [D-Data, P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由配置」等价类划分提取。值越小优先级越高。多条目的网络相同的路由，
+      仅最高优先级(值最小)的进入 FIB。默认值为 60。直连路由优先级固定为 0。
+    sample_definitions:
+      - sample_id: PRI_MIN
+        sample_class: boundary_min
+        description: "优先级最大值（最高优先级），即 1。"
+        representative_values: ["1"]
+        expr: "min"
+        materialized_value: 1
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PRI_MAX
+        sample_class: boundary_max
+        description: "优先级最小值（最低优先级），即 255。"
+        representative_values: ["255"]
+        expr: "max"
+        materialized_value: 255
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PRI_NOMINAL
+        sample_class: in_range_nominal
+        description: "优先级域内随机典型值 2~254。seed=case_id 保证可复现。"
+        representative_values: ["60", "100", "200"]
+        expr: "random_int(2,254,seed=case_id)"
+        materialized_value: 60
+        applicability: {config_test: accepted, function_test: preferred_precondition}
+      - sample_id: PRI_DEFAULT
+        sample_class: valid_config
+        description: "不配置优先级，使用默认值 60。"
+        representative_values: ["60 (默认)"]
+        expr: "default"
+        materialized_value: 60
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: PRI_BELOW_MIN
+        sample_class: below_min
+        description: "优先级低于最小值，即 0。配置应被拒绝。"
+        representative_values: ["0"]
+        expr: "min - 1"
+        materialized_value: 0
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PRI_ABOVE_MAX
+        sample_class: above_max
+        description: "优先级高于最大值，即 256。配置应被拒绝。"
+        representative_values: ["256"]
+        expr: "max + 1"
+        materialized_value: 256
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PRI_STRING
+        sample_class: invalid_format
+        description: "优先级为非数字字符串。配置应被拒绝。"
+        representative_values: ["high"]
+        expr: "invalid_format(type=not_numeric)"
+        materialized_value: "high"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: PRI_TOO_LONG
+        sample_class: invalid_format
+        description: "优先级为超长字符串。配置应被拒绝。"
+        representative_values: ["12345678901234567890"]
+        expr: 'invalid_format(type=too_long)'
+        materialized_value: "12345678901234567890"
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [PRI_MIN, PRI_MAX, PRI_NOMINAL, PRI_DEFAULT]
+        rejected_config_samples: [PRI_BELOW_MIN, PRI_ABOVE_MAX, PRI_STRING, PRI_TOO_LONG]
+      function_test:
+        precondition_samples: [PRI_NOMINAL]
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-CRUD-OP — 路由操作类型
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-CRUD-OP
+    factor_name: 路由操作类型
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-RT-STATIC-ROUTE
+    domain_model: enum
+    value_type: enum
+    domain_expr:
+      reference_targets: [ngfw-dfx/FAC-LOG-OP-TYPE]
+      note: "路由增删改操作产生 Oplog，日志完整性由 dfx 的 FAC-LOG-FIELD-COMPLETENESS 判定"
+    values: [create, modify, delete, batch-delete, batch-query]
+    display_values:
+      create: 创建
+      modify: 修改
+      delete: 单条删除
+      batch-delete: 批量删除
+      batch-query: 批量查询
+    aliases: [CRUD, 增删改查, 路由操作]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由配置」操作测试点提取。Oplog 测试与 ngfw-dfx 的 FAC-LOG-OP-TYPE 关联。
+    sample_definitions:
+      - sample_id: CRUD_CREATE
+        sample_class: valid_member
+        description: "创建新路由。"
+        representative_values: ["create"]
+        expr: 'create'
+        materialized_value: "create"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: CRUD_MODIFY
+        sample_class: valid_member
+        description: "修改已存在的路由。"
+        representative_values: ["modify"]
+        expr: 'modify'
+        materialized_value: "modify"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: CRUD_DELETE
+        sample_class: valid_member
+        description: "删除单条路由。"
+        representative_values: ["delete"]
+        expr: 'delete'
+        materialized_value: "delete"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: CRUD_BATCH
+        sample_class: valid_member
+        description: "批量删除或查询操作。"
+        representative_values: ["batch-delete"]
+        expr: 'batch-delete'
+        materialized_value: "batch-delete"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-MODIFY-FIELD — 可修改字段
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-MODIFY-FIELD
+    factor_name: 路由可修改字段
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-RT-STATIC-ROUTE
+    domain_model: enum
+    value_type: enum
+    values: [next-hop, weight, priority]
+    display_values:
+      next-hop: 下一跳
+      weight: 权重
+      priority: 优先级
+    aliases: [修改字段, 可修改字段, 修改参数]
+    applicable_when: "FAC-RT-CRUD-OP == modify"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由配置」修改路由等价类中提取。目的IP和掩码长度不支持修改（修改即路由ID变化）。
+      不存在的路由ID属于无效操作。
+    sample_definitions:
+      - sample_id: MOD_FIELD_NH
+        sample_class: valid_member
+        description: "修改下一跳地址。"
+        representative_values: ["next-hop"]
+        expr: 'next-hop'
+        materialized_value: "next-hop"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: MOD_FIELD_WEIGHT
+        sample_class: valid_member
+        description: "修改权重值。"
+        representative_values: ["weight"]
+        expr: 'weight'
+        materialized_value: "weight"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: MOD_FIELD_PRIORITY
+        sample_class: valid_member
+        description: "修改优先级值。"
+        representative_values: ["priority"]
+        expr: 'priority'
+        materialized_value: "priority"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-INTERFACE-STATE — 出接口状态
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-INTERFACE-STATE
+    factor_name: 出接口状态
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-RT-INTERFACE
+    domain_model: state
+    value_type: state
+    values: [UP, Down, Down-to-UP]
+    display_values:
+      UP: 接口 UP
+      Down: 接口 Down
+      Down-to-UP: 接口恢复
+    aliases: [接口状态, 端口状态, interface_state]
+    applicable_when: always
+    downstream_methods: [S-State, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「静态路由」流程图和路由转发表测试点提取。
+      接口物理状态变化直接影响所有关联路由的 FIB 状态。
+      - 与 FAC-L3-REACHABILITY 的区别: 本因子是接口物理状态，REACHABILITY 是出口语义状态
+      - 同网段修改接口IP(不改为与下一跳相同)时路由表不变，但改为与下一跳相同时修改失败
+    sample_definitions:
+      - sample_id: IF_UP
+        sample_class: positive_function
+        description: "接口 UP。关联路由进入 FIB，正常转发。"
+        representative_values: ["UP"]
+        expr: 'UP'
+        materialized_value: "UP"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: IF_DOWN
+        sample_class: negative_function
+        description: "接口 Down。关联路由从 FIB 中移除，转发中断。"
+        representative_values: ["Down"]
+        expr: 'Down'
+        materialized_value: "Down"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: IF_DOWN_TO_UP
+        sample_class: positive_function
+        description: "接口从 Down 恢复到 UP。关联路由重新进入 FIB，转发恢复。"
+        representative_values: ["Down-to-UP"]
+        expr: 'Down-to-UP'
+        materialized_value: "Down-to-UP"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-NEXT-HOP-MATCH — 下一跳接口匹配状态
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-NEXT-HOP-MATCH
+    factor_name: 下一跳接口匹配状态
+    factor_kind: condition
+    design_role: driver
+    owner_object: OBJ-RT-FIB
+    domain_model: enum
+    value_type: enum
+    values: [direct-match, delayed-match, no-match, match-to-unmatch, unmatch-to-match]
+    display_values:
+      direct-match: 配置时已匹配
+      delayed-match: 接口配IP后匹配
+      no-match: 永远不匹配
+      match-to-unmatch: 匹配变为不匹配
+      unmatch-to-match: 不匹配变为匹配
+    aliases: [下一跳匹配, 接口匹配状态, NH匹配]
+    applicable_when: "FAC-L3-EGRESS-MODE == next-hop"
+    downstream_methods: [S-State, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「静态路由」流程图法提取。描述下一跳 IP 与接口 IP 网段的匹配关系变化。
+      direct-match: 配置路由时下一跳已在某接口网段内 → 立即生成 FIB
+      delayed-match: 配置路由时下一跳不匹配 → 接口配IP后才匹配 → 延迟生成 FIB
+      no-match: 下一跳与所有接口 IP 不在任何网段 → 路由永远不在 FIB 中
+      match-to-unmatch: 修改接口IP或下一跳导致不再匹配 → FIB 移除
+      unmatch-to-match: 修改接口IP或下一跳导致重新匹配 → FIB 新增
+    sample_definitions:
+      - sample_id: NH_MATCH_DIRECT
+        sample_class: positive_function
+        description: "直接匹配。配置路由时下一跳已在接口网段，立即生成 FIB。"
+        representative_values: ["direct-match"]
+        expr: 'direct-match'
+        materialized_value: "direct-match"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: NH_MATCH_DELAYED
+        sample_class: positive_function
+        description: "延迟匹配。先配路由后配接口IP，接口配IP后生成 FIB。"
+        representative_values: ["delayed-match"]
+        expr: 'delayed-match'
+        materialized_value: "delayed-match"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: NH_NO_MATCH
+        sample_class: negative_function
+        description: "永远不匹配。下一跳与所有接口不在任何网段，路由不在 FIB 中。"
+        representative_values: ["no-match"]
+        expr: 'no-match'
+        materialized_value: "no-match"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: NH_MATCH_TO_UNMATCH
+        sample_class: negative_function
+        description: "从匹配变为不匹配。修改接口IP或下一跳导致路由从 FIB 移除。"
+        representative_values: ["match-to-unmatch"]
+        expr: 'match-to-unmatch'
+        materialized_value: "match-to-unmatch"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: NH_UNMATCH_TO_MATCH
+        sample_class: positive_function
+        description: "从不匹配变为匹配。修改接口IP或下一跳导致路由进入 FIB。"
+        representative_values: ["unmatch-to-match"]
+        expr: 'unmatch-to-match'
+        materialized_value: "unmatch-to-match"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-FIB-PATH — 路由转发表生成路径
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-FIB-PATH
+    factor_name: 路由转发表生成路径
+    factor_kind: process
+    design_role: driver
+    owner_object: OBJ-RT-FIB
+    domain_model: enum
+    value_type: enum
+    values: [path1-direct-up, path2-delayed-up, path3-direct-down-up, path4-delayed-down-up]
+    display_values:
+      path1-direct-up: 下一跳匹配+接口UP→立即生成
+      path2-delayed-up: 下一跳不匹配+配IP后匹配+接口UP→延迟生成
+      path3-direct-down-up: 下一跳匹配+接口Down→UP后生成
+      path4-delayed-down-up: 下一跳不匹配+配IP后匹配+接口Down→UP后生成
+    aliases: [FIB路径, FIB生成路径, 转发表路径]
+    applicable_when: "FAC-RT-CRUD-OP == create"
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「静态路由」流程图法提取的 4 条 FIB 生成路径。
+      path1: 配置路由 → 下一跳直接匹配 → 接口 UP → 立即生成 FIB
+      path2: 配置路由 → 下一跳不匹配 → 配接口IP后匹配 → 接口 UP → 延迟生成 FIB
+      path3: 配置路由 → 下一跳匹配 → 接口 Down → 接口 UP 后生成 FIB
+      path4: 配置路由 → 下一跳不匹配 → 配IP后匹配 → 接口 Down → 接口 UP 后生成 FIB
+    sample_definitions:
+      - sample_id: FIB_PATH1
+        sample_class: positive_function
+        description: "path1: 下一跳直接匹配+接口UP → 立即生成 FIB。"
+        representative_values: ["path1-direct-up"]
+        expr: 'path1-direct-up'
+        materialized_value: "path1-direct-up"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FIB_PATH2
+        sample_class: positive_function
+        description: "path2: 延迟匹配+接口UP → 延迟生成 FIB。"
+        representative_values: ["path2-delayed-up"]
+        expr: 'path2-delayed-up'
+        materialized_value: "path2-delayed-up"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FIB_PATH3
+        sample_class: positive_function
+        description: "path3: 直接匹配+Down→UP → FIB 恢复。"
+        representative_values: ["path3-direct-down-up"]
+        expr: 'path3-direct-down-up'
+        materialized_value: "path3-direct-down-up"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FIB_PATH4
+        sample_class: positive_function
+        description: "path4: 延迟匹配+Down→UP → FIB 恢复。"
+        representative_values: ["path4-delayed-down-up"]
+        expr: 'path4-delayed-down-up'
+        materialized_value: "path4-delayed-down-up"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-FIB-DELETE-COND — FIB 删除条件
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-FIB-DELETE-COND
+    factor_name: FIB 删除条件
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-RT-FIB
+    domain_model: enum
+    value_type: enum
+    values: [nh-subnet-change, if-ip-subnet-change, if-disable, if-cable-unplug, route-delete]
+    display_values:
+      nh-subnet-change: 修改下一跳致不匹配
+      if-ip-subnet-change: 修改接口IP致不匹配
+      if-disable: 禁用出接口
+      if-cable-unplug: 拔出网线
+      route-delete: 删除路由
+    aliases: [FIB删除, FIB失效, 路由失效条件]
+    applicable_when: "FAC-RT-FIB-PATH selected"
+    downstream_methods: [P-Parameter, S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「静态路由」FIB 删除条件提取。5 种导致路由从 FIB 中移除的场景。
+      route-delete 删除路由配置本身，其余 4 种是路由配置保留但 FIB 中移除。
+    sample_definitions:
+      - sample_id: FIB_DEL_NH_CHANGE
+        sample_class: negative_function
+        description: "修改下一跳与所有接口IP不在相同网段，路由从 FIB 移除。"
+        representative_values: ["nh-subnet-change"]
+        expr: 'nh-subnet-change'
+        materialized_value: "nh-subnet-change"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: FIB_DEL_IF_IP_CHANGE
+        sample_class: negative_function
+        description: "修改接口IP与下一跳不在相同网段，路由从 FIB 移除。"
+        representative_values: ["if-ip-subnet-change"]
+        expr: 'if-ip-subnet-change'
+        materialized_value: "if-ip-subnet-change"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: FIB_DEL_DISABLE
+        sample_class: negative_function
+        description: "禁用路由出接口，路由从 FIB 移除。"
+        representative_values: ["if-disable"]
+        expr: 'if-disable'
+        materialized_value: "if-disable"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: FIB_DEL_UNPLUG
+        sample_class: negative_function
+        description: "拔出路由出接口网线，路由从 FIB 移除。"
+        representative_values: ["if-cable-unplug"]
+        expr: 'if-cable-unplug'
+        materialized_value: "if-cable-unplug"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: FIB_DEL_ROUTE
+        sample_class: negative_function
+        description: "删除路由配置本身，路由从 FIB 移除。"
+        representative_values: ["route-delete"]
+        expr: 'route-delete'
+        materialized_value: "route-delete"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-RT-FIB-INTERFACE-SWITCH — FIB 出接口切换
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-RT-FIB-INTERFACE-SWITCH
+    factor_name: FIB 出接口切换
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-RT-FIB
+    domain_model: enum
+    value_type: enum
+    values: [nh-switch-to-other-if, longer-mask-priority, shorter-mask-failover]
+    display_values:
+      nh-switch-to-other-if: 下一跳切换到其他接口
+      longer-mask-priority: 更长掩码接口优先
+      shorter-mask-failover: 更短掩码出接口Down后接管
+    aliases: [出接口切换, FIB接口切换, 路由切换接口]
+    applicable_when: "FAC-RT-INTERFACE-STATE changes"
+    downstream_methods: [P-Parameter, S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「静态路由」FIB 出接口切换测试点提取。
+      longer-mask-priority: 与掩码最长匹配原则一致。
+      shorter-mask-failover: 原出接口 Down 后才接管。
+    sample_definitions:
+      - sample_id: FIB_SWITCH_NH
+        sample_class: positive_function
+        description: "修改下一跳与其他接口IP在同网段，出接口切换到新接口。"
+        representative_values: ["nh-switch-to-other-if"]
+        expr: 'nh-switch-to-other-if'
+        materialized_value: "nh-switch-to-other-if"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FIB_SWITCH_LONGER
+        sample_class: positive_function
+        description: "配置更长掩码的接口IP与路由同网段，出接口切换。"
+        representative_values: ["longer-mask-priority"]
+        expr: 'longer-mask-priority'
+        materialized_value: "longer-mask-priority"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FIB_SWITCH_FAILOVER
+        sample_class: positive_function
+        description: "原出接口 Down，更短掩码的接口接管。"
+        representative_values: ["shorter-mask-failover"]
+        expr: 'shorter-mask-failover'
+        materialized_value: "shorter-mask-failover"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+# ═══════════════════════════════════════════════════════
+# 能力矩阵（从 ngfw-policy-routing 迁移）
+# ═══════════════════════════════════════════════════════
+capability_matrices:
+  - matrix_id: M-L3-EGRESS-INTERFACE
+    matrix_name: 策略路由三层转发出口接口能力矩阵
+    rows:
+      - egress_mode: next-hop
+        interface_factor: FAC-L3-NH-IF-TYPE
+        interface_type: physical
+        display: 物理口
+        valid: true
+      - egress_mode: next-hop
+        interface_factor: FAC-L3-NH-IF-TYPE
+        interface_type: sub-interface
+        display: 子接口
+        valid: true
+      - egress_mode: next-hop
+        interface_factor: FAC-L3-NH-IF-TYPE
+        interface_type: aggregate
+        display: 聚合口
+        valid: true
+      - egress_mode: next-hop
+        interface_factor: FAC-L3-NH-IF-TYPE
+        interface_type: bvi
+        display: BVI接口
+        valid: true
+      - egress_mode: next-hop
+        interface_factor: FAC-L3-NH-IF-TYPE
+        interface_type: tunnel
+        display: 隧道口
+        valid: true
+      - egress_mode: out-interface
+        interface_factor: FAC-L3-OUTIF-TYPE
+        interface_type: tunnel
+        display: 隧道口
+        valid: true
+      - egress_mode: out-interface
+        interface_factor: FAC-L3-OUTIF-TYPE
+        interface_type: pppoe
+        display: PPPoE接口
+        valid: true
+
+  # ═══════════════════════════════════════════════════════
+  # 路由转发
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-RT-FWD-ROUTE-TYPE
+    factor_name: 转发路由类型
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-FORWARDING
+    domain_model: enum
+    value_type: enum
+    values: [static-host, static-net, direct, default]
+    display_values:
+      static-host: 静态主机路由
+      static-net: 静态网段路由
+      direct: 直连路由
+      default: 默认路由
+    aliases: [路由类型, 转发类型, route_type]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由转发」等价类划分提取。不同路由类型的转发行为在掩码最长匹配时有差异。
+    sample_definitions:
+      - sample_id: FWD_TYPE_STATIC_HOST
+        sample_class: valid_member
+        description: "静态主机路由（/32）。精确匹配单个IP。"
+        representative_values: ["static-host"]
+        expr: 'static-host'
+        materialized_value: "static-host"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FWD_TYPE_STATIC_NET
+        sample_class: valid_member
+        description: "静态网段路由（非/32）。匹配网段范围。"
+        representative_values: ["static-net"]
+        expr: 'static-net'
+        materialized_value: "static-net"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FWD_TYPE_DIRECT
+        sample_class: valid_member
+        description: "直连路由。优先级最高，cost=0。"
+        representative_values: ["direct"]
+        expr: 'direct'
+        materialized_value: "direct"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FWD_TYPE_DEFAULT
+        sample_class: valid_member
+        description: "默认路由（0.0.0.0/0）。兜底转发。"
+        representative_values: ["default"]
+        expr: 'default'
+        materialized_value: "default"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-RT-FWD-LONGEST-MATCH
+    factor_name: 掩码最长匹配
+    factor_kind: constraint
+    design_role: constraint
+    owner_object: OBJ-RT-FORWARDING
+    domain_model: enum
+    value_type: enum
+    values: [static-longest, direct-longest, mixed-longest]
+    display_values:
+      static-longest: 静态路由间最长匹配
+      direct-longest: 直连路由间最长匹配
+      mixed-longest: 直连和静态混合最长匹配
+    aliases: [最长匹配, 掩码优先级]
+    applicable_when: "multiple routes with same network"
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由转发」掩码最长匹配提取。转发时仅按掩码长度选择，不参考路由优先级。
+      优先级决定"哪条路由进 FIB"，掩码决定"FIB 中按哪条转发"。
+    sample_definitions:
+      - sample_id: LONGEST_STATIC
+        sample_class: valid_member
+        description: "多条静态路由按掩码最长选择。"
+        representative_values: ["static-longest"]
+        expr: 'static-longest'
+        materialized_value: "static-longest"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: LONGEST_DIRECT
+        sample_class: valid_member
+        description: "多接口同网段不同掩码按最长选择。"
+        representative_values: ["direct-longest"]
+        expr: 'direct-longest'
+        materialized_value: "direct-longest"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: LONGEST_MIXED
+        sample_class: valid_member
+        description: "直连路由和静态路由混合按掩码最长选择。"
+        representative_values: ["mixed-longest"]
+        expr: 'mixed-longest'
+        materialized_value: "mixed-longest"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-RT-FWD-FLOAT-MODE
+    factor_name: 浮动路由切换方式
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-RT-FORWARDING
+    domain_model: enum
+    value_type: enum
+    values: [static-to-static, static-to-direct, static-to-default]
+    display_values:
+      static-to-static: 修改优先级切换
+      static-to-direct: 直连Down切到静态
+      static-to-default: 失效切到默认路由
+    aliases: [浮动路由, 路由切换, float_route]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由转发」浮动路由测试提取。高优先级路由失效后次高优先级自动接管。
+    sample_definitions:
+      - sample_id: FLOAT_STATIC
+        sample_class: positive_function
+        description: "修改优先级实现静态路由间切换。"
+        representative_values: ["static-to-static"]
+        expr: 'static-to-static'
+        materialized_value: "static-to-static"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FLOAT_DIRECT
+        sample_class: positive_function
+        description: "直连路由 Down 后切换到静态路由。"
+        representative_values: ["static-to-direct"]
+        expr: 'static-to-direct'
+        materialized_value: "static-to-direct"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FLOAT_DEFAULT
+        sample_class: positive_function
+        description: "所有路由失效后切换到默认路由。"
+        representative_values: ["static-to-default"]
+        expr: 'static-to-default'
+        materialized_value: "static-to-default"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-RT-FWD-ARP
+    factor_name: ARP 学习状态
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-RT-FORWARDING
+    domain_model: state
+    value_type: state
+    values: [not-learned, learned, expired]
+    display_values:
+      not-learned: 未学习
+      learned: 已学习
+      expired: 已过期
+    aliases: [ARP, 地址解析]
+    applicable_when: "forwarding validation"
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由转发」ARP 可靠性测试提取。下一跳 ARP 是转发的必要条件。
+    sample_definitions:
+      - sample_id: ARP_NOT_LEARNED
+        sample_class: negative_function
+        description: "ARP 未学习。持续发送 ARP 请求，报文不通。"
+        representative_values: ["not-learned"]
+        expr: 'not-learned'
+        materialized_value: "not-learned"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: ARP_LEARNED
+        sample_class: positive_function
+        description: "ARP 已学习。报文正常转发。"
+        representative_values: ["learned"]
+        expr: 'learned'
+        materialized_value: "learned"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: ARP_EXPIRED
+        sample_class: negative_function
+        description: "ARP 过期。重新回到未学习状态。"
+        representative_values: ["expired"]
+        expr: 'expired'
+        materialized_value: "expired"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  # 可靠性操作 — 复用 ngfw-dfx
+  - factor_id: FAC-RT-FWD-RELIABILITY-OP
+    factor_name: 路由转发可靠性操作
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-RT-FORWARDING
+    domain_model: enum
+    value_type: enum
+    values: [cable-plug-unplug, if-disable-enable, poweroff-reset, cmd-reset,
+             repeated-crud, repeated-nh-modify, repeated-if-state]
+    aliases: [转发可靠性, 反复操作]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「路由转发」可靠性测试提取。消费 ngfw-dfx/DFX_RELIABILITY 的 RELIABILITY-OP 模式。
+    domain_expr:
+      reference_targets: [ngfw-dfx/FAC-DFX-RELIABILITY-OP]
+
+  # HA — 复用 ngfw-ha
+  - factor_id: FAC-RT-FWD-HA
+    factor_name: 路由转发 HA
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-RT-FORWARDING
+    domain_model: enum
+    value_type: enum
+    values: [ha-switchover, fallback, route-delete-on-standby]
+    aliases: [HA转发, 主备切换转发]
+    applicable_when: "HA scenario"
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      消费 ngfw-ha 的 HA 因子。切换后路由转发正常，回切后正常。
+    domain_expr:
+      reference_targets: [ngfw-ha/FAC-HA-ROLE]
+
+  - factor_id: FAC-RT-FWD-IPV6-ISOLATION
+    factor_name: IPv4/v6 转发隔离
+    factor_kind: constraint
+    design_role: constraint
+    owner_object: OBJ-RT-FORWARDING
+    domain_model: enum
+    value_type: enum
+    values: [isolated, no-impact]
+    display_values:
+      isolated: 隔离正常
+      no-impact: 相互无影响
+    aliases: [IPv6隔离, 双栈隔离]
+    applicable_when: always
+    reuse_policy: must_reuse
+    status: candidate
+    notes: "IPv4 和 IPv6 转发相互不影响。"
+    sample_definitions:
+      - sample_id: IPV6_ISOLATED
+        sample_class: positive_function
+        description: "IPv4 转发不受 IPv6 业务影响。"
+        representative_values: ["isolated"]
+        expr: 'isolated'
+        materialized_value: "isolated"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  # ═══════════════════════════════════════════════════════
+  # 等价路由 ECMP
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-RT-ECMP-ROUTE-TYPE
+    factor_name: 等价路由形成类型
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-ECMP
+    domain_model: enum
+    value_type: enum
+    domain_expr:
+      reference_targets: [ngfw-load-balance/FAC-LB-POLICY-MODE]
+      note: "LB 策略覆盖接口时优先生效"
+    values: [static-ecmp, default-ecmp, gateway-ecmp, mixed-ecmp]
+    display_values:
+      static-ecmp: 静态路由ECMP
+      default-ecmp: 默认路由ECMP
+      gateway-ecmp: 接口网关ECMP
+      mixed-ecmp: 静态+网关混合ECMP
+    aliases: [ECMP类型, 等价路由类型, ecmp_type]
+    applicable_when: "multiple routes with same destination and priority"
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「等价路由」等价类划分提取。形成 ECMP 的前提: 同目的网络 + 同优先级 + 不同下一跳。
+    sample_definitions:
+      - sample_id: ECMP_STATIC
+        sample_class: positive_function
+        description: "多条静态路由形成等价路由。"
+        representative_values: ["static-ecmp"]
+        expr: 'static-ecmp'
+        materialized_value: "static-ecmp"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: ECMP_GATEWAY
+        sample_class: positive_function
+        description: "接口默认网关生成的路由形成等价路由。"
+        representative_values: ["gateway-ecmp"]
+        expr: 'gateway-ecmp'
+        materialized_value: "gateway-ecmp"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-RT-ECMP-LOAD-BALANCE
+    factor_name: 等价路由负载分担
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-ECMP
+    domain_model: enum
+    value_type: enum
+    values: [per-flow-default, per-flow-weighted]
+    display_values:
+      per-flow-default: 按流默认分担
+      per-flow-weighted: 按流权重分担
+    aliases: [ECMP分担, 负载分担, load_balance]
+    applicable_when: "FAC-RT-ECMP-ROUTE-TYPE selected"
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: "静态路由 ECMP 只支持按流分担，无权重（等分）。"
+    sample_definitions:
+      - sample_id: ECMP_LB_DEFAULT
+        sample_class: positive_function
+        description: "按流等分分担。所有链路均分流量。"
+        representative_values: ["per-flow-default"]
+        expr: 'per-flow-default'
+        materialized_value: "per-flow-default"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-RT-ECMP-LINK-CHANGE
+    factor_name: 等价路由链路变更
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-RT-ECMP
+    domain_model: enum
+    value_type: enum
+    values: [add-route, remove-route, disable-if, enable-if, cable-unplug-plug]
+    display_values:
+      add-route: 新增成员路由
+      remove-route: 删除成员路由
+      disable-if: 禁用成员出接口
+      enable-if: 启用成员出接口
+      cable-unplug-plug: 拔插成员接口网线
+    aliases: [ECMP链路变更, 成员变更]
+    applicable_when: "FAC-RT-ECMP-ROUTE-TYPE selected"
+    downstream_methods: [P-Parameter, S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: "链路变更后 ECMP 自动调整成员列表。新增加入分担，减少退出分担。"
+    sample_definitions:
+      - sample_id: ECMP_ADD
+        sample_class: positive_function
+        description: "新增成员路由，新成员加入分担。"
+        representative_values: ["add-route"]
+        expr: 'add-route'
+        materialized_value: "add-route"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: ECMP_REMOVE
+        sample_class: positive_function
+        description: "删除成员路由，被删除的不再分担。"
+        representative_values: ["remove-route"]
+        expr: 'remove-route'
+        materialized_value: "remove-route"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-RT-ECMP-ROUTE-SWITCH
+    factor_name: ECMP 与高优先级路由切换
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-RT-ECMP
+    domain_model: enum
+    value_type: enum
+    values: [higher-priority-overrides, higher-priority-removed, promote-member, demote-member]
+    display_values:
+      higher-priority-overrides: 高优先级覆盖ECMP
+      higher-priority-removed: 删除高优先级恢复ECMP
+      promote-member: ECMP成员升级为最高
+      demote-member: 降级回到ECMP
+    aliases: [ECMP切换, ECMP路由切换]
+    applicable_when: "FAC-RT-ECMP-ROUTE-TYPE selected"
+    downstream_methods: [P-Parameter, S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: "高优先级路由优先于 ECMP，删除高优先级后 ECMP 恢复。"
+    sample_definitions:
+      - sample_id: ECMP_OVERRIDE
+        sample_class: positive_function
+        description: "新增更高优先级路由，ECMP 全部失效。"
+        representative_values: ["higher-priority-overrides"]
+        expr: 'higher-priority-overrides'
+        materialized_value: "higher-priority-overrides"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: ECMP_RESTORE
+        sample_class: positive_function
+        description: "删除高优先级路由，ECMP 恢复。"
+        representative_values: ["higher-priority-removed"]
+        expr: 'higher-priority-removed'
+        materialized_value: "higher-priority-removed"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  # ═══════════════════════════════════════════════════════
+  # 直连路由
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-RT-DIRECT-MULTI-IP
+    factor_name: 接口多IP直连路由
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-DIRECT-ROUTE
+    domain_model: enum
+    value_type: enum
+    values: [single-ip, multi-ip, partial-delete]
+    display_values:
+      single-ip: 单IP
+      multi-ip: 多IP
+      partial-delete: 部分删除
+    aliases: [多IP, 接口多地址]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: "接口配置多个IP时，每个IP均生成直连路由。删除部分IP后仅对应路由消失。"
+    sample_definitions:
+      - sample_id: DIR_MULTI_ALL
+        sample_class: positive_function
+        description: "接口多个IP均生成直连路由。"
+        representative_values: ["multi-ip"]
+        expr: 'multi-ip'
+        materialized_value: "multi-ip"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: DIR_MULTI_DELETE
+        sample_class: positive_function
+        description: "删除部分IP，仅删除的IP对应路由消失。"
+        representative_values: ["partial-delete"]
+        expr: 'partial-delete'
+        materialized_value: "partial-delete"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-RT-DIRECT-MEMBER-STATE
+    factor_name: 逻辑接口成员状态
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-RT-DIRECT-ROUTE
+    domain_model: state
+    value_type: state
+    values: [partial-down, all-down, partial-up]
+    display_values:
+      partial-down: 部分成员Down
+      all-down: 全部成员Down
+      partial-up: 部分成员恢复
+    aliases: [成员状态, 聚合成员, BVI成员]
+    applicable_when: "interface is aggregate or bvi"
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      仅适用于逻辑接口(聚合/BVI)。部分成员 Down → 路由保持；全部成员 Down → 路由消失。
+    sample_definitions:
+      - sample_id: DIR_MEMBER_PARTIAL_DOWN
+        sample_class: positive_function
+        description: "部分成员 Down，直连路由仍然存在。"
+        representative_values: ["partial-down"]
+        expr: 'partial-down'
+        materialized_value: "partial-down"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: DIR_MEMBER_ALL_DOWN
+        sample_class: negative_function
+        description: "全部成员 Down，接口失效，直连路由消失。"
+        representative_values: ["all-down"]
+        expr: 'all-down'
+        materialized_value: "all-down"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: DIR_MEMBER_PARTIAL_UP
+        sample_class: positive_function
+        description: "部分成员恢复 UP，直连路由保持。"
+        representative_values: ["partial-up"]
+        expr: 'partial-up'
+        materialized_value: "partial-up"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-RT-DIRECT-LOGIC-INTF-LIFECYCLE
+    factor_name: 逻辑接口生命周期
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-RT-DIRECT-ROUTE
+    domain_model: state
+    value_type: state
+    values: [create, delete]
+    display_values:
+      create: 创建
+      delete: 删除
+    aliases: [逻辑接口增删]
+    applicable_when: "interface is aggregate or bvi or sub-interface"
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: "创建逻辑接口并配IP → 生成直连路由；删除逻辑接口 → 路由消失。"
+    sample_definitions:
+      - sample_id: DIR_LOGIC_CREATE
+        sample_class: positive_function
+        description: "创建逻辑接口并配置IP，生成直连路由。"
+        representative_values: ["create"]
+        expr: 'create'
+        materialized_value: "create"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: DIR_LOGIC_DELETE
+        sample_class: negative_function
+        description: "删除逻辑接口，该接口的直连路由全部消失。"
+        representative_values: ["delete"]
+        expr: 'delete'
+        materialized_value: "delete"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  # ═══════════════════════════════════════════════════════
+  # 单臂路由
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-RT-SINGLE-ARM-INTF-PAIR
+    factor_name: 单臂路由接口配对
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-SINGLE-ARM
+    domain_model: enum
+    value_type: enum
+    values: [diff-type, same-type]
+    display_values:
+      diff-type: 不同类接口
+      same-type: 同类接口
+    aliases: [单臂路由, single_arm, 同口进出]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从「单臂路由」提取。不同类: 聚合口↔子接口、物理口↔子接口；同类: 物理口/聚合口/子接口/BVI/Tunnel。
+    sample_definitions:
+      - sample_id: SA_DIFF_TYPE
+        sample_class: positive_function
+        description: "不同类接口间单臂路由。如聚合口↔子接口。"
+        representative_values: ["diff-type"]
+        expr: 'diff-type'
+        materialized_value: "diff-type"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: SA_SAME_TYPE
+        sample_class: positive_function
+        description: "同类接口间单臂路由。如物理口↔物理口。"
+        representative_values: ["same-type"]
+        expr: 'same-type'
+        materialized_value: "same-type"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+# ═══════════════════════════════════════════════════════
+# 因子组（从 ngfw-policy-routing 迁移）
+# ═══════════════════════════════════════════════════════
+factor_groups:
+  - group_id: L3_EGRESS_NEXT_HOP
+    group_name: 下一跳模式三层转发接口覆盖
+    factors: [FAC-L3-EGRESS-MODE, FAC-L3-NH-IF-TYPE, FAC-L3-IF-CAPABILITY, FAC-L3-REACHABILITY, FAC-L3-EXPECTED-FWD-PATH]
+    fixed_values:
+      FAC-L3-EGRESS-MODE: next-hop
+    coverage_strategy:
+      positive: 每个有效接口类型至少覆盖一次
+      failover: 物理口和隧道口覆盖不可达/恢复
+      oracle: 转发路径能证明走策略路由下一跳
+
+  - group_id: L3_EGRESS_OUT_INTERFACE
+    group_name: 出接口模式三层转发接口覆盖
+    factors: [FAC-L3-EGRESS-MODE, FAC-L3-OUTIF-TYPE, FAC-L3-IF-CAPABILITY, FAC-L3-REACHABILITY, FAC-L3-EXPECTED-FWD-PATH]
+    fixed_values:
+      FAC-L3-EGRESS-MODE: out-interface
+    coverage_strategy:
+      positive: Tunnel 和 PPPoE 均覆盖
+      failover: 两种接口都覆盖 Down/恢复
+      oracle: 转发路径能证明走配置的出接口
+
+  - group_id: L3_EGRESS_FAILOVER
+    group_name: 出口不可达和故障恢复
+    factors: [FAC-L3-EGRESS-MODE, FAC-L3-REACHABILITY, FAC-L3-FAIL-DETECT-METHOD, FAC-L3-EXPECTED-FWD-PATH]
+    coverage_strategy:
+      positive: 可达状态确认策略转发
+      negative: IP-LINK 和接口Down 均覆盖
+      recovery: 恢复后验证重新参与转发

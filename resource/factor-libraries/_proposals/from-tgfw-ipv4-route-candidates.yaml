@@ -1,0 +1,1129 @@
+# 候选因子提案 — TGFW IPv4路由特性测试用例
+# 来源: _inbox/TGFW_V60R001C00 IPv4路由特性测试用例.xlsx
+# 提取范围: 路由配置、静态路由、直连路由、路由转发、单臂路由、等价路由
+# 提取日期: 2026-06-03
+# 状态: proposed → 待评审后进入因子库
+
+# ═══════════════════════════════════════════════════════
+# 领域 A: 静态路由配置管理
+# 来源 Sheet: 路由配置、静态路由
+# ═══════════════════════════════════════════════════════
+
+- factor_id: FAC-RT-DST-NETWORK
+  factor_name: 目的网络地址
+  factor_kind: data
+  design_role: driver
+  owner_object: OBJ-RT-STATIC-ROUTE
+  domain_model: ip_network
+  value_type: string
+  domain_expr:
+    version: ipv4
+    semantic_constraints:
+      unicast_only: true
+      exclude_loopback: false          # 127段/1-7 是合法取值
+      exclude_multicast: false         # D类/1-2 是合法取值
+      prefix_range: "0..32"
+  aliases: [目的地址, 目的网段, 路由目的, 目的IP地址]
+  applicable_when: always
+  downstream_methods: [D-Data]
+  reuse_policy: must_reuse
+  source: 路由配置 Sheet R10-R19, 静态路由 Sheet R33-R36, 路由转发 Sheet R17-R20
+  status: candidate
+  proposal_date: 2026-06-03
+  notes: >
+    从「路由配置」等价类划分提取。有效类 7 个（默认路由、A/B 类网段、A/B 类主机路由、D类短掩码、127短掩码），
+    语义无效 2 个（D类长掩码、127长掩码），格式无效 7 个（空、超长、3段、5段、分隔符错、掩码分隔错、16进制）。
+
+  sample_definitions:
+    # ═══ 有效类 — 配置接受 + 功能前置 ═══
+    - sample_id: DST_DEFAULT
+      sample_class: valid_config
+      description: "默认路由，匹配任意目的IP。0.0.0.0/0 是唯一取值。"
+      representative_values: ["0.0.0.0/0"]
+      expr: 'ip_net("0.0.0.0/0")'
+      materialized_value: "0.0.0.0/0"
+      applicability: {config_test: accepted, function_test: precondition}
+
+    - sample_id: DST_CLASS_A
+      sample_class: valid_config
+      description: "A类单播网段。IP首段 1~126，掩码 1~31 位。涵盖所有A类合法路由目的网络。"
+      representative_values: ["<IP_ADDRESS>/8", "42.173.89.0/24", "126.255.255.0/31"]
+      expr: 'ip_net(class=a, prefix=1..31)'
+      materialized_value: "<IP_ADDRESS>/8"
+      applicability: {config_test: accepted, function_test: precondition}
+
+    - sample_id: DST_CLASS_B
+      sample_class: valid_config
+      description: "B类单播网段。IP首段 128~191，掩码 1~31 位。涵盖所有B类合法路由目的网络。"
+      representative_values: ["<IP_ADDRESS>/12", "150.100.50.0/24", "191.255.255.0/31"]
+      expr: 'ip_net(class=b, prefix=1..31)'
+      materialized_value: "<IP_ADDRESS>/12"
+      applicability: {config_test: accepted, function_test: precondition}
+
+    - sample_id: DST_HOST_B
+      sample_class: valid_config
+      description: "B类主机路由，掩码 32 位，精确匹配单个IP。原始Excel取223.255.255.255/32为代表。"
+      representative_values: ["223.255.255.255/32", "128.0.0.1/32", "191.255.255.254/32"]
+      expr: 'ip_net(class=b, prefix=32)'
+      materialized_value: "223.255.255.255/32"
+      applicability: {config_test: accepted, function_test: preferred_precondition}
+
+    - sample_id: DST_HOST_A
+      sample_class: valid_config
+      description: "A类主机路由，掩码 32 位。与网段路由形成最长匹配对比场景。"
+      representative_values: ["1.0.0.1/32", "60.173.89.42/32", "126.255.255.254/32"]
+      expr: 'ip_net(class=a, prefix=32)'
+      materialized_value: "1.0.0.1/32"
+      applicability: {config_test: accepted, function_test: precondition}
+
+    - sample_id: DST_CLASS_D_SHORT_PREFIX
+      sample_class: valid_config
+      description: "D类组播地址仅 1~2 位掩码时可配置。掩码 ≥3 位即非法。这是合法边界值。"
+      representative_values: ["224.0.0.0/1", "238.255.255.0/2"]
+      expr: 'ip_net(class=d, prefix=1..2)'
+      materialized_value: "224.0.0.0/1"
+      applicability: {config_test: accepted, function_test: not_applicable}
+
+    - sample_id: DST_LOOPBACK_SHORT_PREFIX
+      sample_class: valid_config
+      description: "127环回地址仅 1~7 位掩码时可配置。掩码 ≥8 位即非法。这是合法边界值。"
+      representative_values: ["127.0.0.0/1", "127.255.255.0/7"]
+      expr: 'ip_net(class=loopback, prefix=1..7)'
+      materialized_value: "127.0.0.0/1"
+      applicability: {config_test: accepted, function_test: not_applicable}
+
+    # ═══ 语义无效类 — 格式正确但语义不合法，配置应被拒绝 ═══
+    - sample_id: DST_CLASS_D_INVALID_PREFIX
+      sample_class: invalid_config
+      description: "D类组播地址掩码 ≥3 位时非法。格式正确（是合法IP格式），但组播地址不能作为单播路由目的网络。"
+      representative_values: ["224.0.0.0/4", "233.45.12.0/15", "239.255.255.0/32"]
+      expr: 'ip_net(class=d, prefix=3..32, invalid=true)'
+      materialized_value: "224.0.0.0/4"
+      applicability: {config_test: rejected, function_test: not_applicable}
+
+    - sample_id: DST_LOOPBACK_INVALID_PREFIX
+      sample_class: invalid_config
+      description: "127环回地址掩码 ≥8 位时非法。环回地址不应作为路由目的网络。"
+      representative_values: ["127.0.0.1/8", "127.0.0.0/16", "127.255.255.255/32"]
+      expr: 'ip_net(class=loopback, prefix=8..32, invalid=true)'
+      materialized_value: "127.0.0.1/8"
+      applicability: {config_test: rejected, function_test: not_applicable}
+
+    # ═══ 格式无效类 — 根本不符合IP网段格式，配置应被拒绝 ═══
+    - sample_id: DST_EMPTY
+      sample_class: invalid_format
+      description: "目的网络为空字符串。必填字段缺失。"
+      representative_values: [""]
+      expr: 'invalid_format(type=empty)'
+      materialized_value: ""
+      applicability: {config_test: rejected, function_test: not_applicable}
+
+    - sample_id: DST_TOO_LONG
+      sample_class: invalid_format
+      description: "目的网络字符串超出正常IP网段长度上限。"
+      representative_values: ["<IP_ADDRESS>.10.20/24/32/extra"]
+      expr: 'invalid_format(type=too_long)'
+      materialized_value: "<IP_ADDRESS>.10.20/24/32/extra"
+      applicability: {config_test: rejected, function_test: not_applicable}
+
+    - sample_id: DST_3_SEGMENTS
+      sample_class: invalid_format
+      description: "仅3段点分十进制，缺少一段。"
+      representative_values: ["192.168.1", "10.0.0"]
+      expr: 'invalid_format(type=wrong_segments, segments=3)'
+      materialized_value: "192.168.1"
+      applicability: {config_test: rejected, function_test: not_applicable}
+
+    - sample_id: DST_5_SEGMENTS
+      sample_class: invalid_format
+      description: "5段点分十进制，多余一段。"
+      representative_values: ["1.2.3.4.5", "<IP_ADDRESS>.100"]
+      expr: 'invalid_format(type=wrong_segments, segments=5)'
+      materialized_value: "1.2.3.4.5"
+      applicability: {config_test: rejected, function_test: not_applicable}
+
+    - sample_id: DST_BAD_SEPARATOR
+      sample_class: invalid_format
+      description: "IP段之间使用非点号分隔符（如中划线）。"
+      representative_values: ["192-168-1-1/24", "10:0:0:0/8"]
+      expr: 'invalid_format(type=bad_separator, sep="-")'
+      materialized_value: "192-168-1-1/24"
+      applicability: {config_test: rejected, function_test: not_applicable}
+
+    - sample_id: DST_BAD_MASK_SEP
+      sample_class: invalid_format
+      description: "掩码前不使用正斜杠分隔（如反斜杠、冒号）。"
+      representative_values: ["<IP_ADDRESS>\\24", "<IP_ADDRESS>:8"]
+      expr: 'invalid_format(type=bad_mask_sep, sep="\\")'
+      materialized_value: "<IP_ADDRESS>\\24"
+      applicability: {config_test: rejected, function_test: not_applicable}
+
+    - sample_id: DST_HEX_FORMAT
+      sample_class: invalid_format
+      description: "IP地址使用16进制格式，不支持。"
+      representative_values: ["0xC0A80101/24", "0x0A000001/8"]
+      expr: 'invalid_format(type=hex)'
+      materialized_value: "0xC0A80101/24"
+      applicability: {config_test: rejected, function_test: not_applicable}
+
+  usage_profiles:
+    config_test:
+      accepted_config_samples:
+        [DST_DEFAULT, DST_CLASS_A, DST_CLASS_B, DST_HOST_B,
+         DST_HOST_A, DST_CLASS_D_SHORT_PREFIX, DST_LOOPBACK_SHORT_PREFIX]
+      rejected_config_samples:
+        [DST_CLASS_D_INVALID_PREFIX, DST_LOOPBACK_INVALID_PREFIX,
+         DST_EMPTY, DST_TOO_LONG, DST_3_SEGMENTS, DST_5_SEGMENTS,
+         DST_BAD_SEPARATOR, DST_BAD_MASK_SEP, DST_HEX_FORMAT]
+    function_test:
+      precondition_samples: [DST_DEFAULT, DST_CLASS_A, DST_CLASS_B, DST_HOST_B, DST_HOST_A]
+
+- factor_id: FAC-RT-NEXT-HOP
+  factor_name: 下一跳地址
+  description: >
+    静态路由的下一跳 IPv4 地址。从「路由配置」等价类划分中提取。
+    有效类: 1.0.0.0, 223.255.255.255, A类任意, B类任意
+    无效类: 0.x.x.x, D类地址, 空, 超长, 3段/5段格式, 非法分隔符, 127段, 任意接口IP
+  source: 路由配置 Sheet R21-R29
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: data
+  design_role: driver
+  domain_model: ip_address
+  candidate_values:
+    valid: [1.0.0.0, 223.255.255.255, 全A类范围, 全B类范围]
+    invalid: [0.0.0.0, 224.0.0.0+, 空, 超长, 3段, 5段, 非法., 127段, 任意接口IP]
+  notes: >
+    无效值中的「任意接口的IP」是特殊约束: 下一跳不能是本机接口IP。
+    下一跳与接口IP在同一网段才能生成路由转发表，这是一个关键约束条件。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-WEIGHT
+  factor_name: 路由权重
+  description: >
+    静态路由的权重值。从「路由配置」等价类划分中提取。
+    有效类: 1, (0-255)间任意值, 255, 空
+    无效类: 0, 256, 字符串, 超长字符串
+  source: 路由配置 Sheet R30-R33
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: data
+  design_role: driver
+  domain_model: range
+  candidate_values:
+    valid: [1, (0-255)内随机, 255, 空(默认值)]
+    invalid: [0, 256, 非数字字符串, 超长字符串]
+  notes: >
+    默认值当前为1(存在问题，待确认)。权重用于等价路由的负载分担计算。
+    空值与默认值是同一个语义: 使用系统默认权重。
+    需要补齐 sample_definitions: boundary_min(1), boundary_max(255), below_min(0), above_max(256)。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-PRIORITY
+  factor_name: 路由优先级
+  description: >
+    静态路由的优先级值。从「路由配置」等价类划分中提取。
+    有效类: 1, (1-255)间任意值, 255, 空
+    无效类: 0, 256, 字符串, 超长字符串
+  source: 路由配置 Sheet R34-R37
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: data
+  design_role: driver
+  domain_model: range
+  candidate_values:
+    valid: [1, (1-255)内随机, 255, 空(默认值)]
+    invalid: [0, 256, 非数字字符串, 超长字符串]
+  notes: >
+    默认值为60(参考华为实现)。值越小优先级越高。
+    优先级决定多条目的网络相同的路由中哪条生效。
+    需要补齐 sample_definitions。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-ROUTE-UNIQUENESS
+  factor_name: 静态路由唯一性约束
+  description: >
+    目的网段+下一跳的组合作为路由唯一性判定。
+    目的网段和下一跳均相同视为重复路由(配置失败)；
+    目的网段相同、掩码长度不同、下一跳相同视为不同路由(配置成功)。
+  source: 路由配置 Sheet R52-R53; 静态路由 Sheet R3
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: constraint
+  design_role: constraint
+  domain_model: enum
+  candidate_values:
+    - dest_same_nh_same: 目的+下一跳相同 → 拒绝
+    - dest_same_mask_diff_nh_same: 目的相同掩码不同 → 允许
+    - dest_same_nh_diff: 目的相同下一跳不同 → 允许
+  notes: 路由唯一性约束，影响配置合法性判定。应与目的网络和下一跳因子关联。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-MODIFY-FIELD
+  factor_name: 可修改字段
+  description: >
+    静态路由支持修改的字段。从「路由配置」修改静态路由分析中提取。
+    有效: 目的IP(不支持修改), 掩码长度(不支持修改), 下一跳, 权重, 优先级
+    无效: 不存在的路由ID
+  source: 路由配置 Sheet R56-R58
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    supported: [下一跳, 权重, 优先级]
+    unsupported: [目的IP, 掩码长度]
+    invalid: [不存在的路由ID]
+  notes: >
+    目的IP和掩码长度不支持修改(修改即路由ID变化)。
+    不存在的路由ID属于无效操作。由原始文档直接分析得出。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-CRUD-OP
+  factor_name: 路由操作类型
+  description: >
+    对静态路由的增删改查操作。跨多个测试点使用。
+    覆盖: 创建、修改、删除、批量删除、查询、分页查询。
+  source: 路由配置 Sheet R88-R97; 静态路由 Sheet R13
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values: [创建, 修改, 删除, 批量删除, 查询, 分页查询, 配置导入, 配置导出, 增量导入]
+  notes: >
+    Oplog 测试中操作类型分为: 创建/删除/修改 × 成功/失败。
+    批量删除和分页查询有独立的测试点。
+    配置导入导出属于管理面操作。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-QUERY-PAGE
+  factor_name: 分页查询参数
+  description: >
+    静态路由查询接口的分页参数(page, size)。
+    有效: page=1..N, size=10/20/30等典型值
+    无效: page=0, size=0, page/size超出范围, page/size非数字
+  source: 路由配置 Sheet R93-R97
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: data
+  design_role: driver
+  domain_model: range
+  candidate_values:
+    valid: [{page: 1-N, size: [10,20,30]}]
+    invalid: [{page: 0, size: 0}, {page: 超范围}, {size: 超范围}, 非数字]
+  notes: page=0且size=0时返回所有路由(特殊行为)。page/size均为最大值时返回正常。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-OPLOG
+  factor_name: 操作日志记录
+  description: >
+    静态路由操作日志(Oplog)的记录验证。覆盖操作类型(创建/删除/修改)
+    和操作结果(成功/失败)的组合，检查日志中时间、操作者、对象和参数是否正确。
+  source: 路由配置 Sheet R105-R122
+  owner_object: OBJ-RT-DFX
+  factor_kind: oracle
+  design_role: oracle
+  domain_model: enum
+  candidate_values:
+    operations: [创建, 删除, 修改, 批量删除]
+    results: [成功, 失败]
+    check_fields: [时间, 操作者, 操作对象, 参数]
+  notes: 与 ngfw-policy-routing 中的 FAC-LOG-* 模式类似。可复用 FAC-LOG-OP-TYPE 和 FAC-LOG-FIELD-COMPLETENESS 的模式。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-DEFAULT-VALUE
+  factor_name: 静态路由默认值
+  description: >
+    静态路由配置时未指定的参数默认值。
+    权重默认值=1，优先级默认值=60，直连路由优先级默认值=0，cost=0。
+  source: 路由配置 Sheet R123-R129
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    weight_default: 1
+    priority_default: 60
+    direct_route_priority_default: 0
+    direct_route_cost_default: 0
+  notes: >
+    默认值测试不依赖等价类划分，直接验证默认行为。
+    直连路由的默认优先级为0(最高)，与静态路由默认60不同。
+  status: proposed
+  proposal_date: 2026-06-03
+
+# ═══════════════════════════════════════════════════════
+# 领域 B: 静态路由转发表 (FIB)
+# 来源 Sheet: 静态路由 (详细设计部分)
+# ═══════════════════════════════════════════════════════
+
+- factor_id: FAC-RT-INTERFACE-TYPE
+  factor_name: 出接口类型
+  description: >
+    静态路由出接口的接口类型。在「路由转发表添加条件测试」和「路由转发」等多处
+    等价类划分中出现，几乎覆盖所有 IPv4 路由测试场景。
+    有效类: 物理接口、聚合接口、L3子接口、BVI接口、Tunnel口、PPPoE接口
+  source: 静态路由 Sheet R27-R32; 直连路由 Sheet; 路由转发 Sheet; 等价路由 Sheet
+  owner_object: OBJ-RT-INTERFACE
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - physical: 物理接口
+    - aggregate: 聚合接口
+    - sub-interface: L3子接口
+    - bvi: BVI接口
+    - tunnel: Tunnel口
+    - pppoe: PPPoE接口
+  notes: >
+    ⚠️ 高频复用因子 — 在6个Sheet中全部出现。
+    与 ngfw-policy-routing 中的 FAC-L3-NH-IF-TYPE 有语义重叠但取值不同，
+    需要决策是复用ngfw-policy-routing的因子还是作为路由领域专用因子。
+    Tunnel口在部分场景标记为#(暂不分析)，但出现在有效类中。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-INTERFACE-STATE
+  factor_name: 出接口状态
+  description: >
+    路由出接口的物理/管理状态。决定路由转发表是否生成及路由是否生效。
+    关键路径: UP → 路由生效, Down → 路由失效, Down→UP → 路由恢复
+  source: 静态路由 Sheet R22-R25 (流程图路径分析); R99-R101; 路由转发 Sheet R9
+  owner_object: OBJ-RT-INTERFACE
+  factor_kind: state
+  design_role: driver
+  domain_model: state
+  candidate_values: [UP, Down, UP→Down, Down→UP]
+  notes: >
+    接口状态变化是路由转发表维护的核心触发条件。
+    「禁用接口」与「拔插网线」都触发 Down 事件但物理层不同，
+    应在样本中区分操作类型(命令行 vs 物理)。
+    与 ngfw-policy-routing 的 FAC-L3-REACHABILITY 有语义重叠。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-NEXT-HOP-MATCH
+  factor_name: 下一跳接口匹配状态
+  description: >
+    下一跳地址是否匹配已有接口的 IP 网段。
+    从静态路由转发表添加条件流程图(P1-P2-P4/P1-P3-P4等)提取。
+    关键路径:
+    - 直接匹配: 下一跳在已有接口网段中(配置路由后立刻生成FIB)
+    - 延迟匹配: 下一跳不在已有接口网段中(需等接口配置IP后才匹配)
+    - 不匹配: 下一跳与所有接口IP不在任何相同网段(路由不生效)
+  source: 静态路由 Sheet R17-R26 (流程图法)
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: condition
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - direct_match: 配置时下一跳已匹配接口 → 立即生成FIB
+    - delayed_match: 配置后接口IP变更才匹配 → 延迟生成FIB
+    - no_match: 下一跳永远不匹配任何接口 → 无FIB
+    - match_to_unmatch: 修改IP/下一跳导致从匹配变为不匹配 → FIB删除
+    - unmatch_to_match: 修改IP/下一跳导致从不匹配变为匹配 → FIB新增
+  notes: >
+    这是「路由转发表添加条件测试」流程图分析的核心因子，
+    描述了静态路由何时进入FIB的完整状态机。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FIB-PATH
+  factor_name: 路由转发表生成路径
+  description: >
+    从「路由转发表添加条件测试」流程图中提取的4条关键路径:
+    path1: 配置静态路由-下一跳直接匹配接口-接口状态UP-生成FIB
+    path2: 配置静态路由-下一跳不匹配-接口配IP后匹配-接口UP-生成FIB
+    path3: 配置静态路由-下一跳直接匹配接口-无路由-接口UP后生成FIB
+    path4: 配置静态路由-下一跳不匹配-配IP后匹配-接口Down-无FIB-接口UP后生成FIB
+  source: 静态路由 Sheet R21-R25
+  owner_object: OBJ-RT-FIB
+  factor_kind: process
+  design_role: driver
+  domain_model: enum
+  candidate_values: [path1_direct_match_up, path2_delayed_match_up, path3_direct_match_down_to_up, path4_delayed_match_down_to_up]
+  notes: >
+    这4条路径是「路由转发表添加条件」的完整覆盖目标。
+    每条路径需要至少覆盖所有接口类型(物理/聚合/L3子接口/BVI)。
+    path3和path4包含接口Down→UP的状态转换。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FIB-DELETE-COND
+  factor_name: 路由转发表删除条件
+  description: >
+    导致路由从转发表中移除的操作条件:
+    - 修改下一跳与所有接口IP不在相同网段
+    - 修改接口IP与下一跳不在相同网段
+    - 禁用路由出接口
+    - 拔掉路由出接口网线
+    - 删除静态路由本身
+  source: 静态路由 Sheet R6, R70-R76
+  owner_object: OBJ-RT-FIB
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values: [修改下一跳致不匹配, 修改接口IP致不匹配, 禁用出接口, 拔出网线, 删除路由]
+  notes: >
+    删除路由和失效路由(不匹配)是不同的概念:
+    - 删除: 路由配置本身被移除
+    - 失效: 配置存在但下一跳不匹配导致FIB中条目被移除
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FIB-INTERFACE-SWITCH
+  factor_name: 路由转发表出接口切换
+  description: >
+    路由转发表中路由的出接口发生切换的场景:
+    - 修改下一跳与其他接口IP在相同网段
+    - 配置其他接口IP与静态路由在相同网段且掩码更长
+    - 配置其他接口IP与静态路由在相同网段且掩码更短后构造原出接口Down
+  source: 静态路由 Sheet R7, R84-R90
+  owner_object: OBJ-RT-FIB
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values: [下一跳切换到其他接口, 更长掩码接口优先, 更短掩码在出接口Down后接管]
+  notes: 出接口切换与掩码长度最长匹配原则相关。更短掩码的接口在原出接口Down后才接管。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-SAME-SUBNET-IP-CHANGE
+  factor_name: 相同网段修改接口IP
+  description: >
+    在相同网段内修改出接口IP，且不改为与下一跳相同地址。
+    修改前后路由转发表状态保持不变，路由继续有效。
+    但如果修改为与下一跳相同地址则修改失败。
+  source: 静态路由 Sheet R77-R83
+  owner_object: OBJ-RT-INTERFACE
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    valid: [同网段不同IP]  # 路由表不变
+    invalid: [改为与下一跳相同]  # 修改失败
+  notes: 边界条件: 接口IP不能与下一跳地址完全相同。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-PRIORITY-ECMP
+  factor_name: 优先级与等价路由关系
+  description: >
+    多条目的网络相同但下一跳不同的路由在FIB中的生效规则:
+    - 优先级不同: 仅最高优先级(值最小)的生效
+    - 优先级相同: 形成等价路由，所有下一跳同时生效
+    - 出接口可相同/不同/混合
+  source: 静态路由 Sheet R91-R101
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - single_best: 仅最高优先级单条生效
+    - ecmp_same_intf: 等价路由-出接口相同
+    - ecmp_diff_intf: 等价路由-出接口不同
+    - ecmp_mixed_intf: 等价路由-出接口混合
+    - best_overrides_ecmp: 高优先级路由覆盖等价路由
+  notes: >
+    当高优先级路由失效时，等价路由恢复。
+    优先级相同但出接口相同 → 仍然是等价路由(多个下一跳指向同一接口)。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-CAPACITY
+  factor_name: 路由容量
+  description: >
+    路由表容量相关因子。覆盖:
+    - 最大数量的静态路由
+    - 等价路由最大数量的成员(链路数量)
+    - 最大数量的等价路由组
+    - 最大数量的直连路由
+    - 达到最大数量后的增删行为
+  source: 静态路由 Sheet R9, R102-R108; 路由配置 Sheet R98-R104
+  owner_object: OBJ-RT-FIB
+  factor_kind: constraint
+  design_role: constraint
+  domain_model: range
+  candidate_values:
+    dimensions: [最大静态路由数, 等价路由最大成员数, 最大等价路由组数, 最大直连路由数]
+  notes: >
+    容量因子的具体数值取决于产品规格，研究区暂不写死数值。
+    可建模为 range 类型留待物化时确定。
+    达到最大数量后的增删行为需要验证: 是否拒绝新增、删除后能否恢复。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-CONFIG-PERSIST
+  factor_name: 配置持久化
+  description: >
+    配置存库和恢复功能。覆盖添加/修改/删除操作后设备快速切换(掉电)的场景。
+    升级测试中配置能恢复，配置导入导出后配置一致。
+  source: 静态路由 Sheet R16, R116-R122, R123-R143
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: state
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    operations: [添加后掉电, 修改后掉电, 删除后掉电]
+    import_export: [导出, 导入, 增量导入, 配置校验]
+  notes: >
+    存库测试关注原子性: 修改后立即掉电，重启后配置是修改前还是修改后?
+    配置导入导出关注完整性: 导出后删除→导入→配置恢复原状。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-PERFORMANCE
+  factor_name: 路由操作响应时间
+  description: >
+    静态路由接口操作的性能指标。覆盖添加、删除、批量删除(40条)、批量查询(40条)
+    的响应时间，要求较上一版本不劣化。
+  source: 静态路由 Sheet R130-R136
+  owner_object: OBJ-RT-STATIC-ROUTE
+  factor_kind: oracle
+  design_role: oracle
+  domain_model: enum
+  candidate_values:
+    operations: [添加, 删除, 批量删除40条, 批量查询40条]
+  notes: oracle类型 — 只判定结果(时间不劣化)，不生成配置输入。
+  status: proposed
+  proposal_date: 2026-06-03
+
+# ═══════════════════════════════════════════════════════
+# 领域 C: 直连路由
+# 来源 Sheet: 直连路由
+# ═══════════════════════════════════════════════════════
+
+- factor_id: FAC-RT-DIRECT-INTERFACE-IP
+  factor_name: 直连路由接口IP
+  description: >
+    接口配置IP地址后自动生成的直连路由。等价类划分:
+    有效IP: 128.0.0.1/2, 233.255.255.254/30, 1.0.0.1/30, A类任意, B类任意
+  source: 直连路由 Sheet R10-R16
+  owner_object: OBJ-RT-DIRECT-ROUTE
+  factor_kind: data
+  design_role: driver
+  domain_model: ip_address
+  candidate_values:
+    valid: [128.0.0.1/2, 233.255.255.254/30, 1.0.0.1/30, A类范围, B类范围]
+  notes: >
+    直连路由的接口IP与静态路由的目的网络在格式上相同，但语义不同:
+    - 直连路由IP: 配置在接口上，生成直连路由
+    - 静态路由目的网络: 配置在路由表中，指向下一跳
+    直连路由优先级默认为0(最高)，cost默认为0。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-DIRECT-MULTI-IP
+  factor_name: 接口多IP直连路由
+  description: >
+    单个接口配置多个IP地址时，每个IP均生成直连路由。
+    测试操作: 配置至少10个IP → 验证全部生成 → 删除部分 → 验证对应的消失。
+  source: 直连路由 Sheet R35-R41
+  owner_object: OBJ-RT-DIRECT-ROUTE
+  factor_kind: data
+  design_role: driver
+  domain_model: range
+  candidate_values:
+    count: [1, 10, 规格最大值]
+  notes: 接口支持多个IP时，多IP场景需要验证全部生成和部分删除的正确性。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-DIRECT-MEMBER-STATE
+  factor_name: 逻辑接口成员状态
+  description: >
+    聚合接口和BVI接口的成员接口状态变化对直连路由的影响:
+    - 部分成员Down: 直连路由仍然存在
+    - 全部成员Down: 直连路由消失(接口失效)
+    - 部分成员恢复Up: 直连路由保持
+  source: 直连路由 Sheet R42-R48
+  owner_object: OBJ-RT-DIRECT-ROUTE
+  factor_kind: state
+  design_role: driver
+  domain_model: state
+  candidate_values:
+    - partial_down: 部分成员Down → 路由保持
+    - all_down: 全部成员Down → 路由消失
+    - partial_up: 部分成员恢复 → 路由保持
+  notes: >
+    仅适用于逻辑接口(聚合接口、BVI接口)。物理接口不存在成员状态概念。
+    与 FAC-RT-INTERFACE-STATE 不同: 这里是成员级别，不是接口级别。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-DIRECT-LOGIC-INTF-LIFECYCLE
+  factor_name: 逻辑接口生命周期
+  description: >
+    逻辑接口(聚合接口、BVI接口、L3子接口)的创建和删除对直连路由的影响。
+    创建: 配置IP后生成直连路由
+    删除: 该逻辑接口生成的直连路由全部消失
+  source: 直连路由 Sheet R49-R55
+  owner_object: OBJ-RT-DIRECT-ROUTE
+  factor_kind: state
+  design_role: driver
+  domain_model: state
+  candidate_values: [创建逻辑接口, 删除逻辑接口]
+  notes: 与 FAC-RT-INTERFACE-STATE 不同 — 这里是接口本身的增删，不是状态切换。
+  status: proposed
+  proposal_date: 2026-06-03
+
+# ═══════════════════════════════════════════════════════
+# 领域 D: 路由转发
+# 来源 Sheet: 路由转发
+# ═══════════════════════════════════════════════════════
+
+- factor_id: FAC-RT-FWD-ROUTE-TYPE
+  factor_name: 转发路由类型
+  description: >
+    参与报文转发的路由类型:
+    - 静态路由(主机路由/32 + 网段路由/非32)
+    - 直连路由
+    - 默认路由(0.0.0.0/0)
+  source: 路由转发 Sheet R2-R3, R14-R42
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - static_host: 静态主机路由(/32)
+    - static_net: 静态网段路由(非/32)
+    - direct: 直连路由
+    - default: 默认路由
+  notes: >
+    主机路由(32位掩码)和网段路由(非32位)在转发行为上无差别，
+    但在掩码最长匹配时行为不同。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-DMAC-MATCH
+  factor_name: DMAC匹配状态
+  description: >
+    接收报文的目的MAC地址与接口MAC地址的匹配关系:
+    - DMAC与接口IP相同 → 报文正常三层转发
+    - DMAC与接口IP不同 → 报文丢弃(除非接口处于混杂模式)
+  source: 路由转发 Sheet R2, R41-R42 (步骤4)
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - dmac_match: DMAC等于接收接口MAC → 正常转发
+    - dmac_mismatch: DMAC不等于接收接口MAC → 丢弃
+  notes: >
+    这是三层转发的基本条件 — 只有DMAC匹配本接口MAC的报文才进入三层处理。
+    ⚠️ 与 ngfw-policy-routing 无直接重叠，属于路由转发特有因子。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-LONGEST-MATCH
+  factor_name: 掩码最长匹配
+  description: >
+    路由转发时的掩码最长匹配原则。多条网络地址相同但掩码长度不同的路由，
+    报文匹配掩码长度最长的路由。转发不匹配优先级(优先级只决定哪条路由进入FIB，
+    进入FIB后按掩码最长匹配转发)。
+  source: 路由转发 Sheet R3, R68-R76
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: constraint
+  design_role: constraint
+  domain_model: enum
+  candidate_values:
+    - static_longest: 多条静态路由按掩码最长选择
+    - direct_longest: 多个接口网络地址相同掩码不同按最长选择
+    - mixed_longest: 直连路由和静态路由混合按掩码最长选择
+    - priority_not_used: 转发不参考优先级
+  notes: >
+    关键设计原则: 优先级决定「哪条路由进FIB」，掩码长度决定「FIB中按哪条转发」。
+    这是两个独立维度。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-ABNORMAL-SIP
+  factor_name: 异常源IP报文
+  description: >
+    IPv4异常源IP报文识别。覆盖:
+    - ABC类地址中的广播地址
+    - D类地址(组播)
+    - E类地址(保留)
+    - 全F(广播)
+    - 127段(环回)
+    - 全0
+    期望: 全部丢弃。
+  source: 路由转发 Sheet R4, R77-R84
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - broadcast_abc: ABC类广播地址
+    - class_d: D类组播地址
+    - class_e: E类保留地址
+    - all_f: 全F
+    - loopback_127: 127段
+    - all_zero: 全0
+  notes: >
+    异常报文识别的负向测试。全部期望丢弃。
+    这是运行时流量因子，config_test = not_applicable。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-ABNORMAL-IP-HEADER
+  factor_name: 异常IP头部报文
+  description: >
+    IPv4头部异常报文识别: TTL=0, TTL=1, checksum错误。
+    期望: 全部丢弃。
+  source: 路由转发 Sheet R84 (ipv4.fwd.abnormal.pkt.ipheader)
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values: [TTL=0, TTL=1, checksum错误]
+  notes: >
+    TTL=0/1是边界值(0过期，1经过一跳后过期)。
+    checksum错误用于验证IP头部完整性检查。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-VLAN-ENCAP
+  factor_name: VLAN封装层数
+  description: >
+    路由转发时VLAN报文的处理。覆盖:
+    - 不带VLAN
+    - 带一层VLAN
+    - 带两层VLAN
+    物理接口/BVI/聚合口: 不带VLAN正常转发，带VLAN丢弃。
+    L3子接口: 匹配VLAN ID的转发，不匹配的丢弃，不带VLAN丢弃(物理口无IP时)。
+  source: 路由转发 Sheet R5, R85-R91
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    vlan_layers: [不带VLAN, 一层VLAN, 两层VLAN]
+    vlan_match: [VLAN ID匹配, VLAN ID不匹配, 带VLAN到非子接口]
+  notes: >
+    VLAN处理与接口类型强耦合:
+    - 物理接口/BVI/聚合口: 只处理不带VLAN的报文
+    - L3子接口: 只处理匹配VLAN ID的报文
+    需要约束条件: allowed_values 与接口类型关联。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-FLOAT-MODE
+  factor_name: 浮动路由切换方式
+  description: >
+    浮动路由(主备路由)之间的切换场景:
+    - 高低优先级静态路由之间切换(修改优先级)
+    - 静态路由和直连路由间切换(构造接口Down)
+    - 静态路由和默认路由之间的切换
+  source: 路由转发 Sheet R8, R99-R105
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - static_to_static: 修改优先级实现静态路由间切换
+    - static_to_direct: 直连路由Down后切换到静态路由
+    - static_to_default: 删除/失效后切换到默认路由
+  notes: >
+    浮动路由的核心是路由优先级 → 高优先级失效后次高优先级自动接管。
+    切换过程会有短暂的丢包。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-RELIABILITY-OP
+  factor_name: 路由转发可靠性操作
+  description: >
+    路由转发可靠性的验证操作。覆盖:
+    - 拔插网线
+    - 禁用/启用端口
+    - 掉电复位
+    - 命令复位
+    - 反复增删路由
+    - 反复修改下一跳和优先级
+    - 反复启用/停用路由
+    - 反复修改接口IP地址
+    每种操作执行10次以上。
+  source: 路由转发 Sheet R9, R106-R112
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values: [拔插网线, 禁用启用端口, 掉电复位, 命令复位, 反复增删路由, 反复修改下一跳, 反复启用停用路由, 反复修改接口IP]
+  notes: >
+    可靠性测试关注"反复操作后状态是否正确"。
+    每种操作需要验证: 操作使路由失效 → 业务中断; 恢复操作 → 业务恢复。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-ARP
+  factor_name: ARP学习状态
+  description: >
+    路由转发时下一跳ARP的学习和老化状态:
+    - ARP不存在: 持续发送ARP请求，报文不通
+    - ARP学到: 报文正常转发
+    - ARP过期: 重新回到ARP学习状态
+    - 大量ARP miss: 性能压力
+  source: 路由转发 Sheet R10, R120-R126
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: state
+  design_role: driver
+  domain_model: state
+  candidate_values: [ARP不存在, ARP学到, ARP过期, 大量ARP miss]
+  notes: >
+    下一跳ARP是路由转发的必要条件。没有ARP缓存时报文不通。
+    大量ARP miss场景关注设备CPU/内存影响。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-HA
+  factor_name: HA主备切换路由转发
+  description: >
+    高可用场景下路由转发行为:
+    - 主备切换后业务正常转发
+    - 回切后业务正常转发
+    - 在切换后的主用设备删除路由 → 业务中断
+  source: 路由转发 Sheet R11, R127-R133
+  owner_object: OBJ-RT-HA
+  factor_kind: state
+  design_role: driver
+  domain_model: state
+  candidate_values: [主备切换, 回切, 切换后删除路由]
+  notes: >
+    与 ngfw-policy-routing 的 FAC-HA-* 因子组语义重叠，但这里聚焦路由转发场景。
+    可能需要整合。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-FWD-IPV6-ISOLATION
+  factor_name: IPv4/IPv6转发隔离
+  description: >
+    IPv4路由转发与IPv6业务相互不影响。发送IPv4报文的同时发送IPv6报文，
+    IPv4转发不受影响。
+  source: 路由转发 Sheet R12, R113-R119
+  owner_object: OBJ-RT-FORWARDING
+  factor_kind: constraint
+  design_role: constraint
+  domain_model: bool
+  candidate_values: [隔离正常, 相互无影响]
+  notes: 验证双栈场景下的业务隔离性。
+  status: proposed
+  proposal_date: 2026-06-03
+
+# ═══════════════════════════════════════════════════════
+# 领域 E: 单臂路由
+# 来源 Sheet: 单臂路由
+# ═══════════════════════════════════════════════════════
+
+- factor_id: FAC-RT-SINGLE-ARM-INTF-PAIR
+  factor_name: 单臂路由接口配对类型
+  description: >
+    单臂路由(报文在同一设备上进出一对接口)的接口配对:
+    不同类接口: 聚合口↔L3子接口, 物理接口↔L3子接口, L3子接口↔L3子接口
+    同类接口: 物理接口↔物理接口, 聚合口↔聚合口, L3子接口↔L3子接口, BVI↔BVI, Tunnel↔Tunnel
+  source: 单臂路由 Sheet R1-R5, R6-R19
+  owner_object: OBJ-RT-SINGLE-ARM
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    diff_type: [聚合口↔子接口, 物理口↔子接口, 子接口↔子接口]
+    same_type: [物理口, 聚合口, 子接口, BVI口, Tunnel口]
+  notes: >
+    单臂路由的核心特征是同一设备上一个接口进、另一个接口出。
+    与普通转发(两个不同设备之间的接口)的区别在于MAC地址处理 —
+    单臂路由需要正确封装DMAC/SMAC。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-SINGLE-ARM-POLICY
+  factor_name: 单臂路由与策略耦合
+  description: >
+    默认安全策略对单臂路由的影响:
+    - 默认策略=允许 → 单臂路由正常转发
+    - 默认策略=阻塞 → 单臂路由中断
+    - 恢复默认策略=允许 → 单臂路由恢复
+  source: 单臂路由 Sheet R5, R27-R33
+  owner_object: OBJ-RT-SINGLE-ARM
+  factor_kind: constraint
+  design_role: constraint
+  domain_model: enum
+  candidate_values: [默认策略允许, 默认策略阻塞]
+  notes: >
+    这是防火墙特有的测试维度 — 路由转发受安全策略控制。
+    路由器没有这个维度。属于 NGFW 领域特有因子。
+  status: proposed
+  proposal_date: 2026-06-03
+
+# ═══════════════════════════════════════════════════════
+# 领域 F: 等价路由 (ECMP)
+# 来源 Sheet: 等价路由
+# ═══════════════════════════════════════════════════════
+
+- factor_id: FAC-RT-ECMP-ROUTE-TYPE
+  factor_name: 等价路由形成类型
+  description: >
+    等价路由可以由两种类型的路由形成:
+    - 静态路由: 多条目的网络相同、优先级相同的静态路由(下一跳不同)
+    - 默认路由: 多条默认路由(包括接口默认网关生成的路由)
+    - 默认路由+接口网关: 静态默认路由与接口默认网关生成等价路由
+  source: 等价路由 Sheet R2, R9-R29
+  owner_object: OBJ-RT-ECMP
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - static_ecmp: 多条静态路由形成等价路由
+    - default_ecmp: 多条默认路由形成等价路由
+    - gateway_ecmp: 接口默认网关生成的路由形成等价路由
+    - mixed_ecmp: 静态默认路由+接口网关形成等价路由
+  notes: >
+    接口默认网关生成的路由权重默认值为1。
+    静态默认路由与接口默认网关路由优先级相同时能形成等价路由。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-ECMP-LOAD-BALANCE
+  factor_name: 等价路由负载分担
+  description: >
+    等价路由的业务负载分担行为:
+    - 分担算法: 按权重比例分发
+    - 修改权重: 业务重新按新权重分担
+    - 接口默认网关权重: 默认值为1
+  source: 等价路由 Sheet R3, R37-R45
+  owner_object: OBJ-RT-ECMP
+  factor_kind: data
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    operations: [默认权重分担, 修改权重, 验证分担比例]
+    gateway_default_weight: 1
+  notes: >
+    分担算法测试需要发送报文内容变化的流量(不同的五元组)触发哈希。
+    权重分担测试有专门的执行准则文档(权重分担测试执行准则)。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-ECMP-LINK-CHANGE
+  factor_name: 等价路由链路变更
+  description: >
+    等价路由中链路(成员路由)变更操作:
+    - 增删路由: 增加/删除部分等价路由出口
+    - 禁用启用接口: 禁用/启用部分链路出接口
+    - 拔插网线: 拔出/插入部分链路出接口的网线
+    - 调整成员优先级: 降低/提高部分成员路由的优先级
+  source: 等价路由 Sheet R5, R46-R52
+  owner_object: OBJ-RT-ECMP
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - add_remove_route: 增删等价路由成员
+    - disable_enable_intf: 禁用启用成员出接口
+    - plug_unplug: 拔插成员出接口网线
+    - adjust_priority: 调整成员优先级
+  notes: >
+    链路变更后，等价路由自动调整成员列表:
+    - 新增: 新成员加入分担
+    - 减少: 被删除的成员不再分担，现有成员继续分担
+    - 禁用: 禁用成员出接口 → 等价路由中移除该成员，恢复后重新加入
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-ECMP-ROUTE-SWITCH
+  factor_name: 等价路由与高优先级路由切换
+  description: >
+    等价路由与高优先级路由之间的切换:
+    - 新增高优先级路由 → 等价路由全部失效，流量切到高优先级路由
+    - 删除高优先级路由 → 等价路由恢复
+    - 提高等价路由成员优先级(使之成为最高) → 非等价路由模式
+    - 通过禁用/启用接口触发切换
+    - 通过拔插网线触发切换
+  source: 等价路由 Sheet R6, R53-R61
+  owner_object: OBJ-RT-ECMP
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values:
+    - new_higher_priority: 更高优先级路由覆盖等价路由
+    - remove_higher_priority: 删除高优先级后等价路由恢复
+    - promote_ecmp_member: ECMP成员升级为最高优先级
+    - demote_ecmp_member: 降级后回到等价路由
+  notes: >
+    等价路由优先级 > 单个高优先级路由 的语义:
+    优先级相同 → ECMP，优先级不同 → 只选最优(值最小)。
+    切换时会有丢包。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-ECMP-RELIABILITY-OP
+  factor_name: 等价路由可靠性操作
+  description: >
+    等价路由可靠性验证。反复执行以下操作各10次以上:
+    - 反复链路振荡(拔插网线/禁用启用)
+    - 反复修改链路权重
+    - 反复设备掉电
+    - 反复设备命令复位
+  source: 等价路由 Sheet R7, R62-R68
+  owner_object: OBJ-RT-ECMP
+  factor_kind: control
+  design_role: driver
+  domain_model: enum
+  candidate_values: [反复震荡链路, 反复修改权重, 反复设备掉电, 反复命令复位]
+  notes: 与路由转发的可靠性操作有重叠但聚焦在等价路由场景。
+  status: proposed
+  proposal_date: 2026-06-03
+
+- factor_id: FAC-RT-ECMP-SWITCH-TIME
+  factor_name: 等价路由链路切换时间
+  description: >
+    等价路由链路增加/减少时的切换时间(丢包时间)。
+    用丢包数量/发包速率计算切换时间，要求较上一版本不劣化。
+  source: 等价路由 Sheet R8, R69-R75
+  owner_object: OBJ-RT-ECMP
+  factor_kind: oracle
+  design_role: oracle
+  domain_model: range
+  candidate_values:
+    operations: [增加链路, 减少链路]
+  notes: oracle类型 — 记录切换时间用于版本间对比，不生成配置输入。
+  status: proposed
+  proposal_date: 2026-06-03
+
+# ═══════════════════════════════════════════════════════
+# 跨领域汇总: 高复用因子统计
+# ═══════════════════════════════════════════════════════
+# FAC-RT-INTERFACE-TYPE: 出现在全部6个Sheet中 (最高频)
+# FAC-RT-INTERFACE-STATE: 出现在静态路由、直连路由、路由转发中
+# FAC-RT-PRIORITY: 出现在路由配置、静态路由、路由转发、等价路由中
+# FAC-RT-WEIGHT: 出现在路由配置、静态路由、等价路由中
+# FAC-RT-NEXT-HOP: 出现在路由配置、静态路由、路由转发中
+# FAC-RT-DST-NETWORK: 出现在路由配置、路由转发中
+# ═══════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════
+# 去重检查 (与发布区已有因子对比)
+# ═══════════════════════════════════════════════════════
+# 1. FAC-L3-NH-IF-TYPE (ngfw-policy-routing) ←→ FAC-RT-INTERFACE-TYPE
+#    重叠: 都涉及接口类型枚举。但ngfw的取值(physical/sub-interface/aggregate/bvi/tunnel)
+#    和IPv4路由的取值(物理/聚合/子接口/BVI/Tunnel/PPPoE)有差异 — PPPoE是新增值。
+#    判定: extend — 可能需要扩展ngfw因子或新建路由专用因子。
+#
+# 2. FAC-L3-REACHABILITY (ngfw-policy-routing) ←→ FAC-RT-INTERFACE-STATE
+#    重叠: 都描述可达/不可达。但IPv4路由更关注接口UP/Down对路由表的影响，
+#    与ngfw的reachable/unreachable/recovered语义不同。
+#    判定: new_factor — 接口状态变化比ngfw的出口可达性更细粒度。
+#
+# 3. FAC-L3-NH-WEIGHT (ngfw-policy-routing) ←→ FAC-RT-WEIGHT
+#    高重叠: 都是权重值，range都是int[1,255]，边界值(0/256)相同。
+#    判定: reuse — 完全可复用，只需确认路由场景是否有特殊约束。
+#
+# 4. FAC-HA-ROLE / FAC-HA-SYNC-STATE (ngfw-policy-routing) ←→ FAC-RT-FWD-HA
+#    重叠: 都涉及HA主备切换。路由转发聚焦切换时的转发连续性。
+#    判定: reuse — 复用ngfw的HA因子，路由场景作为新的factor_group。
+#
+# 5. FAC-CONFIG-NAME (ngfw-policy-routing) ←→ 静态路由配置
+#    低重叠: 路由配置不涉及名称字段(路由用目的网络+下一跳标识)。
+#    判定: not_applicable — 路由无名称概念。

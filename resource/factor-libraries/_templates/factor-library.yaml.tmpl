@@ -1,0 +1,431 @@
+# 因子库 YAML 模板
+# 复制此文件到 <library-name>/factor-library.yaml，删除 .tmpl 后缀
+# 将所有 # --- ... --- 注释替换为实际内容或删除
+
+schema_version: 1                                       # 固定值
+library_id: ngfw-xxx                                    # --- 替换为实际库 ID，如 ngfw-dpi, ngfw-nat, ngfw-ips ---
+version: 0.1.0                                          # 语义化版本
+status: candidate                                       # 研究区默认 candidate，发布后改为 active
+description: "领域简要描述"                              # --- 一句话说明本库覆盖的领域 ---
+
+# ═══════════════════════════════════════════════════════
+# 因子定义
+# ═══════════════════════════════════════════════════════
+# 每个因子必须填写：factor_id, factor_name, factor_kind,
+#   design_role, owner_object, domain_model, value_type,
+#   applicable_when, downstream_methods, status
+# 注意：applicable_when 不能为空，最低写 "always"
+# ═══════════════════════════════════════════════════════
+factors:
+
+  # ── 示例 1: 枚举型 driver 因子 ──
+  - factor_id: FAC-DOMAIN-MODE                         # --- FAC-{DOMAIN}-{NAME} ---
+    factor_name: "中文名称"                             # --- 人读名称 ---
+    factor_kind: control                                # data|control|constraint|state|oracle|condition
+    design_role: driver                                 # driver|constraint|oracle
+    owner_object: OBJ-DOMAIN-NAME                       # --- OBJ-{DOMAIN}-{NAME} ---
+    domain_model: enum
+    value_type: enum
+    values: [value-a, value-b]                          # --- 枚举取值列表 ---
+    display_values:                                     # --- 中文显示名（可选但推荐）---
+      value-a: 显示名A
+      value-b: 显示名B
+    aliases: [别名1, 别名2]                             # --- 用于搜索匹配 ---
+    applicable_when: always                             # --- 或条件表达式如 "FAC-X == value" ---
+    downstream_methods: [P-Parameter, C-Combination]    # D-Data|P-Parameter|C-Combination|S-State|oracle-design
+    reuse_policy: must_reuse
+    status: candidate
+
+  # ── 示例 2: range 型 driver 因子（含 sample_definitions）──
+  - factor_id: FAC-DOMAIN-WEIGHT
+    factor_name: "权重"
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-DOMAIN-NAME
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[1,255]"                            # --- 值域表达式 ---
+    aliases: [权重值]
+    applicable_when: always
+    downstream_methods: [D-Data, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+
+    # ── 样本定义 ──
+    # 三层可读性:
+    #   description + representative_values → 人读：评审时一眼看懂
+    #   expr                               → 机器读：PC 阶段按 seed=case_id 求值
+    #   materialized_value                 → 默认物化结果
+    # sample_class 枚举：valid_member, boundary_min, boundary_max,
+    #   in_range_nominal, below_min, above_max, min_length, max_length,
+    #   charset_mixed, invalid_charset, valid_config, invalid_config,
+    #   invalid_format, positive_function, negative_function
+    # ──
+    sample_definitions:
+      - sample_id: WEIGHT_MIN
+        sample_class: boundary_min
+        description: "权重最小有效值。边界值 1。"
+        representative_values: ["1"]
+        expr: "min"
+        materialized_value: 1
+        applicability:
+          config_test: accepted
+          function_test: precondition
+      - sample_id: WEIGHT_MAX
+        sample_class: boundary_max
+        description: "权重最大有效值。边界值 255。"
+        representative_values: ["255"]
+        expr: "max"
+        materialized_value: 255
+        applicability:
+          config_test: accepted
+          function_test: precondition
+      - sample_id: WEIGHT_NOMINAL
+        sample_class: in_range_nominal
+        description: "权重域内随机典型值。范围 2~254，seed=case_id 保证可复现。"
+        representative_values: ["100", "137", "200"]
+        expr: "random_int(2,254,seed=case_id)"
+        materialization: deterministic
+        applicability:
+          config_test: accepted
+          function_test: preferred_precondition
+      - sample_id: WEIGHT_BELOW_MIN
+        sample_class: below_min
+        description: "权重低于最小值，即 0。配置应被拒绝。"
+        representative_values: ["0"]
+        expr: "min - 1"
+        materialized_value: 0
+        applicability:
+          config_test: rejected
+          function_test: not_applicable
+      - sample_id: WEIGHT_ABOVE_MAX
+        sample_class: above_max
+        description: "权重高于最大值，即 256。配置应被拒绝。"
+        representative_values: ["256"]
+        expr: "max + 1"
+        materialized_value: 256
+        applicability:
+          config_test: rejected
+          function_test: not_applicable
+
+    # ── 样本用途配置 ──
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [WEIGHT_MIN, WEIGHT_MAX, WEIGHT_NOMINAL]
+        rejected_config_samples: [WEIGHT_BELOW_MIN, WEIGHT_ABOVE_MAX]
+      function_test:
+        precondition_samples: [WEIGHT_NOMINAL]           # 只使用 accepted 样本作为前置
+
+  # ── 示例 3: string_pattern 型 driver 因子 ──
+  - factor_id: FAC-DOMAIN-NAME
+    factor_name: "配置对象名称"
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-GENERIC-CONFIG
+    domain_model: string_pattern
+    value_type: string
+    domain_expr:
+      length: "1..31"
+      charset: [uppercase_letter, lowercase_letter, digit, chinese, hyphen, dot]
+      regex: "^[A-Za-z0-9\\u4e00-\\u9fa5\\-.]{1,31}$"
+    aliases: [名称]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: NAME_MIN_LEN
+        sample_class: min_length
+        expr: "string(charset=allowed,length=1)"
+        materialized_value: "A"
+        applicability:
+          config_test: accepted
+          function_test: precondition
+      - sample_id: NAME_MAX_LEN
+        sample_class: max_length
+        expr: "string(charset=allowed,length=31)"
+        materialization: deterministic
+        applicability:
+          config_test: accepted
+          function_test: not_preferred
+      - sample_id: NAME_MIXED_CHARSET
+        sample_class: charset_mixed
+        expr: "string(include=[upper,lower,digit,chinese,hyphen,dot],length=12..20,seed=case_id)"
+        materialized_value: "Ab9-策略.route"
+        applicability:
+          config_test: accepted
+          function_test: preferred_precondition
+      - sample_id: NAME_EMPTY
+        sample_class: below_min_length                    # 注意：below_min_length 是字符串越界用词
+        expr: "string(length=0)"
+        materialized_value: ""
+        applicability:
+          config_test: rejected
+          function_test: not_applicable
+      - sample_id: NAME_TOO_LONG
+        sample_class: above_max_length
+        expr: "string(charset=allowed,length=32)"
+        materialization: deterministic
+        applicability:
+          config_test: rejected
+          function_test: not_applicable
+      - sample_id: NAME_INVALID_CHAR
+        sample_class: invalid_charset
+        expr: "string(include=['@'],length=8)"
+        materialized_value: "name@001"
+        applicability:
+          config_test: rejected
+          function_test: not_applicable
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [NAME_MIN_LEN, NAME_MAX_LEN, NAME_MIXED_CHARSET]
+        rejected_config_samples: [NAME_EMPTY, NAME_TOO_LONG, NAME_INVALID_CHAR]
+      function_test:
+        precondition_samples: [NAME_MIXED_CHARSET]
+
+  # ── 示例 3b: ip_network 型 driver 因子 🆕 ──
+  # ip_network 用于表示"IP地址/掩码长度"格式的网段，如路由目的网络、ACL网段
+  - factor_id: FAC-RT-DST-NETWORK
+    factor_name: "目的网络地址"
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-RT-STATIC-ROUTE
+    domain_model: ip_network
+    value_type: string                                   # 输出格式: "a.b.c.d/n"
+    domain_expr:
+      version: ipv4
+      semantic_constraints:
+        unicast_only: true
+        prefix_range: "0..32"
+    aliases: [目的地址, 目的网段, 路由目的]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      # 有效类: 字面量
+      - sample_id: DST_DEFAULT
+        sample_class: valid_config
+        description: "默认路由。0.0.0.0/0 是唯一取值。"
+        representative_values: ["0.0.0.0/0"]
+        expr: 'ip_net("0.0.0.0/0")'
+        materialized_value: "0.0.0.0/0"
+        applicability: {config_test: accepted, function_test: precondition}
+      # 有效类: 指定地址类+掩码范围
+      - sample_id: DST_CLASS_A
+        sample_class: valid_config
+        description: "A类单播网段。IP首段 1~126，掩码 1~31 位。"
+        representative_values: ["<IP_ADDRESS>/8", "42.173.89.0/24", "126.255.255.0/31"]
+        expr: 'ip_net(class=a, prefix=1..31)'
+        materialized_value: "<IP_ADDRESS>/8"
+        applicability: {config_test: accepted, function_test: precondition}
+      # 语义无效
+      - sample_id: DST_CLASS_D_INVALID
+        sample_class: invalid_config
+        description: "D类组播地址掩码 ≥3 位时非法。格式正确但语义不合法。"
+        representative_values: ["224.0.0.0/4", "233.45.12.0/15"]
+        expr: 'ip_net(class=d, prefix=3..32, invalid=true)'
+        materialized_value: "224.0.0.0/4"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      # 格式非法
+      - sample_id: DST_EMPTY
+        sample_class: invalid_format
+        description: "目的网络为空字符串。必填字段缺失。"
+        representative_values: [""]
+        expr: 'invalid_format(type=empty)'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: DST_3_SEGMENTS
+        sample_class: invalid_format
+        description: "仅3段点分十进制，缺少一段。"
+        representative_values: ["192.168.1", "10.0.0"]
+        expr: 'invalid_format(type=wrong_segments, segments=3)'
+        materialized_value: "192.168.1"
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [DST_DEFAULT, DST_CLASS_A]
+        rejected_config_samples: [DST_CLASS_D_INVALID, DST_EMPTY, DST_3_SEGMENTS]
+      function_test:
+        precondition_samples: [DST_DEFAULT, DST_CLASS_A]
+
+  # ── 示例 4: 运行时流量因子（config_test = not_applicable）──
+  - factor_id: FAC-PKT-SRC-IP
+    factor_name: "报文源IPv4"
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-PR-TRAFFIC                         # --- 注意：owner_object 是 TRAFFIC，不是 RULE ---
+    domain_model: ip_address
+    value_type: string
+    aliases: [源IP, 报文源地址]
+    applicable_when: always                              # --- 或与上层因子关联的条件 ---
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: SRC_IP_MATCH
+        sample_class: positive_function
+        expr: "from_rule.src_ip.valid_member"
+        applicability:
+          config_test: not_applicable                    # KEY: 运行时因子不参与配置合法性
+          function_test: positive
+      - sample_id: SRC_IP_MISMATCH
+        sample_class: negative_function
+        expr: "not_in(rule.src_ip)"
+        applicability:
+          config_test: not_applicable
+          function_test: negative
+    usage_profiles:
+      config_test:
+        policy: not_applicable                           # 整类跳过配置覆盖
+      function_test:
+        positive_samples: [SRC_IP_MATCH]
+        negative_samples: [SRC_IP_MISMATCH]
+
+  # ── 示例 5: state 型因子 ──
+  - factor_id: FAC-DOMAIN-STATE
+    factor_name: "状态因子名称"
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-DOMAIN-NAME
+    domain_model: state
+    value_type: state
+    values: [state-a, state-b, state-c]
+    display_values:
+      state-a: 状态A
+      state-b: 状态B
+      state-c: 状态C
+    aliases: [状态别名]
+    applicable_when: "状态变化验证场景"
+    downstream_methods: [S-State, P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+
+  # ── 示例 6: oracle 型因子 ──
+  - factor_id: FAC-EXPECTED-RESULT
+    factor_name: "预期结果"
+    factor_kind: oracle
+    design_role: oracle                                  # KEY: oracle 不生成配置输入
+    owner_object: OBJ-DOMAIN-NAME
+    domain_model: enum
+    value_type: enum
+    values: [result-a, result-b]
+    display_values:
+      result-a: 结果A
+      result-b: 结果B
+    aliases: [预期输出]
+    applicable_when: "结果验证场景"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+
+  # ── 示例 7: constraint 型因子 ──
+  - factor_id: FAC-DOMAIN-CAPABILITY
+    factor_name: "能力约束"
+    factor_kind: constraint
+    design_role: constraint                              # KEY: constraint 不做 driver
+    owner_object: OBJ-DOMAIN-NAME
+    domain_model: enum
+    value_type: enum
+    values: [capable, not-capable]
+    display_values:
+      capable: 支持
+      not-capable: 不支持
+    aliases: [能力]
+    applicable_when: "FAC-X or FAC-Y selected"
+    downstream_methods: [D-Data, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+
+# ═══════════════════════════════════════════════════════
+# 约束（库级）
+# ═══════════════════════════════════════════════════════
+# 约束类型：
+#   - 结构约束：require / forbid 因子
+#   - 值域约束：allowed_values
+#   - 样本用途约束：forbid_usage / require_usage
+#   - 职责边界约束：require_owner_object / forbid_owner_object
+# ═══════════════════════════════════════════════════════
+constraints:
+  # ── 结构约束示例 ──
+  - constraint_id: C-DOMAIN-001
+    description: "条件触发的必选/互斥约束"
+    if: "FAC-A == value-x"                              # --- 触发条件 ---
+    require: [FAC-B]                                    # --- 条件满足时必须选择 ---
+    forbid: [FAC-C]                                     # --- 条件满足时禁止选择 ---
+
+  # ── 值域约束示例 ──
+  - constraint_id: C-DOMAIN-002
+    description: "取值裁剪约束"
+    if: "FAC-A == value-x"
+    allowed_values:
+      FAC-B: [value-1, value-2]                         # --- 限定合法取值集合 ---
+
+  # ── 样本用途约束示例 ──
+  - constraint_id: C-CONFIG-VS-FUNCTION-001
+    description: "配置拒绝样本不得作为功能用例前置"
+    if: "sample.applicability.config_test == rejected"
+    forbid_usage:
+      function_test: [precondition, positive, negative]
+
+  # ── 职责边界约束示例 ──
+  - constraint_id: C-RUNTIME-VS-CONFIG-001
+    description: "报文运行时输入因子不参与配置合法性覆盖"
+    if: "owner_object == OBJ-PR-TRAFFIC and factor_id starts_with FAC-PKT-"
+    require_usage:
+      config_test: not_applicable
+    forbid_usage:
+      config_test: [accepted, rejected]
+
+# ═══════════════════════════════════════════════════════
+# 能力矩阵（可选）
+# ═══════════════════════════════════════════════════════
+capability_matrices:
+  - matrix_id: M-DOMAIN-MATRIX
+    matrix_name: "能力矩阵名称"
+    rows:
+      - scenario: 场景A
+        factor: FAC-X
+        value: value-1
+        display: 显示名
+        valid: true
+      - scenario: 场景B
+        factor: FAC-X
+        value: value-2
+        display: 显示名
+        valid: false
+
+# ═══════════════════════════════════════════════════════
+# 因子组
+# ═══════════════════════════════════════════════════════
+factor_groups:
+  - group_id: GROUP_DOMAIN_FEATURE
+    group_name: "因子组中文名称"
+    factors: [FAC-A, FAC-B, FAC-C]                      # --- 组内因子列表 ---
+    fixed_values:                                        # --- 固定值（可选）---
+      FAC-A: value-x
+    coverage_strategy:                                   # --- 覆盖目标 ---
+      positive: "正向覆盖策略描述"
+      negative: "反向覆盖策略描述"
+      boundary: "边界覆盖策略描述"
+    usage_profiles:                                      # --- 组级样本配置（可选）---
+      config_test:
+        policy: accepted_rejected_required
+      function_test:
+        positive_samples: [SAMPLE_X]
+        negative_samples: [SAMPLE_Y]
+
+# ═══════════════════════════════════════════════════════
+# 流量样本（可选，按需定义组级别的复合流量样本）
+# ═══════════════════════════════════════════════════════
+# traffic_samples:
+#   - sample_id: TRAFFIC_COMBO_1
+#     sample_class: positive_function
+#     factors:
+#       FAC-A: value-a
+#       FAC-B: value-b
+#     materialization:
+#       field_1: from_rule.x
+#       field_2: from_rule.y
+#     usage:
+#       function_test: positive

@@ -1,0 +1,162 @@
+# NGFW 接口因子库
+# 研究区 — ngfw-interface
+# 接口是跨特性的公共资产，安全策略、路由、NAT、HA 等均消费此库。
+
+schema_version: 1
+library_id: ngfw-interface
+version: 0.1.0
+status: candidate
+description: "NGFW 接口公共因子库，覆盖接口 IPv4 地址配置、接口类型和接口状态。"
+
+factors:
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-IF-IPV4-ADDRESS — 接口 IPv4 地址
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-IF-IPV4-ADDRESS
+    factor_name: 接口 IPv4 地址
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-IF-INTERFACE
+    domain_model: ip_network
+    value_type: string
+    domain_expr:
+      version: ipv4
+      semantic_constraints:
+        unicast_only: true
+        exclude_loopback: true
+        exclude_multicast: true
+        prefix_range: "1..30"
+    aliases: [接口IP, 端口IP, 直连路由IP, interface_ip]
+    applicable_when: "interface in routing mode"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      # ── 有效类: 精确锚点 ──
+      - sample_id: IF_IP_ANCHOR_A
+        sample_class: valid_config
+        description: "A类接口IP锚点。1.0.0.1/30。"
+        representative_values: ["1.0.0.1/30"]
+        expr: 'ip_net("1.0.0.1/30")'
+        materialized_value: "1.0.0.1/30"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: IF_IP_ANCHOR_B
+        sample_class: valid_config
+        description: "B类接口IP锚点。128.0.0.1/2。"
+        representative_values: ["128.0.0.1/2"]
+        expr: 'ip_net("128.0.0.1/2")'
+        materialized_value: "128.0.0.1/2"
+        applicability: {config_test: accepted, function_test: precondition}
+      # ── 有效类: 首段范围 ──
+      - sample_id: IF_IP_FIRST_1_126
+        sample_class: valid_config
+        description: "首段 1~126，掩码 1~30。涵盖 A 类单播地址范围。"
+        representative_values: ["<IP_ADDRESS>/24", "60.173.89.1/20", "126.255.255.1/30"]
+        expr: 'ip_net(first=1..126, prefix=1..30)'
+        materialized_value: "<IP_ADDRESS>/24"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: IF_IP_FIRST_128_191
+        sample_class: valid_config
+        description: "首段 128~191，掩码 1~30。涵盖 B 类单播地址范围。"
+        representative_values: ["<IP_ADDRESS>/16", "150.100.50.1/24", "191.255.255.1/30"]
+        expr: 'ip_net(first=128..191, prefix=1..30)'
+        materialized_value: "<IP_ADDRESS>/16"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: IF_IP_FIRST_192_223
+        sample_class: valid_config
+        description: "首段 192~223，掩码 1~30。涵盖 C 类单播地址范围（含私网地址段）。"
+        representative_values: ["<IP_ADDRESS>/24", "200.100.50.1/24", "223.255.255.1/30"]
+        expr: 'ip_net(first=192..223, prefix=1..30)'
+        materialized_value: "<IP_ADDRESS>/24"
+        applicability: {config_test: accepted, function_test: preferred_precondition}
+      # ── 语义无效 ──
+      - sample_id: IF_IP_ZERO
+        sample_class: invalid_config
+        description: "零网段地址。0.x.x.x 不能作为接口IP。"
+        representative_values: ["0.0.0.0/0", "0.0.0.1/24"]
+        expr: 'ip_net(first=0)'
+        materialized_value: "0.0.0.0/0"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: IF_IP_CLASS_D
+        sample_class: invalid_config
+        description: "D类组播地址。224~239 不能作为接口IP。"
+        representative_values: ["224.0.0.1/24", "233.45.12.1/30", "239.255.255.1/24"]
+        expr: 'ip_net(first=224..239)'
+        materialized_value: "224.0.0.1/24"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: IF_IP_LOOPBACK
+        sample_class: invalid_config
+        description: "127环回地址。127.x.x.x 不能作为接口IP。"
+        representative_values: ["127.0.0.1/8", "127.0.0.2/24"]
+        expr: 'ip_net(first=127)'
+        materialized_value: "127.0.0.1/8"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      # ── 格式无效 ──
+      - sample_id: IF_IP_EMPTY
+        sample_class: invalid_format
+        description: "接口IP为空字符串。必填字段缺失。"
+        representative_values: [""]
+        expr: 'invalid_format(type=empty)'
+        materialized_value: ""
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: IF_IP_TOO_LONG
+        sample_class: invalid_format
+        description: "接口IP字符串超出正常长度上限。"
+        representative_values: ["<IP_ADDRESS>.10.20/24/32/extra"]
+        expr: 'invalid_format(type=too_long)'
+        materialized_value: "<IP_ADDRESS>.10.20/24/32/extra"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: IF_IP_3_SEGMENTS
+        sample_class: invalid_format
+        description: "仅3段点分十进制，缺少一段。"
+        representative_values: ["192.168.1", "10.0.0"]
+        expr: 'invalid_format(type=wrong_segments, segments=3)'
+        materialized_value: "192.168.1"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: IF_IP_5_SEGMENTS
+        sample_class: invalid_format
+        description: "5段点分十进制，多余一段。"
+        representative_values: ["1.2.3.4.5", "<IP_ADDRESS>.100"]
+        expr: 'invalid_format(type=wrong_segments, segments=5)'
+        materialized_value: "1.2.3.4.5"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: IF_IP_BAD_SEPARATOR
+        sample_class: invalid_format
+        description: "IP段之间使用非点号分隔符（如中划线）。"
+        representative_values: ["192-168-1-1/24", "10:0:0:1/8"]
+        expr: 'invalid_format(type=bad_separator, sep="-")'
+        materialized_value: "192-168-1-1/24"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: IF_IP_BAD_MASK_SEP
+        sample_class: invalid_format
+        description: "掩码前不使用正斜杠分隔（如反斜杠、冒号）。"
+        representative_values: ["<IP_ADDRESS>\\24", "<IP_ADDRESS>:8"]
+        expr: 'invalid_format(type=bad_mask_sep, sep="\\")'
+        materialized_value: "<IP_ADDRESS>\\24"
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: IF_IP_HEX
+        sample_class: invalid_format
+        description: "IP地址使用16进制格式，不支持。"
+        representative_values: ["0xC0A80101/24", "0x0A000001/8"]
+        expr: 'invalid_format(type=hex)'
+        materialized_value: "0xC0A80101/24"
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples:
+          [IF_IP_ANCHOR_A, IF_IP_ANCHOR_B, IF_IP_FIRST_1_126, IF_IP_FIRST_128_191, IF_IP_FIRST_192_223]
+        rejected_config_samples:
+          [IF_IP_ZERO, IF_IP_CLASS_D, IF_IP_LOOPBACK,
+           IF_IP_EMPTY, IF_IP_TOO_LONG, IF_IP_3_SEGMENTS, IF_IP_5_SEGMENTS,
+           IF_IP_BAD_SEPARATOR, IF_IP_BAD_MASK_SEP, IF_IP_HEX]
+      function_test:
+        precondition_samples: [IF_IP_FIRST_192_223]
+
+external_consumers:
+  - consumer: ngfw-ipv4-route/FAC-RT-NEXT-HOP
+    samples_used: [accepted, invalid_config]
+    note: "下一跳必须与至少一个接口 IP 同网段，且不能等于任何本机接口 IP"
+  - consumer: ngfw-ipv4-route/C-RT-NH-002
+    samples_used: [accepted]
+    note: "同网段约束校验"

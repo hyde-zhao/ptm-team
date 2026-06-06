@@ -18,7 +18,7 @@ status: active
 
 - 适用阶段：MFQ 分析的 input 阶段
 - 输入：特性需求文件（Markdown/Word/Excel/PDF）
-- 输出：`analysis/feature-input/` 目录下的结构化文件
+- 输出：`kym/feature-input/` 目录下的结构化文件
 
 ## 支持的输入格式
 
@@ -33,7 +33,7 @@ status: active
 
 - [ ] CP01 input 自检已通过，或已明确记录阻断项
 - [ ] 用户已提供特性需求文件路径，或 CP01 已从 `input/` / wiki 找到需求文件
-- [ ] `analysis/feature-input/` 与 `doc/STATE.yaml` 已初始化
+- [ ] `kym/feature-input/` 与 `doc/STATE.yaml` 已初始化
 - [ ] `file-to-markdown` Skill 可用（用于非 MD 格式的预转换）
 
 ## 执行流程
@@ -101,7 +101,7 @@ status: active
 
 ### 步骤 5：输出持久化
 
-将结果写入 `analysis/feature-input/`：
+将结果写入 `kym/feature-input/`：
 
 #### raw-requirements.md 格式
 
@@ -131,7 +131,7 @@ status: active
 
 ## Gotchas
 
-- **⚠️ 输出路径必须是 `analysis/feature-input/`**（相对于特性项目根），不是 `analysis/feature-input/`，也不是 `analysis/feature-input/`。例如 cwd=`D:\project` 时，正确绝对路径是 `D:\project\analysis\feature-input\raw-requirements.md`
+- **⚠️ 输出路径必须是 `kym/feature-input/`**（相对于特性项目根），不是 `kym/feature-input/`，也不是 `kym/feature-input/`。例如 cwd=`D:\project` 时，正确绝对路径是 `D:\project\kym\feature-input\raw-requirements.md`
 - Excel 转换后可能出现 `NaN`、`Unnamed` 等伪值，需清洗
 - 合并单元格转换后模块归属可能丢失，需从上下文推断
 - 部分需求文件没有明确的模块分类，需通过功能语义聚合
@@ -142,5 +142,5 @@ status: active
 - [ ] 所有需求条目均被提取（编号/模块/名称/描述 四字段完整）
 - [ ] 目录结构包含三级/四级/五级三个层级
 - [ ] 用户已确认目录结构
-- [ ] `raw-requirements.md` 和 `directory-structure.md` 已写入 `analysis/feature-input/`
+- [ ] `raw-requirements.md` 和 `directory-structure.md` 已写入 `kym/feature-input/`
 - [ ] 更新 `doc/STATE.yaml` 的 `current_step` 为下一步

@@ -1,0 +1,158 @@
+# NGFW HA 因子库
+# 研究区 — ngfw-ha
+# 从发布区 ngfw-policy-routing 迁移
+
+schema_version: 1
+library_id: ngfw-ha
+version: 0.1.0
+status: candidate
+description: "NGFW HA 高可用公共因子库，覆盖主备角色、同步状态、切换动作和承载设备判定。"
+
+factors:
+
+  - factor_id: FAC-HA-ROLE
+    factor_name: HA 角色
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-HA
+    domain_model: enum
+    value_type: enum
+    values: [primary, standby]
+    display_values:
+      primary: 主设备
+      standby: 备设备
+    aliases: [HA角色, 主备角色]
+    applicable_when: always
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: HA_PRIMARY
+        sample_class: valid_member
+        description: "主设备承载业务。"
+        representative_values: ["primary"]
+        expr: 'primary'
+        materialized_value: "primary"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: HA_STANDBY
+        sample_class: valid_member
+        description: "备设备待命。"
+        representative_values: ["standby"]
+        expr: 'standby'
+        materialized_value: "standby"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  - factor_id: FAC-HA-SYNC-STATE
+    factor_name: HA 配置同步状态
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-HA
+    domain_model: enum
+    value_type: enum
+    values: [synced, not-synced, partially-synced]
+    display_values:
+      synced: 已同步
+      not-synced: 未同步
+      partially-synced: 部分同步
+    aliases: [HA同步, 配置同步, 主备同步]
+    applicable_when: always
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: HA_SYNCED
+        sample_class: positive_function
+        description: "主备配置已同步，切换后规则一致。"
+        representative_values: ["synced"]
+        expr: 'synced'
+        materialized_value: "synced"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: HA_NOT_SYNCED
+        sample_class: negative_function
+        description: "主备配置未同步，切换后可能不一致。"
+        representative_values: ["not-synced"]
+        expr: 'not-synced'
+        materialized_value: "not-synced"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-HA-FAILOVER-ACTION
+    factor_name: HA 切换动作
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-HA
+    domain_model: enum
+    value_type: enum
+    values: [trigger-failover, recover-primary, fallback]
+    display_values:
+      trigger-failover: 触发主故障切换
+      recover-primary: 主设备恢复
+      fallback: 回切
+    aliases: [HA切换, 故障切换, 主备切换动作]
+    applicable_when: always
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: HA_FAILOVER
+        sample_class: valid_member
+        description: "触发主故障切换，业务迁移到备设备。"
+        representative_values: ["trigger-failover"]
+        expr: 'trigger-failover'
+        materialized_value: "trigger-failover"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: HA_RECOVER
+        sample_class: valid_member
+        description: "主设备恢复后回切。"
+        representative_values: ["fallback"]
+        expr: 'fallback'
+        materialized_value: "fallback"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-HA-EXPECTED-ACTIVE-DEVICE
+    factor_name: 预期承载设备
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-HA
+    domain_model: enum
+    value_type: enum
+    values: [primary-active, standby-active, unchanged]
+    display_values:
+      primary-active: 主设备承载
+      standby-active: 备设备承载
+      unchanged: 不切换或保持当前承载
+    aliases: [预期主设备, HA承载判定]
+    applicable_when: "HA failover validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: HA_EXPECT_PRIMARY
+        sample_class: positive_function
+        description: "业务由主设备承载。"
+        representative_values: ["primary-active"]
+        expr: 'primary-active'
+        materialized_value: "primary-active"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: HA_EXPECT_STANDBY
+        sample_class: positive_function
+        description: "故障切换后业务由备设备承载。"
+        representative_values: ["standby-active"]
+        expr: 'standby-active'
+        materialized_value: "standby-active"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+factor_groups:
+  - group_id: HA_MAINTENANCE
+    group_name: HA 基础状态
+    factors: [FAC-HA-ROLE, FAC-HA-SYNC-STATE]
+    coverage_strategy:
+      positive: 主角色 + 已同步
+      negative: 未同步
+
+  - group_id: HA_FAILOVER
+    group_name: HA 故障切换
+    factors: [FAC-HA-ROLE, FAC-HA-FAILOVER-ACTION, FAC-HA-EXPECTED-ACTIVE-DEVICE]
+    coverage_strategy:
+      state: 覆盖主故障切换、主恢复、回切
+
+external_consumers: []

@@ -21,18 +21,18 @@ status: active
 
 ## 适用范围
 
-> 统一输出规则：本 Skill 的方法过程写入 `design/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
+> 统一输出规则：本 Skill 的方法过程写入 `ppdcs/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `ppdcs/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
 
 
 - 适用阶段：MFQ 的 design 阶段
 - 输入：
-  - `analysis/integration/design-plan.md`
-  - `analysis/plan/design-planner-reasoning.md`
-  - `analysis/integration/logic-cases.md`
-  - `analysis/integration/test-data.md`
-  - `analysis/scenarios/confirmed-scenarios.md`
+  - `process/plan/design-plan.md`
+  - `process/plan/design-planner-reasoning.md`
+  - `mfq/integration/logic-cases.md`
+  - `mfq/integration/test-data.md`
+  - `kym/scenarios/confirmed-scenarios.md`
   - `process/REQUIREMENTS.md` / `process/HLD.md`（仅作为状态边界与术语基线）
-- 输出：`design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
+- 输出：`ppdcs/ppdcs/<basename>.md` 与 `ppdcs/pc/<basename>.md`
 
 ## 前置条件
 
@@ -50,6 +50,7 @@ status: active
 |------|----------|------|
 | `design-plan.md` | `LC-ID`, `逻辑用例标题`, `PPDCS特征`, `推荐方法`, `设计Skill`, `主信号`, `候选特征`, `排除摘要`, `关键trace`, `待确认事项` | 确认 LC 应进入 `state-design` |
 | `design-planner-reasoning.md` | `recommended_feature`, `recommended_method`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `scenario_refs`, `scenario_chain_refs`, `td_refs`, `test_object_refs`, `factor_refs`, `uncertain_facts` | 解释为何采用状态图法，并保留未确认事实 |
+| `directory-structure.md` | `### 三级目录`, 四级/五级目录层级映射 | 回查完整 `三级→四级→五级` 层级链，用于构造输出文件名 |
 
 ### 2. STORY-04 / 上游场景与 trace 契约
 
@@ -188,7 +189,7 @@ status: active
 若无法确认某状态是否存在、某迁移是否允许，必须：
 
 - 不生成伪确定路径；
-- 在 `design/ppdcs/<basename>.md` 单列 `[待确认]`；
+- 在 `ppdcs/ppdcs/<basename>.md` 单列 `[待确认]`；
 - 维持 `fact_status=needs-confirmation`。
 
 ### 步骤 6：生成物理用例
@@ -224,11 +225,11 @@ PC 由 `覆盖策略选中的 state_path × data_overlay_set` 生成。
 ## 输出文件结构
 
 ```text
-design/ppdcs/<basename>.md
-design/pc/<basename>.md
+ppdcs/ppdcs/<basename>.md
+ppdcs/pc/<basename>.md
 ```
 
-### `design/ppdcs/<basename>.md`
+### `ppdcs/ppdcs/<basename>.md`
 
 至少包含：
 
@@ -246,7 +247,7 @@ design/pc/<basename>.md
 - PC Derivation Summary
 - Uncertain Facts / Confirmation Gaps
 
-### `design/pc/<basename>.md`
+### `ppdcs/pc/<basename>.md`
 
 只输出最终 PC，但每条 PC 必须回链：
 
@@ -306,6 +307,35 @@ stateDiagram-v2
 - 若 `P-Process` 仍是强候选，必须写清“为何此处核心是状态迁移而非步骤流程”
 - 不得把 TOPO 实例、link 或真实端口写成状态值、迁移守卫值或测试因子值。
 
+## 方法论细则（用户可定制）
+
+> 以下为设计方法的指导框架。用户可根据项目特点和领域知识补充具体规则。
+> 详细的 PPDCS 方法论参见 `ppdcs-analysis-step-by-step.md`。
+
+### 状态图法设计步骤
+
+**目标**：基于对象生命周期和场景链，构建状态迁移模型，通过 Chow's 0/1-switch 覆盖策略生成覆盖合法迁移和代表性非法迁移的 PC。
+
+**核心步骤**：
+1. 从 LC 动作路径和 confirmed-scenarios 识别状态主体、稳定状态候选和迁移动作
+2. 建立状态清单（state_id、state_name、entry_conditions、exit_observations）和迁移表（from/to/event/guard/effect）
+3. 绘制 Mermaid stateDiagram-v2，显式标注守卫条件和迁移方向
+4. 枚举迁移路径：主生命周期路径、关键回退路径、边界守卫路径、代表性非法迁移路径
+5. 为每条迁移路径挂接守卫条件数据（来自 test-data.md），区分通过/失败预期
+6. 定义覆盖策略：采用 Chow's 0-switch（合法迁移全覆盖）和 1-switch（迁移对覆盖）策略
+
+**关键决策点**：
+- 状态识别规则：状态必须是"对象稳定状态"（如 active/inactive/error），不是瞬时动作
+- 合法 vs 非法迁移区分：合法迁移可从需求/状态图直接推导；非法迁移只能覆盖需求已定义或可从合法迁移矩阵推导的代表性样例
+- 守卫条件提取：从 test-data 的 value_set 映射到迁移的 guard 字段；TD.status=needs-confirmation 时守卫标记 `[待确认]`
+- Chow's 1-switch 适用条件：高风险/核心对象建议覆盖；简单对象可只覆盖 0-switch
+
+**示例**（防火墙领域）：
+以日志外发连接状态为例，状态包括 Disconnected→Connecting→Connected→Disconnecting。迁移 T1: Disconnected→Connecting（event=connect, guard=server_reachable=yes）。非法迁移：Connected 状态下重复 connect 应保持 Connected 并记录拒绝原因。
+
+**下游影响**：
+状态迁移路径选择直接决定 PC 生成（state_path_id × data_overlay_set → PC）；覆盖策略影响 GATE-4 中迁移覆盖率检查（legal_transition_coverage ≥100%，illegal_representative_coverage ≥80%）；needs-confirmation 状态/迁移生成的 PC 不参与已覆盖计数。
+
 ## 验收标准
 
 - [ ] 同时消费 `design-plan.md` 与 `design-planner-reasoning.md`
@@ -314,5 +344,5 @@ stateDiagram-v2
 - [ ] 迁移路径保留 `scenario_chain_refs / confirmation_gap_refs / fact_status`
 - [ ] `TD.status=needs-confirmation` 未被静默定值
 - [ ] 物理用例字段骨架与 `process-design` 一致
-- [ ] 输出采用 `design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
+- [ ] 输出采用 `ppdcs/ppdcs/<basename>.md` 与 `ppdcs/pc/<basename>.md`
 - [ ] 已消费 LC `topology_bindings`；真实端口物化保留来源和 `fact_status`，且未进入 factor/data/state value

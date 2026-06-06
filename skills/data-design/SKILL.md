@@ -29,15 +29,15 @@ D-Data 是 PPDCS 五特征之一：
 
 ## 适用范围
 
-> 统一输出规则：本 Skill 的方法过程写入 `design/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `design/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
+> 统一输出规则：本 Skill 的方法过程写入 `ppdcs/ppdcs/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，物理用例写入 `ppdcs/pc/<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`。不得创建 `design/<module>/<sub-module>/` 深目录；同名冲突追加 `-<LC-ID>`。
 
 
 - 适用阶段：MFQ 的 design 阶段
-- 设计输入：`analysis/integration/design-plan.md`
-- reasoning 输入：`analysis/plan/design-planner-reasoning.md`
-- 上游 trace 输入：`analysis/integration/logic-cases.md`、`analysis/integration/test-data.md`
-- PPDCS 基线：`analysis/m-analysis/ppdcs-annotation.md`
-- 输出：`design/ppdcs/<basename>.md` 与 `design/pc/<basename>.md`
+- 设计输入：`process/plan/design-plan.md`
+- reasoning 输入：`process/plan/design-planner-reasoning.md`
+- 上游 trace 输入：`mfq/integration/logic-cases.md`、`mfq/integration/test-data.md`
+- PPDCS 基线：`mfq/m-analysis/ppdcs-annotation.md`
+- 输出：`ppdcs/ppdcs/<basename>.md` 与 `ppdcs/pc/<basename>.md`
 
 ## 必收输入契约（STORY-05 / STORY-04）
 
@@ -47,6 +47,7 @@ D-Data 是 PPDCS 五特征之一：
 | `design-planner-reasoning.md` | `recommended_feature`, `design_skill`, `fact_status`, `primary_signal`, `candidate_features`, `exclusion_reasons`, `factor_refs`, `uncertain facts` | 判断为什么是 D-Data、哪些事实未确认 |
 | `logic-cases.md` | `动作路径`, `因子-取值表`, `topology_bindings`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 建立 factor catalog、拓扑绑定目录与 LC 叠加位置 |
 | `test-data.md` | `TD-ID`, `factor_ref`, `value_set`, `source_section`, `status`, `confirmation_gap_refs` | 提取取值域、边界、异常值 |
+| `directory-structure.md` | `### 三级目录`, 四级/五级目录层级映射 | 回查完整 `三级→四级→五级` 层级链，用于构造输出文件名 |
 
 若 reasoning 提示 `candidate-secondary=P-Parameter / C-Combination`：
 - 不得直接忽略；
@@ -65,7 +66,7 @@ D-Data 是 PPDCS 五特征之一：
 1. `TD.status=needs-confirmation` 的边界值只能以 `[待确认]` 进入数据分析表。
 2. 缺最小值 / 最大值 / 精度 / 默认值时，不得脑补。
 3. 若发现交叉约束或规则依赖，必须写明“可能应切换到 `parameter-design` / `combination-design`”。
-4. `design/ppdcs/<basename>.md` 中必须保留 reasoning 的 `uncertain facts` 与当前数据分析结论的映射。
+4. `ppdcs/ppdcs/<basename>.md` 中必须保留 reasoning 的 `uncertain facts` 与当前数据分析结论的映射。
 
 ## 拓扑绑定边界
 
@@ -166,11 +167,11 @@ D-Data 是 PPDCS 五特征之一：
 ## 输出目录结构
 
 ```text
-design/ppdcs/<basename>.md
-design/pc/<basename>.md
+ppdcs/ppdcs/<basename>.md
+ppdcs/pc/<basename>.md
 ```
 
-`design/ppdcs/<basename>.md` 至少包含：
+`ppdcs/ppdcs/<basename>.md` 至少包含：
 1. `design-plan.md` 与 `design-planner-reasoning.md` 的输入对齐结果；
 2. factor catalog；
 3. 等价类/边界值分析表；
@@ -204,6 +205,33 @@ design/pc/<basename>.md
 - `[待确认]` 边界、默认值、精度要求必须透传
 - 输出不能只剩最终 PC，必须保留等价类、边界策略和分配过程
 - 不得把 TOPO 实例、link 或真实端口当作数据值做等价类/边界值分析；它们只能作为 PC 物化目标。
+
+## 方法论细则（用户可定制）
+
+> 以下为设计方法的指导框架。用户可根据项目特点和领域知识补充具体规则。
+> 详细的 PPDCS 方法论参见 `ppdcs-analysis-step-by-step.md`。
+
+### 等价类+边界值法设计步骤
+
+**目标**：对独立数据项进行等价类划分和边界值分析，通过一次一个无效值的隔离策略生成覆盖合法/非法取值的 PC。
+
+**核心步骤**：
+1. 从 LC 因子-取值表和 test-data 形成 factor catalog，标注 data_type、值域摘要、fact_status
+2. 为每个数据项划分等价类：有效典型值（valid-typical）、有效边界值（valid-boundary）、无效值（invalid），标注 boundary_role
+3. 按三点法选取边界值：数值型取 min/min+1/typical/max-1/max/min-1/max+1；枚举型取合法枚举+非法枚举+空值
+4. 执行独立性检查：确认数据项间无规则依赖（否则应回退 Parameter/Combination），输出检查表
+5. 分配 data row：有效典型值可合并，有效边界值单独保留，无效值一次一个隔离
+
+**关键决策点**：
+- 等价类粒度：何时拆分/合并——取决于取值对预期结果的影响是否有差异
+- 独立性判断标准：数据项 A 的合法值范围不因 B 的取值改变 → 独立；TD 中出现 IF/THEN → 依赖
+- 边界值三点法适用条件：数值型必用三点法；枚举型用合法+非法；字符串型加空串/超长/非法字符
+
+**示例**（防火墙领域）：
+以日志保存天数配置为例，数据项为"保存天数"（1~365）。等价类划分：有效典型值=30，有效边界值=1/365，无效边界值=0/366。每个无效值单独一条 PC（PC-LOG-004: retention=0, size=512），其余数据项保持有效值。
+
+**下游影响**：
+data_row 分配表直接决定 PC 生成（LC + data_row → PC）；独立性检查结论影响方法回退决策（若检查失败，需在过程文档中记录为何切换）；needs-confirmation 边界值生成的 PC 在 GATE-4 覆盖率检查中不参与已覆盖计数。
 
 ## 验收标准
 

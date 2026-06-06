@@ -1,0 +1,505 @@
+# NGFW 链路负载均衡因子库
+# 研究区 — ngfw-load-balance
+# API: /api/v1/loadbalancepolicy
+
+schema_version: 1
+library_id: ngfw-load-balance
+version: 0.1.0
+status: candidate
+description: "NGFW 链路负载均衡公共因子库。覆盖分担模式、接口权重/带宽/优先级、链路检测、过载保护和会话保持。"
+
+factors:
+
+  - factor_id: FAC-LB-POLICY-ENABLE
+    factor_name: 负载均衡策略启用
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-LB-POLICY
+    domain_model: enum
+    value_type: enum
+    values: [enabled, disabled]
+    display_values:
+      enabled: 启用
+      disabled: 禁用
+    aliases: [LB启用, lb_enable]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: LB_ENABLED
+        sample_class: positive_function
+        description: "负载均衡策略已启用，链路按配置分担。"
+        representative_values: ["enabled"]
+        expr: 'enabled'
+        materialized_value: "enabled"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: LB_DISABLED
+        sample_class: negative_function
+        description: "负载均衡策略已禁用，链路不分担。"
+        representative_values: ["disabled"]
+        expr: 'disabled'
+        materialized_value: "disabled"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-LB-POLICY-MODE
+    factor_name: 分担模式
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-LB-POLICY
+    domain_model: enum
+    value_type: enum
+    values:
+      bandwidth: 1
+      weight: 2
+      primary-backup: 4
+    display_values:
+      bandwidth: 链路带宽
+      weight: 链路权重
+      primary-backup: 主备备份
+    aliases: [分担模式, LB模式, lb_mode, mode]
+    applicable_when: "FAC-LB-POLICY-ENABLE == enabled"
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      mode 1: 按链路带宽比例分担
+      mode 2: 按链路权重比例分担
+      mode 4: 主备备份，仅主链路承载业务
+      无 mode 3。
+    sample_definitions:
+      - sample_id: LB_MODE_BANDWIDTH
+        sample_class: valid_member
+        description: "按链路带宽分担。带宽大的链路承载更多流量。"
+        representative_values: ["bandwidth"]
+        expr: 'bandwidth'
+        materialized_value: "bandwidth"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: LB_MODE_WEIGHT
+        sample_class: valid_member
+        description: "按链路权重分担。权重高的链路承载更多流量。"
+        representative_values: ["weight"]
+        expr: 'weight'
+        materialized_value: "weight"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: LB_MODE_PRIMARY_BACKUP
+        sample_class: valid_member
+        description: "主备备份。主链路故障后切换到备链路。"
+        representative_values: ["primary-backup"]
+        expr: 'primary-backup'
+        materialized_value: "primary-backup"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  - factor_id: FAC-LB-INTERFACE-BANDWIDTH
+    factor_name: 接口带宽
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-LB-INTERFACE
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[1,100000]"
+    aliases: [带宽, bandwidth, lb_bandwidth]
+    applicable_when: "FAC-LB-POLICY-MODE == bandwidth"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      仅 bandwidth 模式生效。单位为 Mbps。
+    sample_definitions:
+      - sample_id: LB_BW_MIN
+        sample_class: boundary_min
+        description: "带宽最小值 1 Mbps。"
+        representative_values: ["1"]
+        expr: "min"
+        materialized_value: 1
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: LB_BW_NOMINAL
+        sample_class: in_range_nominal
+        description: "带宽典型值 100/1000/10000 Mbps。"
+        representative_values: ["100", "1000", "10000"]
+        expr: "random_choice([100,1000,10000], seed=case_id)"
+        materialized_value: 100
+        applicability: {config_test: accepted, function_test: preferred_precondition}
+      - sample_id: LB_BW_BELOW_MIN
+        sample_class: below_min
+        description: "带宽低于最小值 0。配置拒绝。"
+        representative_values: ["0"]
+        expr: "min - 1"
+        materialized_value: 0
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [LB_BW_MIN, LB_BW_NOMINAL]
+        rejected_config_samples: [LB_BW_BELOW_MIN]
+      function_test:
+        precondition_samples: [LB_BW_NOMINAL]
+
+  - factor_id: FAC-LB-INTERFACE-WEIGHT
+    factor_name: 接口权重
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-LB-INTERFACE
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[1,255]"
+    aliases: [权重, lb_weight, 接口权重]
+    applicable_when: "FAC-LB-POLICY-MODE == weight"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: LB_WEIGHT_MIN
+        sample_class: boundary_min
+        description: "权重最小值 1。"
+        representative_values: ["1"]
+        expr: "min"
+        materialized_value: 1
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: LB_WEIGHT_MAX
+        sample_class: boundary_max
+        description: "权重最大值 255。"
+        representative_values: ["255"]
+        expr: "max"
+        materialized_value: 255
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: LB_WEIGHT_NOMINAL
+        sample_class: in_range_nominal
+        description: "权重域内随机典型值 2~254。"
+        representative_values: ["100", "137"]
+        expr: "random_int(2,254,seed=case_id)"
+        materialized_value: 100
+        applicability: {config_test: accepted, function_test: preferred_precondition}
+      - sample_id: LB_WEIGHT_BELOW_MIN
+        sample_class: below_min
+        description: "权重低于最小值 0。配置拒绝。"
+        representative_values: ["0"]
+        expr: "min - 1"
+        materialized_value: 0
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: LB_WEIGHT_ABOVE_MAX
+        sample_class: above_max
+        description: "权重高于最大值 256。配置拒绝。"
+        representative_values: ["256"]
+        expr: "max + 1"
+        materialized_value: 256
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [LB_WEIGHT_MIN, LB_WEIGHT_MAX, LB_WEIGHT_NOMINAL]
+        rejected_config_samples: [LB_WEIGHT_BELOW_MIN, LB_WEIGHT_ABOVE_MAX]
+      function_test:
+        precondition_samples: [LB_WEIGHT_NOMINAL]
+
+  - factor_id: FAC-LB-INTERFACE-PRIORITY
+    factor_name: 接口优先级
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-LB-INTERFACE
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[1,255]"
+    aliases: [优先级, lb_priority, 主备优先级]
+    applicable_when: "FAC-LB-POLICY-MODE == primary-backup"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      仅主备备份模式生效。值越小优先级越高。优先级最高的接口承载业务。
+    sample_definitions:
+      - sample_id: LB_PRI_MIN
+        sample_class: boundary_min
+        description: "优先级最高 1。"
+        representative_values: ["1"]
+        expr: "min"
+        materialized_value: 1
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: LB_PRI_NOMINAL
+        sample_class: in_range_nominal
+        description: "优先级典型值。"
+        representative_values: ["50", "100"]
+        expr: "random_int(2,254,seed=case_id)"
+        materialized_value: 50
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [LB_PRI_MIN, LB_PRI_NOMINAL]
+      function_test:
+        precondition_samples: [LB_PRI_NOMINAL]
+
+  - factor_id: FAC-LB-INTERFACE-THRESHOLD
+    factor_name: 接口过载阈值
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-LB-INTERFACE
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[1,100]"
+    aliases: [阈值, threshold, 过载阈值]
+    applicable_when: "FAC-LB-OVERLOAD-PROTECTION == enabled"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      百分比。链路带宽利用率超过阈值时触发过载保护。
+    sample_definitions:
+      - sample_id: LB_THRESHOLD_TYPICAL
+        sample_class: in_range_nominal
+        description: "阈值典型值 80~95%。"
+        representative_values: ["80", "90", "95"]
+        expr: "random_choice([80,90,95], seed=case_id)"
+        materialized_value: 90
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: LB_THRESHOLD_MAX
+        sample_class: boundary_max
+        description: "阈值最大值 100%。"
+        representative_values: ["100"]
+        expr: "max"
+        materialized_value: 100
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: LB_THRESHOLD_ABOVE_MAX
+        sample_class: above_max
+        description: "阈值超过 100%。配置拒绝。"
+        representative_values: ["101"]
+        expr: "max + 1"
+        materialized_value: 101
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [LB_THRESHOLD_TYPICAL, LB_THRESHOLD_MAX]
+        rejected_config_samples: [LB_THRESHOLD_ABOVE_MAX]
+
+  - factor_id: FAC-LB-OVERLOAD-PROTECTION
+    factor_name: 过载保护
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-LB-POLICY
+    domain_model: enum
+    value_type: enum
+    values: [enabled, disabled]
+    display_values:
+      enabled: 启用
+      disabled: 禁用
+    aliases: [过载保护, overloadProtection]
+    applicable_when: always
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: LB_OVERLOAD_ON
+        sample_class: valid_member
+        description: "过载保护已启用。链路超阈值时触发保护。"
+        representative_values: ["enabled"]
+        expr: 'enabled'
+        materialized_value: "enabled"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: LB_OVERLOAD_OFF
+        sample_class: valid_member
+        description: "过载保护已禁用。"
+        representative_values: ["disabled"]
+        expr: 'disabled'
+        materialized_value: "disabled"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  - factor_id: FAC-LB-SESSION-HOLD
+    factor_name: 会话保持
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-LB-POLICY
+    domain_model: enum
+    value_type: enum
+    values: [enabled, disabled]
+    display_values:
+      enabled: 启用
+      disabled: 禁用
+    aliases: [会话保持, sessionHold]
+    applicable_when: always
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      启用后，已有会话在链路切换时保持原链路，新会话按新模式分担。
+    sample_definitions:
+      - sample_id: LB_HOLD_ON
+        sample_class: valid_member
+        description: "会话保持已启用。切换时已有会话不中断。"
+        representative_values: ["enabled"]
+        expr: 'enabled'
+        materialized_value: "enabled"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: LB_HOLD_OFF
+        sample_class: valid_member
+        description: "会话保持已禁用。"
+        representative_values: ["disabled"]
+        expr: 'disabled'
+        materialized_value: "disabled"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  - factor_id: FAC-LB-LINK-DETECTION
+    factor_name: 链路检测参数
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-LB-POLICY
+    domain_model: enum
+    value_type: enum
+    values:
+      linkDetectionParameter: 1
+      linkDetectionInterval: 2
+      linkDetectionPkt: 3
+    display_values:
+      linkDetectionParameter: 检测参数
+      linkDetectionInterval: 检测间隔
+      linkDetectionPkt: 检测报文数
+    aliases: [链路检测, linkDetection]
+    applicable_when: always
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      链路检测的三个参数维度，值为具体数值（由 PC 阶段组装）。
+    sample_definitions:
+      - sample_id: LB_DETECT_PARAM
+        sample_class: valid_member
+        description: "链路检测参数配置。"
+        representative_values: ["linkDetectionParameter"]
+        expr: 'linkDetectionParameter'
+        materialized_value: "linkDetectionParameter"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  # ═══════════════════════════════════════════════════════
+  # 从 ngfw-ipv4-route 迁移
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-L3-NH-WEIGHT
+    factor_name: 下一跳权重
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-LB-POLICY
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[1,255]"
+    aliases: [权重, 负载权重, 等价路由权重, NH_WEIGHT]
+    applicable_when: "路由级下一跳权重配置"
+    downstream_methods: [D-Data, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      从 ngfw-ipv4-route 迁移。策略路由和 ECMP 的下一跳权重。
+      与 FAC-LB-INTERFACE-WEIGHT 的区别:
+      - NH-WEIGHT: 路由级，配置在策略路由规则或静态路由中，按流分担，2的幂归一化
+      - INTERFACE-WEIGHT: 链路级，配置在负载均衡策略中，与 INTERFACE-BANDWIDTH/INTERFACE-PRIORITY 互斥
+      当 LB 策略的接口覆盖了路由的出口时，LB 优先生效。
+    sample_definitions:
+      - sample_id: NH_WEIGHT_MIN
+        sample_class: boundary_min
+        description: "权重最小值 1。"
+        representative_values: ["1"]
+        expr: "min"
+        materialized_value: 1
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_WEIGHT_MAX
+        sample_class: boundary_max
+        description: "权重最大值 255。"
+        representative_values: ["255"]
+        expr: "max"
+        materialized_value: 255
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_WEIGHT_NOMINAL
+        sample_class: in_range_nominal
+        description: "权重域内随机典型值 2~254。"
+        representative_values: ["100", "137"]
+        expr: "random_int(2,254,seed=case_id)"
+        materialized_value: 100
+        applicability: {config_test: accepted, function_test: preferred_precondition}
+      - sample_id: NH_WEIGHT_BELOW_MIN
+        sample_class: below_min
+        description: "权重低于最小值 0。配置拒绝。"
+        representative_values: ["0"]
+        expr: "min - 1"
+        materialized_value: 0
+        applicability: {config_test: rejected, function_test: not_applicable}
+      - sample_id: NH_WEIGHT_ABOVE_MAX
+        sample_class: above_max
+        description: "权重高于最大值 256。配置拒绝。"
+        representative_values: ["256"]
+        expr: "max + 1"
+        materialized_value: 256
+        applicability: {config_test: rejected, function_test: not_applicable}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [NH_WEIGHT_MIN, NH_WEIGHT_MAX, NH_WEIGHT_NOMINAL]
+        rejected_config_samples: [NH_WEIGHT_BELOW_MIN, NH_WEIGHT_ABOVE_MAX]
+      function_test:
+        precondition_samples: [NH_WEIGHT_NOMINAL]
+
+# ═══════════════════════════════════════════════════════
+# 约束
+# ═══════════════════════════════════════════════════════
+constraints:
+  # LB 优先级: LB 覆盖的接口上，路由级权重/ECMP 不生效
+  - constraint_id: C-LB-PRECEDENCE-001
+    description: "LB策略覆盖的接口上，路由级权重和ECMP配置不生效，以LB策略为准"
+    if: "FAC-LB-POLICY-ENABLE == enabled and interface in lb.interfaces"
+    forbid:
+      - FAC-L3-NH-WEIGHT
+      - ngfw-ipv4-route/FAC-RT-PRIORITY
+
+  # 模式互斥
+  - constraint_id: C-LB-MODE-001
+    description: "三种分担模式互斥，同一策略只能选一种"
+    if: "FAC-LB-POLICY-MODE selected"
+    forbid_combination:
+      - [bandwidth, weight]
+      - [bandwidth, primary-backup]
+      - [weight, primary-backup]
+
+  # 权重仅 weight 模式生效
+  - constraint_id: C-LB-WEIGHT-001
+    description: "接口权重仅在 weight 模式下生效"
+    if: "FAC-LB-POLICY-MODE != weight"
+    forbid: [FAC-LB-INTERFACE-WEIGHT]
+
+  # 优先级仅主备模式生效
+  - constraint_id: C-LB-PRI-001
+    description: "接口优先级仅在主备模式下生效"
+    if: "FAC-LB-POLICY-MODE != primary-backup"
+    forbid: [FAC-LB-INTERFACE-PRIORITY]
+
+# ═══════════════════════════════════════════════════════
+# 因子组
+# ═══════════════════════════════════════════════════════
+factor_groups:
+  - group_id: LB_POLICY_CONFIG
+    group_name: 负载均衡策略配置
+    factors: [FAC-LB-POLICY-ENABLE, FAC-LB-POLICY-MODE]
+    coverage_strategy:
+      all: 三种模式全部覆盖
+
+  - group_id: LB_INTERFACE_BANDWIDTH
+    group_name: 带宽分担模式
+    factors: [FAC-LB-POLICY-MODE, FAC-LB-INTERFACE-BANDWIDTH, FAC-LB-OVERLOAD-PROTECTION, FAC-LB-INTERFACE-THRESHOLD]
+    fixed_values:
+      FAC-LB-POLICY-MODE: bandwidth
+    coverage_strategy:
+      positive: 多接口配置不同带宽，验证按比例分担
+
+  - group_id: LB_INTERFACE_WEIGHT
+    group_name: 权重分担模式
+    factors: [FAC-LB-POLICY-MODE, FAC-LB-INTERFACE-WEIGHT, FAC-LB-OVERLOAD-PROTECTION, FAC-LB-INTERFACE-THRESHOLD]
+    fixed_values:
+      FAC-LB-POLICY-MODE: weight
+    coverage_strategy:
+      positive: 多接口配置不同权重，验证按权重分担
+
+  - group_id: LB_INTERFACE_PRIMARY_BACKUP
+    group_name: 主备备份模式
+    factors: [FAC-LB-POLICY-MODE, FAC-LB-INTERFACE-PRIORITY, FAC-LB-SESSION-HOLD]
+    fixed_values:
+      FAC-LB-POLICY-MODE: primary-backup
+    coverage_strategy:
+      state: 主链路故障 → 备链路接管 + 会话保持
+
+  - group_id: LB_ROUTE_WEIGHT
+    group_name: 路由级权重
+    factors: [FAC-L3-NH-WEIGHT]
+    coverage_strategy:
+      positive: 多下一跳配置不同权重，验证 2的幂归一化分担
+      boundary: 权重最大值+最小值
+
+external_consumers: []

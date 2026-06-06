@@ -33,14 +33,15 @@ status: active
 ## 适用范围
 
 - 适用阶段：MFQ 分析的 plan 阶段
-- 输入：`analysis/integration/logic-cases.md` + `analysis/integration/test-data.md` + `analysis/m-analysis/ppdcs-annotation.md`
-- 输出：`analysis/integration/design-plan.md` + `analysis/plan/design-planner-reasoning.md`
+- 输入：`mfq/integration/logic-cases.md` + `mfq/integration/test-data.md` + `mfq/m-analysis/ppdcs-annotation.md`
+- 输出：`process/plan/design-plan.md` + `process/plan/design-planner-reasoning.md`
 
 ## 前置条件
 
-- [ ] 测试点整合完成（`analysis/integration/logic-cases.md` 存在）
-- [ ] 测试数据已分配（`analysis/integration/test-data.md` 存在）
-- [ ] PPDCS 特征标注已完成（`analysis/m-analysis/ppdcs-annotation.md` 存在）
+- [ ] 测试点整合完成（`mfq/integration/logic-cases.md` 存在）
+- [ ] 测试数据已分配（`mfq/integration/test-data.md` 存在）
+- [ ] PPDCS 特征标注已完成（`mfq/m-analysis/ppdcs-annotation.md` 存在）
+- [ ] TSP 文件可用（`mfq/m-analysis/tsp/<M编号>-tsp.md` 存在，且含 `covered_scenario_segments` 字段）
 - [ ] LC / TD 中已保留 Story-04 trace 字段
 
 ## 输入契约（Story-04）
@@ -72,7 +73,7 @@ design-planner **不得只看 legacy TP 汇总表**，必须同时消费 LC 与 
 ### 主规则：特征驱动匹配
 
 ```
-逻辑用例 LC → 所属子模块 → 查  m-analysis/ppdcs-annotation.md 获取 PPDCS 主特征
+逻辑用例 LC → 所属子模块 → 查mfq/m-analysis/ppdcs-annotation.md 获取 PPDCS 主特征
   │
   ├── P-Process   → process-design（流程图法）
   ├── P-Parameter → parameter-design（判定表法）
@@ -159,7 +160,7 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 
 > 该推断规则用于**复核与补全 reasoning**，上游 `ppdcs-annotation.md` 仍是首要基线。
 > 若推断结果与标注冲突，需在设计计划表中标注差异原因，并将详细推断路径写入
-> `analysis/plan/design-planner-reasoning.md`。
+> `process/plan/design-planner-reasoning.md`。
 
 ### 直接设计法回退
 
@@ -174,12 +175,13 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 
 ### 步骤 1：加载输入
 
-1. 读取 `analysis/integration/logic-cases.md` 获取逻辑用例列表
-2. 读取 `analysis/integration/test-data.md` 获取 TD 清单
-3. 读取 `analysis/m-analysis/ppdcs-annotation.md` 获取 PPDCS 特征标注
+1. 读取 `mfq/integration/logic-cases.md` 获取逻辑用例列表
+2. 读取 `mfq/integration/test-data.md` 获取 TD 清单
+3. 读取 `mfq/m-analysis/ppdcs-annotation.md` 获取 PPDCS 特征标注
 4. 建立 `LC → TD → 子模块 → PPDCS标注` 映射
 5. 校验 LC / TD 是否保留 `scenario_refs / scenario_chain_refs / confirmation_gap_refs / factor_bindings / factor_refs`
 6. 校验 LC 是否保留 `topology_bindings / topology_role_refs / topology_refs`；缺失或不唯一时不补绑定，只写入 reasoning gap
+7. **加载 TSP 覆盖段映射**：读取 `mfq/m-analysis/tsp/<M编号>-tsp.md`，解析每个 TSP 的 `covered_scenario_segments` 字段（`scenario_ref` + `covered_steps[]` + `coverage_type` + `coverage_note`），建立 `LC→scenario_ref→TSP→covered_steps` 映射。**若 TSP 文件不存在或 `covered_scenario_segments` 字段缺失，报错并终止：`TSP 文件缺失或缺少 covered_scenario_segments 字段，请先执行 M 分析（STORY-012-03）`**
 
 ### 步骤 2：逐条匹配
 
@@ -211,7 +213,16 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
    - 上游标注与 CAE/TD 推断冲突
    - `topology_bindings` 缺失、不唯一或 `binding_status=needs-confirmation`
    - 拓扑角色、真实端口或 link 实例混入 `factor_bindings / value_set / 因子-取值表`
-10. 将详细 reasoning 写入 `analysis/plan/design-planner-reasoning.md`
+10. 将详细 reasoning 写入 `process/plan/design-planner-reasoning.md`
+11. **设计范围交叉校验**（新增）：对每个 LC，从步骤 1 建立的映射中查找关联 TSP 列表：
+    - 提取每个关联 TSP 的 `covered_scenario_segments`（`scenario_ref` + `covered_steps[]` + `coverage_type` + `coverage_note`）
+    - 对比 LC 涉及场景的 `minimal_logic_chain` 步骤与 `covered_steps`（语义级对比，非编号精确匹配）：
+      - 覆盖 → 记录 `coverage_confirmed`
+      - 部分覆盖（`coverage_type=partial`）→ 记录 `coverage_partial`：已覆盖步骤标记 ✅，未覆盖步骤标记 `confirmation_gap`
+      - 未覆盖 → 记录 `coverage_gap`：可能原因（LC 跨 TSP 或 TSP 覆盖段定义不完整）
+    - 交叉校验结果写入：
+      - `design-plan.md` 的「待确认事项」列
+      - `design-planner-reasoning.md` 的「Uncertain Facts / Confirmation Gaps」
 
 ### 步骤 3：生成设计计划表
 
@@ -242,7 +253,7 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 ## 自检项
 - [ ] 每个 LC 都有推荐方法
 - [ ] 直接设计法占比 < 5%
-- [ ] PPDCS 特征与 `analysis/m-analysis/ppdcs-annotation.md` 一致
+- [ ] PPDCS 特征与 `mfq/m-analysis/ppdcs-annotation.md` 一致
 - [ ] 每个 LC 都有 `主信号 / 候选特征 / 排除摘要 / 关键trace`
 - [ ] 每个 `confirmation_gap_refs` 都进入设计计划或 reasoning
 - [ ] 未将 `needs-confirmation` 数据静默当作 confirmed
@@ -250,9 +261,20 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 
 ### 步骤 5：用户确认
 
-将设计计划表展示给用户，使用 `ask_user` 工具发起结构化确认：
+将设计计划表展示给用户。
 
-**ask_user 选项**：
+**优先使用 AskUserQuestion 工具**：
+- question: "请确认设计计划："
+- header: "Design plan"
+- multiSelect: false
+- options:
+  1. label: "Confirm all", description: "设计方法合理，标记 confirmed，进入用例设计"
+  2. label: "Modify method", description: "请指出需要调整的 LC 编号及希望改用的设计方法，修改后重新确认"
+  3. label: "Merge/split", description: "请描述合并或拆分的逻辑，调整后重新确认"
+
+若 AskUserQuestion 不可用，回退到文本确认：
+
+**文本确认选项**：
 1. ✅ 全部确认 — 设计方法合理，标记 `confirmed: true`，进入用例设计
 2. ✏️ 需要修改方法 — 请指出需要调整的 LC 编号及希望改用的设计方法，修改后重新确认
 3. 🔀 需要合并/拆分用例 — 请描述合并或拆分的逻辑，调整后重新确认
@@ -265,8 +287,8 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 
 | 文件 | 内容 |
 |------|------|
-| `analysis/integration/design-plan.md` | 设计计划表（含 PPDCS 特征、主信号、候选特征、排除摘要、关键 trace、待确认事项） |
-| `analysis/plan/design-planner-reasoning.md` | 每条 LC 的详细 CAE→PPDCS reasoning（主信号 / 候选 / 排除 / 推荐 / trace / uncertain facts） |
+| `process/plan/design-plan.md` | 设计计划表（含 PPDCS 特征、主信号、候选特征、排除摘要、关键 trace、待确认事项） |
+| `process/plan/design-planner-reasoning.md` | 每条 LC 的详细 CAE→PPDCS reasoning（主信号 / 候选 / 排除 / 推荐 / trace / uncertain facts） |
 
 **`design-planner-reasoning.md` 输出骨架**：
 
@@ -321,7 +343,7 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 
 ## 公共因子库补充契约
 
-- design-planner 必须优先读取 `factor_bindings` 和 `analysis/factor-usage/factor-library-lock.yaml`，`factor_refs` 仅作兼容摘要。
+- design-planner 必须优先读取 `factor_bindings` 和 `mfq/factor-usage/factor-library-lock.yaml`，`factor_refs` 仅作兼容摘要。
 - 读取公共库中的 `domain_model / usage_profiles / constraints / downstream_methods` 参与 PPDCS 推断。
 - `domain_model=range/string_pattern` 且存在边界样本时增强 D-Data 信号。
 - 多个 driver 因子属于同一 `factor_group` 且存在 `constraints` 时增强 C-Combination 或 P-Parameter 信号。
@@ -345,7 +367,8 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 - 混合特征必须写明“主 / 辅 / 排除”三类结果，不能只给模糊推荐
 - 直接设计法应尽量避免，v2 有 5 种方法足以覆盖大部分场景
 - 用户修改方法时需同步更新推荐理由、排除摘要与 reasoning
-- 不要把“入口/出口/链路 A/B”当成组合因子；它们是拓扑约束，除非上游以业务/配置/报文字段形式提供了独立 `factor_bindings`
+- 不要把”入口/出口/链路 A/B”当成组合因子；它们是拓扑约束，除非上游以业务/配置/报文字段形式提供了独立 `factor_bindings`
+- TSP 文件不存在或 `covered_scenario_segments` 字段缺失时，步骤 1 报错终止（fail-fast），不静默跳过
 
 ## 验收标准
 
@@ -360,7 +383,9 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 - [ ] 拓扑角色只作为约束/前置，不作为 D-Data/C-Combination/P-Parameter 因子信号
 - [ ] 发现拓扑实例混入因子时，LC `fact_status=needs-confirmation` 并记录 uncertain fact
 - [ ] 未确认事实通过 `confirmation_gap_refs / uncertain facts` 显式保留
-- [ ] 详细推断路径写入 `analysis/plan/design-planner-reasoning.md`（不在设计计划表完整展开）
+- [ ] 详细推断路径写入 `process/plan/design-planner-reasoning.md`（不在设计计划表完整展开）
 - [ ] 直接设计法占比 < 5%
 - [ ] 用户已确认设计计划
-- [ ] 输出文件写入 `analysis/integration/design-plan.md` 与 `analysis/plan/design-planner-reasoning.md`
+- [ ] 输出文件写入 `process/plan/design-plan.md` 与 `process/plan/design-planner-reasoning.md`
+- [ ] TSP `covered_scenario_segments` 字段被正确消费（步骤 1 加载 + 步骤 2 设计范围交叉校验）
+- [ ] TSP 文件缺失或字段缺失时报错终止（fail-fast），不静默降级

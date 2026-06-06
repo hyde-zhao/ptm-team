@@ -1,0 +1,893 @@
+# NGFW DFX 因子库
+# 研究区 — ngfw-dfx
+# 从发布区 ngfw-policy-routing 迁移
+
+schema_version: 1
+library_id: ngfw-dfx
+version: 0.1.0
+status: candidate
+description: "NGFW DFX 公共因子库，覆盖命中计数和操作日志审计。"
+
+factors:
+
+  - factor_id: FAC-COUNTER-TARGET
+    factor_name: 命中计数操作对象
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [single-rule, all-rules]
+    display_values:
+      single-rule: 单条规则
+      all-rules: 全部规则
+    aliases: [计数对象, 命中计数范围]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: COUNTER_SINGLE
+        sample_class: valid_member
+        description: "操作单条规则的命中计数。"
+        representative_values: ["single-rule"]
+        expr: 'single-rule'
+        materialized_value: "single-rule"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: COUNTER_ALL
+        sample_class: valid_member
+        description: "操作全部规则的命中计数。"
+        representative_values: ["all-rules"]
+        expr: 'all-rules'
+        materialized_value: "all-rules"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-COUNTER-ACTION
+    factor_name: 命中计数操作
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [query, clear-single, clear-all]
+    display_values:
+      query: 查看
+      clear-single: 单条清零
+      clear-all: 全部清零
+    aliases: [计数操作, 清零操作]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: COUNTER_QUERY
+        sample_class: positive_function
+        description: "查看命中计数。"
+        representative_values: ["query"]
+        expr: 'query'
+        materialized_value: "query"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: COUNTER_CLEAR_SINGLE
+        sample_class: positive_function
+        description: "单条规则计数清零。"
+        representative_values: ["clear-single"]
+        expr: 'clear-single'
+        materialized_value: "clear-single"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: COUNTER_CLEAR_ALL
+        sample_class: positive_function
+        description: "全部规则计数清零。"
+        representative_values: ["clear-all"]
+        expr: 'clear-all'
+        materialized_value: "clear-all"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-COUNTER-DELTA
+    factor_name: 命中计数变化
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [increase, no-change, single-cleared, all-cleared, re-increase]
+    display_values:
+      increase: 增加
+      no-change: 不增加
+      single-cleared: 单条归零
+      all-cleared: 全部归零
+      re-increase: 清零后重新增加
+    aliases: [计数变化, 命中计数判定]
+    applicable_when: "counter validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: DELTA_INCREASE
+        sample_class: positive_function
+        description: "命中后计数正确增加。"
+        representative_values: ["increase"]
+        expr: 'increase'
+        materialized_value: "increase"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: DELTA_NO_CHANGE
+        sample_class: negative_function
+        description: "不匹配的报文不应使计数增加。"
+        representative_values: ["no-change"]
+        expr: 'no-change'
+        materialized_value: "no-change"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-LOG-OP-TYPE
+    factor_name: 日志操作类型
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [create, modify, enable, disable, delete]
+    display_values:
+      create: 新增
+      modify: 修改
+      enable: 启用
+      disable: 禁用
+      delete: 删除
+    aliases: [Oplog操作, 操作审计, 日志类型]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: LOG_CREATE
+        sample_class: positive_function
+        description: "新增操作记录日志。"
+        representative_values: ["create"]
+        expr: 'create'
+        materialized_value: "create"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: LOG_DELETE
+        sample_class: positive_function
+        description: "删除操作记录日志。"
+        representative_values: ["delete"]
+        expr: 'delete'
+        materialized_value: "delete"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-LOG-FIELD-COMPLETENESS
+    factor_name: 日志字段完整性
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [complete, missing-actor, missing-object, missing-action, missing-result, missing-time]
+    display_values:
+      complete: 字段完整
+      missing-actor: 缺操作者
+      missing-object: 缺对象
+      missing-action: 缺动作
+      missing-result: 缺结果
+      missing-time: 缺时间
+    aliases: [日志完整性, Oplog字段]
+    applicable_when: "log validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: LOG_COMPLETE
+        sample_class: positive_function
+        description: "日志字段完整（操作者、对象、动作、结果、时间）。"
+        representative_values: ["complete"]
+        expr: 'complete'
+        materialized_value: "complete"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: LOG_MISSING_ACTOR
+        sample_class: negative_function
+        description: "日志缺少操作者字段。"
+        representative_values: ["missing-actor"]
+        expr: 'missing-actor'
+        materialized_value: "missing-actor"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  # ═══════════════════════════════════════════════════════
+  # 容限
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-DFX-CAPACITY-DIMENSION
+    factor_name: 容量维度
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values:
+      - static-route-count
+      - ecmp-group-count
+      - ecmp-member-count
+      - direct-route-count
+      - mac-table-count
+      - vlan-count
+      - address-object-count
+      - service-object-count
+      - rule-count
+      - session-count
+    display_values:
+      static-route-count: 静态路由数量
+      ecmp-group-count: 等价路由组数量
+      ecmp-member-count: 等价路由成员数量
+      direct-route-count: 直连路由数量
+      mac-table-count: MAC 转发表容量
+      vlan-count: VLAN 数量
+      address-object-count: 地址对象数量
+      service-object-count: 服务对象数量
+      rule-count: 策略规则数量
+      session-count: 并发会话数
+    aliases: [容量维度, 规格维度, 容量类型]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      容量维度描述"什么资源"受到规格限制。具体数量值不在此因子中定义，
+      由 PC 阶段从产品规格中获取。预埋值从两个 Excel 和对象 API 推断。
+    sample_definitions:
+      - sample_id: CAP_DIM_STATIC_ROUTE
+        sample_class: valid_member
+        description: "静态路由数量规格。"
+        representative_values: ["static-route-count"]
+        expr: 'static-route-count'
+        materialized_value: "static-route-count"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: CAP_DIM_ECMP_GROUP
+        sample_class: valid_member
+        description: "等价路由组数量规格。"
+        representative_values: ["ecmp-group-count"]
+        expr: 'ecmp-group-count'
+        materialized_value: "ecmp-group-count"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: CAP_DIM_ECMP_MEMBER
+        sample_class: valid_member
+        description: "等价路由成员数量规格。"
+        representative_values: ["ecmp-member-count"]
+        expr: 'ecmp-member-count'
+        materialized_value: "ecmp-member-count"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: CAP_DIM_MAC_TABLE
+        sample_class: valid_member
+        description: "MAC 转发表容量规格。"
+        representative_values: ["mac-table-count"]
+        expr: 'mac-table-count'
+        materialized_value: "mac-table-count"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: CAP_DIM_VLAN
+        sample_class: valid_member
+        description: "VLAN 数量规格（已知 1-4094）。"
+        representative_values: ["vlan-count"]
+        expr: 'vlan-count'
+        materialized_value: "vlan-count"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  - factor_id: FAC-DFX-CAPACITY-BOUNDARY
+    factor_name: 容量边界操作
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [at-limit, exceed-limit, add-delete-cycle]
+    display_values:
+      at-limit: 达到上限
+      exceed-limit: 超过上限
+      add-delete-cycle: 上限增删循环
+    aliases: [容量边界, 规格边界, 容量操作]
+    applicable_when: "FAC-DFX-CAPACITY-DIMENSION selected"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      与 FAC-DFX-CAPACITY-DIMENSION 交叉使用。
+      at-limit: 配置恰好达到规格上限 → 功能正常
+      exceed-limit: 配置超过规格上限 → 期望拒绝
+      add-delete-cycle: 在规格上限附近增删 → 删除后能重新添加
+    sample_definitions:
+      - sample_id: CAP_AT_LIMIT
+        sample_class: valid_member
+        description: "达到规格上限，功能正常。如配置最大数量静态路由后 FIB 正常。"
+        representative_values: ["at-limit"]
+        expr: 'at-limit'
+        materialized_value: "at-limit"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: CAP_EXCEED_LIMIT
+        sample_class: negative_function
+        description: "超过规格上限，期望操作被拒绝。如添加第 N+1 条路由失败。"
+        representative_values: ["exceed-limit"]
+        expr: 'exceed-limit'
+        materialized_value: "exceed-limit"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: CAP_ADD_DELETE_CYCLE
+        sample_class: valid_member
+        description: "在上限附近反复增删，删除后能重新添加。"
+        representative_values: ["add-delete-cycle"]
+        expr: 'add-delete-cycle'
+        materialized_value: "add-delete-cycle"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  # ═══════════════════════════════════════════════════════
+  # 可靠性
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-DFX-RELIABILITY-LEVEL
+    factor_name: 可靠性级别
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [network, system, interface, module]
+    display_values:
+      network: 网络级
+      system: 系统级
+      interface: 接口级
+      module: 模块级
+    aliases: [可靠性级别, 故障级别, 可靠性层次]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: REL_LEVEL_NETWORK
+        sample_class: valid_member
+        description: "网络级可靠性。IP-LINK 连通性变化、链路振荡。"
+        representative_values: ["network"]
+        expr: 'network'
+        materialized_value: "network"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: REL_LEVEL_SYSTEM
+        sample_class: valid_member
+        description: "系统级可靠性。防火墙重启、掉电恢复、整机复位。"
+        representative_values: ["system"]
+        expr: 'system'
+        materialized_value: "system"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: REL_LEVEL_INTERFACE
+        sample_class: valid_member
+        description: "接口级可靠性。接口 UP/Down、拔插网线。"
+        representative_values: ["interface"]
+        expr: 'interface'
+        materialized_value: "interface"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: REL_LEVEL_MODULE
+        sample_class: valid_member
+        description: "模块级可靠性。进程重启恢复（agent/vpp/frr/snort 等）。"
+        representative_values: ["module"]
+        expr: 'module'
+        materialized_value: "module"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  - factor_id: FAC-DFX-RELIABILITY-OP
+    factor_name: 可靠性操作
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values:
+      # 网络级
+      - ip-link-up
+      - ip-link-down
+      # 系统级
+      - reboot
+      - power-off
+      - config-import
+      - upgrade
+      - rollback
+      - repeated-crud
+      - repeated-config-modify
+      # 接口级
+      - if-up
+      - if-down
+      # 模块级
+      - agent-restart
+      - vpp-restart
+      - frr-restart
+      - snort-restart
+      - charon-restart
+      - sslvpn-restart
+      - snmp-restart
+      - higo-restart
+      - logserver-restart
+    display_values:
+      ip-link-up: IP-LINK 恢复
+      ip-link-down: IP-LINK 中断
+      reboot: 防火墙重启
+      power-off: 掉电恢复
+      config-import: 配置导入恢复
+      upgrade: 升级恢复
+      rollback: 回滚恢复
+      repeated-crud: 反复增删路由
+      repeated-config-modify: 反复修改配置
+      if-up: 接口 UP
+      if-down: 接口 Down
+      agent-restart: Agent 重启恢复
+      vpp-restart: VPP 重启恢复
+      frr-restart: FRR 重启恢复
+      snort-restart: Snort 重启恢复
+      charon-restart: Charon 重启恢复
+      sslvpn-restart: SSLVPN 重启恢复
+      snmp-restart: SNMP 重启恢复
+      higo-restart: HIGO 数据进程重启恢复
+      logserver-restart: LogServer 重启恢复
+    aliases: [可靠性操作, 故障注入, 故障操作]
+    applicable_when: "FAC-DFX-RELIABILITY-LEVEL selected"
+    downstream_methods: [P-Parameter, S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      与 FAC-DFX-RELIABILITY-LEVEL 交叉使用。
+      网络级: IP-LINK 连通性检查
+      系统级: 重启、掉电、配置导入、升级、回滚
+      接口级: 接口 UP/Down
+      模块级: 各用户态进程的重启恢复。
+    sample_definitions:
+      - sample_id: REL_OP_NETWORK_UP
+        sample_class: valid_member
+        description: "IP-LINK 恢复，路由重新可达。"
+        representative_values: ["ip-link-up"]
+        expr: 'ip-link-up'
+        materialized_value: "ip-link-up"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: REL_OP_NETWORK_DOWN
+        sample_class: negative_function
+        description: "IP-LINK 中断，路由不可达，触发切换。"
+        representative_values: ["ip-link-down"]
+        expr: 'ip-link-down'
+        materialized_value: "ip-link-down"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: REL_OP_REBOOT
+        sample_class: valid_member
+        description: "防火墙重启，验证配置持久化和业务恢复。"
+        representative_values: ["reboot"]
+        expr: 'reboot'
+        materialized_value: "reboot"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: REL_OP_POWER_OFF
+        sample_class: valid_member
+        description: "掉电恢复，最恶劣的可靠性场景。"
+        representative_values: ["power-off"]
+        expr: 'power-off'
+        materialized_value: "power-off"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: REL_OP_CONFIG_IMPORT
+        sample_class: valid_member
+        description: "导出配置 → 删除 → 导入恢复。验证配置和业务与操作前完全一致。"
+        representative_values: ["config-import"]
+        expr: 'config-import'
+        materialized_value: "config-import"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: REL_OP_UPGRADE
+        sample_class: valid_member
+        description: "版本升级恢复。升级后配置和业务与升级前一致。"
+        representative_values: ["upgrade"]
+        expr: 'upgrade'
+        materialized_value: "upgrade"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: REL_OP_ROLLBACK
+        sample_class: valid_member
+        description: "升级后回滚恢复。回滚后配置和业务恢复到升级前状态。"
+        representative_values: ["rollback"]
+        expr: 'rollback'
+        materialized_value: "rollback"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: REL_OP_IF_DOWN
+        sample_class: negative_function
+        description: "接口 Down，出接口失效触发路由切换。"
+        representative_values: ["if-down"]
+        expr: 'if-down'
+        materialized_value: "if-down"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: REL_OP_AGENT_RESTART
+        sample_class: valid_member
+        description: "Agent 进程重启恢复。期望不丢包。"
+        representative_values: ["agent-restart"]
+        expr: 'agent-restart'
+        materialized_value: "agent-restart"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: REL_OP_VPP_RESTART
+        sample_class: valid_member
+        description: "VPP 进程重启恢复。业务中断后可恢复。"
+        representative_values: ["vpp-restart"]
+        expr: 'vpp-restart'
+        materialized_value: "vpp-restart"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: REL_OP_FRR_RESTART
+        sample_class: valid_member
+        description: "FRR 进程及子进程重启恢复。期望不丢包。"
+        representative_values: ["frr-restart"]
+        expr: 'frr-restart'
+        materialized_value: "frr-restart"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: REL_OP_SNORT_RESTART
+        sample_class: valid_member
+        description: "Snort 进程重启恢复。期望不丢包。"
+        representative_values: ["snort-restart"]
+        expr: 'snort-restart'
+        materialized_value: "snort-restart"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-DFX-RELIABILITY-MODE
+    factor_name: 可靠性震荡模式
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [fast-oscillation, slow-oscillation, smart-slow]
+    display_values:
+      fast-oscillation: 快速震荡
+      slow-oscillation: 慢速震荡
+      smart-slow: 智能慢震
+    aliases: [震荡模式, 故障频率, 可靠性模式]
+    applicable_when: "FAC-DFX-RELIABILITY-OP selected"
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      快速震荡: 短时间高频震荡（如 10 秒内 UP/Down 多次），
+      模拟链路抖动、进程反复崩溃恢复。
+      慢速震荡: 长时间低频震荡（分钟级间隔），
+      模拟间歇性故障、周期性维护窗口。
+      智能慢震: 适用于重启/掉电等恢复时间长的场景，
+      如防火墙重启需要数分钟，不适合高频操作。
+    sample_definitions:
+      - sample_id: REL_MODE_FAST
+        sample_class: valid_member
+        description: "快速震荡。短时间高频 UP/Down 或 restart。用于验证防抖和快速恢复。"
+        representative_values: ["fast-oscillation"]
+        expr: 'fast-oscillation'
+        materialized_value: "fast-oscillation"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: REL_MODE_SLOW
+        sample_class: valid_member
+        description: "慢速震荡。长时间低频操作。用于验证间歇性故障下的稳定性。"
+        representative_values: ["slow-oscillation"]
+        expr: 'slow-oscillation'
+        materialized_value: "slow-oscillation"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: REL_MODE_SMART
+        sample_class: valid_member
+        description: "智能慢震。重启/掉电等长恢复时间场景专用。"
+        representative_values: ["smart-slow"]
+        expr: 'smart-slow'
+        materialized_value: "smart-slow"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  # ═══════════════════════════════════════════════════════
+  # 压力
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-DFX-STRESS-TYPE
+    factor_name: 压力类型
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values:
+      - throughput
+      - connection-rate
+      - concurrent-sessions
+      - packet-size-extreme
+    display_values:
+      throughput: 吞吐量
+      connection-rate: 新建连接速率
+      concurrent-sessions: 并发会话数
+      packet-size-extreme: 极端包长
+    aliases: [压力类型, 性能测试类型, stress_type]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      压力类型描述"打什么"负载。
+      throughput: 带宽层面的压力，如 10Gbps 线速。
+      connection-rate: 连接建立速率的压力，如每秒新建连接数。
+      concurrent-sessions: 同时在线的会话数压力。
+      packet-size-extreme: 极端包长场景，如 64 字节小包或 jumbo frame。
+    sample_definitions:
+      - sample_id: STRESS_THROUGHPUT
+        sample_class: valid_member
+        description: "吞吐量压力。验证策略匹配或转发在高带宽下不劣化。"
+        representative_values: ["throughput"]
+        expr: 'throughput'
+        materialized_value: "throughput"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: STRESS_CONN_RATE
+        sample_class: valid_member
+        description: "新建连接速率压力。验证大量新建会话时策略匹配性能。"
+        representative_values: ["connection-rate"]
+        expr: 'connection-rate'
+        materialized_value: "connection-rate"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: STRESS_CONCURRENT
+        sample_class: valid_member
+        description: "并发会话数压力。验证大量在线会话时内存和转发稳定性。"
+        representative_values: ["concurrent-sessions"]
+        expr: 'concurrent-sessions'
+        materialized_value: "concurrent-sessions"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: STRESS_PKT_SIZE
+        sample_class: valid_member
+        description: "极端包长压力。64字节小包最高pps压力 / jumbo frame最大帧压力。"
+        representative_values: ["packet-size-extreme"]
+        expr: 'packet-size-extreme'
+        materialized_value: "packet-size-extreme"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  - factor_id: FAC-DFX-STRESS-LEVEL
+    factor_name: 压力等级
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [line-rate, percentage, oversubscription]
+    display_values:
+      line-rate: 线速
+      percentage: 梯度百分比
+      oversubscription: 超规格
+    aliases: [压力等级, 负载等级, stress_level]
+    applicable_when: "FAC-DFX-STRESS-TYPE selected"
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      与 FAC-DFX-STRESS-TYPE 交叉使用。
+      line-rate: 物理线速，如 10Gbps/25Gbps/100Gbps。
+      percentage: 按百分比梯度施压，如 10%/50%/90% 线速。
+      oversubscription: 超过额定规格施压，验证过载保护和降级行为。
+    sample_definitions:
+      - sample_id: STRESS_LINE_RATE
+        sample_class: valid_member
+        description: "线速压力。满带宽持续打流。"
+        representative_values: ["line-rate"]
+        expr: 'line-rate'
+        materialized_value: "line-rate"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: STRESS_PERCENTAGE
+        sample_class: valid_member
+        description: "梯度百分比压力。从低负载逐步提升到高负载。"
+        representative_values: ["percentage"]
+        expr: 'percentage'
+        materialized_value: "percentage"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: STRESS_OVERSUB
+        sample_class: negative_function
+        description: "超规格压力。超过额定容量，验证设备是否按设计降级。"
+        representative_values: ["oversubscription"]
+        expr: 'oversubscription'
+        materialized_value: "oversubscription"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  # ═══════════════════════════════════════════════════════
+  # 稳定性
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-DFX-STABILITY-TYPE
+    factor_name: 稳定性类型
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [soak, repeated-operation]
+    display_values:
+      soak: 浸泡测试
+      repeated-operation: 反复操作
+    aliases: [稳定性类型, stability_type]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      soak: 持续打流长时间运行，验证无丢包、无内存泄漏、无资源累积。
+      repeated-operation: 反复增删改配 + 反复状态切换，验证无累积偏差。
+      repeated-operation 与 DFX_RELIABILITY 中 RELIABILITY-OP 的反复操作值关联。
+    sample_definitions:
+      - sample_id: STAB_SOAK
+        sample_class: valid_member
+        description: "浸泡测试。持续打流长时间运行。"
+        representative_values: ["soak"]
+        expr: 'soak'
+        materialized_value: "soak"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: STAB_REPEATED
+        sample_class: valid_member
+        description: "反复操作。同操作循环执行，系统状态无累积偏差。"
+        representative_values: ["repeated-operation"]
+        expr: 'repeated-operation'
+        materialized_value: "repeated-operation"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  - factor_id: FAC-DFX-STABILITY-DURATION
+    factor_name: 稳定性时长
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [12h, 24h, 7d]
+    display_values:
+      12h: 12小时
+      24h: 24小时
+      7d: 7天
+    aliases: [稳定性时长, stability_duration, 浸泡时长]
+    applicable_when: "FAC-DFX-STABILITY-TYPE selected"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    sample_definitions:
+      - sample_id: STAB_12H
+        sample_class: valid_member
+        description: "12 小时稳定性。最低浸泡时长，不丢包。"
+        representative_values: ["12h"]
+        expr: '12h'
+        materialized_value: "12h"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: STAB_24H
+        sample_class: valid_member
+        description: "24 小时稳定性。推荐浸泡时长。"
+        representative_values: ["24h"]
+        expr: '24h'
+        materialized_value: "24h"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: STAB_7D
+        sample_class: valid_member
+        description: "7 天稳定性。长期浸泡。"
+        representative_values: ["7d"]
+        expr: '7d'
+        materialized_value: "7d"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  # ═══════════════════════════════════════════════════════
+  # 可用性
+  # ═══════════════════════════════════════════════════════
+
+  - factor_id: FAC-DFX-AVAILABILITY-METRIC
+    factor_name: 可用性指标
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [ha-switchover, if-recovery, reboot-recovery, poweroff-recovery, vpp-recovery]
+    display_values:
+      ha-switchover: HA 主备切换
+      if-recovery: 接口恢复
+      reboot-recovery: 设备重启恢复
+      poweroff-recovery: 掉电恢复
+      vpp-recovery: VPP 重启恢复
+    aliases: [可用性, 中断时间, 恢复时间, availability]
+    applicable_when: "recovery scenario"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      每个指标对应一个恢复时间阈值，由 oracle 判定。
+      ha-switchover < 5s, if-recovery < 1s, reboot < 3min, poweroff < 5min, vpp < 5s。
+    sample_definitions:
+      - sample_id: AVAIL_HA
+        sample_class: valid_member
+        description: "HA 主备切换时间 < 5s。"
+        representative_values: ["<5s"]
+        expr: 'ha-switchover'
+        materialized_value: "ha-switchover"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: AVAIL_IF
+        sample_class: valid_member
+        description: "接口 UP/Down 恢复 < 1s。"
+        representative_values: ["<1s"]
+        expr: 'if-recovery'
+        materialized_value: "if-recovery"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: AVAIL_REBOOT
+        sample_class: valid_member
+        description: "设备重启恢复 < 3min。"
+        representative_values: ["<3min"]
+        expr: 'reboot-recovery'
+        materialized_value: "reboot-recovery"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: AVAIL_POWEROFF
+        sample_class: valid_member
+        description: "掉电恢复 < 5min。"
+        representative_values: ["<5min"]
+        expr: 'poweroff-recovery'
+        materialized_value: "poweroff-recovery"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: AVAIL_VPP
+        sample_class: valid_member
+        description: "VPP 重启恢复 < 5s。"
+        representative_values: ["<5s"]
+        expr: 'vpp-recovery'
+        materialized_value: "vpp-recovery"
+        applicability: {config_test: not_applicable, function_test: positive}
+
+  # ═══════════════════════════════════════════════════════
+  # 可服务性（占位，暂无因子）
+  # ═══════════════════════════════════════════════════════
+  # 为 debug 诊断、抓包分析、日志导出、技术支持 dump 等工具能力预留。
+
+factor_groups:
+  - group_id: DFX_OBSERVABILITY
+    group_name: 可维可测
+    factors: [FAC-COUNTER-TARGET, FAC-COUNTER-ACTION, FAC-COUNTER-DELTA,
+              FAC-LOG-OP-TYPE, FAC-LOG-FIELD-COMPLETENESS]
+    coverage_strategy:
+      counter: 覆盖查看、单条清零、全部清零、清零后重新增加
+      log: 覆盖增删改启用禁用五种操作及日志字段完整性
+
+  - group_id: DFX_CAPACITY
+    group_name: 容限测试
+    factors: [FAC-DFX-CAPACITY-DIMENSION, FAC-DFX-CAPACITY-BOUNDARY]
+    coverage_strategy:
+      at_limit: 每个容量维度至少覆盖一次达到上限
+      exceed_limit: 每个容量维度至少覆盖一次超过上限
+      cycle: 至少选择一个维度覆盖增删循环
+
+  - group_id: DFX_RELIABILITY
+    group_name: 可靠性
+    factors: [FAC-DFX-RELIABILITY-LEVEL, FAC-DFX-RELIABILITY-OP, FAC-DFX-RELIABILITY-MODE]
+    coverage_strategy:
+      network: IP-LINK UP/Down × 所有震荡模式
+      system: 重启 + 掉电 + 配置导入 + 升级 + 回滚 + 反复增删 + 反复修改 × 所有震荡模式
+      interface: 接口 UP/Down × 快震 + 慢震
+      module: 各进程重启 × 慢震
+
+  - group_id: DFX_STRESS
+    group_name: 压力测试
+    factors: [FAC-DFX-STRESS-TYPE, FAC-DFX-STRESS-LEVEL]
+    coverage_strategy:
+      line_rate: 吞吐量 + 并发会话 × 线速
+      gradient: 吞吐量 × 梯度百分比 (10%/50%/90%)
+      extreme: 极端包长 × 线速 + 梯度
+      over: 至少一种类型 × 超规格
+
+  - group_id: DFX_STABILITY
+    group_name: 稳定性
+    factors: [FAC-DFX-STABILITY-TYPE, FAC-DFX-STABILITY-DURATION]
+    coverage_strategy:
+      soak: 浸泡测试 × 12h 起步，推荐 24h
+      repeated: 反复操作 × 12h 起步
+
+  - group_id: DFX_AVAILABILITY
+    group_name: 可用性
+    factors: [FAC-DFX-AVAILABILITY-METRIC]
+    coverage_strategy:
+      all: 五个恢复场景全部覆盖，oracle 判定时间阈值
+
+external_consumers:
+  - consumer: ngfw-ipv4-route/FAC-RT-CRUD-OP
+    samples_used: [FAC-LOG-OP-TYPE, FAC-LOG-FIELD-COMPLETENESS]
+    note: "路由增删改操作的 Oplog 审计"
+  - consumer: ngfw-ipv4-route/FAC-RT-FWD-RELIABILITY-OP
+    samples_used: [FAC-DFX-RELIABILITY-OP]
+    note: "路由转发可靠性操作"
+  - consumer: ngfw-policy-routing
+    groups: [DFX_OBSERVABILITY, DFX_CAPACITY, DFX_STRESS, DFX_RELIABILITY]
+    note: "策略路由消费全部四类 DFX 因子"
+  - consumer: ngfw-policy-routing
+    capacity_dimensions: [static-route-count, ecmp-group-count, ecmp-member-count, direct-route-count]
+    capacity_boundaries: [at-limit, exceed-limit, add-delete-cycle]
+    note: "静态路由和等价路由的容量规格验证"
+  - consumer: ngfw-policy-routing
+    stress_types: [throughput, connection-rate, packet-size-extreme]
+    stress_levels: [line-rate, percentage]
+    note: "策略路由规则匹配的吞吐量、新建速率及极端包长压力"
+  - consumer: ngfw-policy-routing
+    reliability_levels: [network, interface, system]
+    reliability_ops: [ip-link-up, ip-link-down, if-up, if-down, reboot, power-off, config-import, upgrade, rollback]
+    module_ops: [agent-restart, vpp-restart, frr-restart, snort-restart]
+    expectations:
+      agent-restart: "不丢包"
+      vpp-restart: "业务中断后可恢复"
+      frr-restart: "不丢包"
+      snort-restart: "不丢包"
+    note: "策略路由可靠性验证"

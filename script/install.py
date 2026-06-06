@@ -58,6 +58,7 @@ AGENT_ALIASES = {
 PMT_TDE_SKILLS = [
     # Main flow skills
     "checkpoint-manager",
+    "kym",
     "feature-parser",
     "scenario-discovery",
     "m-analyzer",
@@ -342,7 +343,10 @@ def get_component_resources(
     include_recommended: bool = True,
     explicit_resources: list[str] | None = None,
 ) -> list[dict[str, str]]:
-    """Get resources associated with a component."""
+    """Get resources associated with a component.
+
+    When library_id is "all", expands to every library in the index.
+    """
     links = parse_component_resource_links(source_dir)
     resources = links.get(component_id, [])
     explicit = set(explicit_resources or [])
@@ -353,6 +357,18 @@ def get_component_resources(
             continue
         library_id = resource.get("library_id", "")
         policy = resource.get("install_policy", "optional")
+
+        # library_id: all → expand to every library in the index
+        if library_id == "all":
+            index = parse_resource_index(source_dir)
+            for lid in index:
+                selected.append({
+                    "resource_type": "factor-library",
+                    "library_id": lid,
+                    "install_policy": policy,
+                })
+            continue
+
         if policy == "required" or (policy == "recommended" and include_recommended) or library_id in explicit:
             selected.append(resource)
 
