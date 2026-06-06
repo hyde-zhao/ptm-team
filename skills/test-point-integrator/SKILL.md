@@ -311,10 +311,11 @@ integrator 必须消费并透传以下字段：
    - M 原子操作候选：mfq/m-analysis/candidate-atomic-ops.yaml
 
 2. 若 atomic-ops CLI 可用：
-   a. 对每个候选原子操作执行语义查询：
-      用候选的 candidate_op_name 构造查询 → atomic-ops list --format json
-      → 在全部 op_id / description / tags 中做关键词匹配（复用 m-analyzer 同义词表）
-   b. 命中已有操作：
+   a. 执行 atomic-ops list --format json，获取全部操作的 op_id / description / tags / aliases
+   b. 对每个候选原子操作：
+      → 用 candidate_op_name 的分词在全部 op 的 op_id / description / tags / aliases 中做关键词匹配
+      → aliases 字段由 atomic-ops 仓库定义和维护，integrator 直接从 CLI 输出消费，不做本地映射
+   c. 命中已有操作：
       → 标记 "已有原子操作可覆盖"（matched_op_id + match_source）
       → 优先级降级为 low，汇总时标记 [已有可覆盖]
       → 记录到 atomic-op-bindings.yaml
