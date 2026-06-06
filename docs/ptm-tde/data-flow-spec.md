@@ -1058,7 +1058,7 @@ CAE 的 A（Action）字段约束：
 |------|------|:--:|------|
 | `op_id` | string | 3.0 | 操作 ID，主匹配维度 |
 | `description` | string | 1.0 | 操作描述，辅助匹配 |
-| `tags` | list[string] | 2.0 | 分类标签（如 firewall/capacity/interface） |
+| `aliases` | list[string] | 1.5 | 操作别名（如 subinterface/trunk/lag），由 atomic-ops 仓库定义和维护 |
 | `parameters_summary` | list[{name,type,required}] | 1.5 | 参数名列表，辅助区分同类操作 |
 
 **匹配级别**：
