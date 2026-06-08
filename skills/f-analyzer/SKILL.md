@@ -3,10 +3,10 @@ name: f-analyzer
 description: >-
   F 分析 v3.0（功能交互/耦合分析）：逐 TSP 驱动耦合分析，消费 M 分析产出的 TSP 列表
   和覆盖矩阵中的 [F→] 标签作为种子线索，逐 TSP 识别耦合关系、发现耦合对象/因子、
-  三源合并（Excel 矩阵基线 + 场景耦合 + 代码依赖）、生成按 TSP 组织的 CAE 耦合测试点。
+  三源合并（耦合矩阵基线 + 场景耦合 + 代码依赖）、生成按 TSP 组织的 CAE 耦合测试点。
   触发词包括：F分析、耦合分析、耦合矩阵、特性交互、功能耦合。
   适用场景：MFQ 分析的第四步（f-analysis 阶段）。
-argument-hint: "可选：耦合矩阵 Excel 路径"
+argument-hint: "可选：耦合矩阵 Excel 路径（无 Excel 时自动从 resource/coupling-matrix/ 加载 YAML 基线）"
 user-invokable: true
 status: active
 ---
@@ -15,7 +15,7 @@ status: active
 
 以 M 分析产出的 TSP 列表为核心驱动单元，消费覆盖矩阵中的 `[F→]` 标签作为耦合分析的种子线索，
 逐 TSP 识别该 M 与其他 M（同特性或跨特性）的耦合关系、发现耦合对象和关联因子、
-三源合并（Excel 矩阵基线 + 场景耦合推理 + 代码依赖）后生成按 TSP 组织的 CAE 耦合测试点，
+三源合并（耦合矩阵基线 + 场景耦合推理 + 代码依赖）后生成按 TSP 组织的 CAE 耦合测试点，
 并产出耦合因子候选列表供下游候选汇总消费。新发现的耦合点经用户确认后可回写到耦合矩阵。
 
 ## 适用范围
@@ -46,19 +46,18 @@ status: active
 
 ## 三源数据模型
 
-### 源 1：Excel 矩阵基线（最低基线）
+### 源 1：耦合矩阵基线（最低基线）
 
-调用 Excel 工具读取耦合矩阵：
+读取耦合矩阵基线（Excel 或 YAML），提取当前特性相关的耦合关系：
 
+**Excel 路径**（用户提供时优先）：
 ```bash
 python scripts/excel_coupling_tool.py read "<excel_path>" --output "mfq/f-analysis/coupling-graph.json"
-```
-
-从中提取当前特性相关的耦合关系：
-
-```bash
 python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json" --feature "<特性名>"
 ```
+
+**YAML 路径**（无 Excel 时 fallback）：
+直接读取 `tgfw-coupling-matrix.yaml`，按 `domain` 字段过滤当前特性所在域，构建等价的 `matrix-baseline.yaml`。查找顺序：`resource/coupling-matrix/` → `~/.ptm-team/resource/coupling-matrix/` → `$PTM_TEAM_RESOURCE_HOME/coupling-matrix/`。
 
 ### 源 2：场景耦合推理（v3.0 逐 TSP 驱动）
 
@@ -248,7 +247,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 
 ### 步骤 4：三源合并
 
-**📥 消费**：步骤 1（矩阵基线）+ 步骤 2（场景推理）+ 步骤 3（代码依赖）
+**📥 消费**：步骤 1（矩阵基线，Excel 或 YAML）+ 步骤 2（场景推理）+ 步骤 3（代码依赖）
 
 **🔄 处理逻辑**：
 
@@ -508,8 +507,8 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "mfq/f-analy
 
 | 文件 | 内容 | 主要消费方 |
 |------|------|-----------|
-| `coupling-graph.json` | 完整图模型（Excel 读取产出的 JSON） | 内部消费 |
-| `matrix-baseline.yaml` | Excel 矩阵基线摘要 | 内部消费 |
+| `coupling-graph.json` | 图模型 JSON（仅 Excel 源产出） | 内部消费 |
+| `matrix-baseline.yaml` | 耦合矩阵基线摘要（Excel 或 YAML 源统一格式） | 内部消费 |
 | `coupling-graph.yaml` | 三源合并后的完整耦合图（标注 `tsp_ref` + `discovery_source`） | test-point-integrator（STORY-012-06） |
 | `coupling-test-points.md` | 耦合测试点（**按 TSP 组织**，每个 TSP 下列出其耦合关系和 CAE+trace）+ **耦合因子候选列表**（末尾汇总） | test-point-integrator（STORY-012-06）+ 候选汇总（STORY-012-07） |
 | `tool-analysis.md` | Existing Tool Summary + Tool Capability Gap | test-point-integrator（STORY-012-06） |
@@ -585,7 +584,7 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "mfq/f-analy
 
 - [ ] M 分析的 TSP 列表已加载（每个 TSP 的 `id / m_id / topic / scope / purpose / f_tags` 完整）
 - [ ] 覆盖矩阵中的 F 分析线索汇总表已读取，F 线索索引（`TSP → [F→标签列表]`）已建立
-- [ ] Excel 矩阵基线已成功读取
+- [ ] 耦合矩阵基线已成功加载（Excel 或 YAML 源，至少一个可用）
 - [ ] 步骤 2 逐 TSP 耦合推理已执行（每个 TSP 独立完成子步骤 A→B→C）
 - [ ] 每个耦合关系已标注 `discovery_source`（`f-tag-seed` / `scenario-inference`）
 - [ ] 耦合对象已发现（标注 `object_role_in_coupling`：触发方/受影响方/共享资源 + `source`：M-analysis/new-coupling-discovery）
