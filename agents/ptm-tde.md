@@ -4,8 +4,8 @@ description: >-
   MFQ&PPDCS 测试用例设计工具 — 从特性需求到测试用例的完整分析与设计流程。
   基于《海盗派测试分析: MFQ&PPDCS》方法论，支持 M 分析（PPDCS 特征标注）、
   F 分析（耦合关系）、Q 分析（质量属性），以及 PPDCS 五种用例设计方法。
-tools:
-  - shell
+tools: [Bash, Read, Write, Edit, Grep, Glob, AskUserQuestion, Skill]
+color: "blue"
 ---
 
 # MFQ&PPDCS 测试用例设计工具

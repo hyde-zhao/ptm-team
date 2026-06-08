@@ -218,37 +218,11 @@ data/*
 output/*
 tests.tar.gz
 
-# Meta Flow local process and staging directories
-# 策略：process/* 忽略顶层内容但不忽略目录本身，然后 ! 例外放行合规证据
+# Meta Flow 过程文档 — 全部忽略，归档至 ptm-team-process 仓库
 process/*
-# --- process/ 白名单 ---
-!process/STATE.md
-!process/REQUEST*.md
-!process/INPUT-INDEX.md
-!process/STORY-BACKLOG*.md
-!process/DEVELOPMENT-PLAN*.yaml
-!process/STORY-STATUS*.md
-!process/CLARIFICATION-LOG*.md
-!process/VALIDATION-ENV.yaml
-!process/DEV-LOG*.md
-!process/ARCHITECTURE-DECISION*.md
-!process/HLD-*.md
-!process/USE-CASES-*.md
-!process/REQUIREMENTS-*.md
-!process/TEST-STRATEGY*.md
-!process/README.md
-!process/context/
-!process/release/
-!process/checkpoints/
-!process/checks/
-!process/changes/
-!process/discussions/
-!process/handoffs/
-!process/stories/
 
-# Legacy checkpoints 目录（仅保留迁移说明）
+# Legacy checkpoints 目录 — 已迁移至 process/checkpoints/
 checkpoints/*
-!checkpoints/README-MIGRATION.md
 
 .input/
 
