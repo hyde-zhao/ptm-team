@@ -226,10 +226,6 @@ checkpoints/*
 
 .input/
 
-# 交付目录（白名单 README）
-delivery/*
-!delivery/README.md
-
 # Agents
 .agents/
 .claude/
