@@ -1,0 +1,175 @@
+---
+project_id: "MFQ-001"
+version: "1.1"
+hld_version: "7.1"
+total_waves: 6
+total_stories: 9
+created_by: "meta-se"
+created_at: "2026-04-23T20:18:07+08:00"
+status: confirmed
+note: "CR-008 的 Topology Modeling 增量已吸收进既有 STORY-03 / STORY-08 范围，无需新增 Wave。"
+---
+
+waves:
+  - id: W1
+    name: "安装基线 + 场景基础"
+    parallel: true
+    stories:
+      - id: STORY-01
+        title: "Installer 基线 — Claude/Codex project scope 投影"
+        milestone: M1
+        requirements: [REQ-001]
+        tasks: 6
+        size: M
+        depends_on: []
+        status: verified
+        files:
+          - "scripts/install.py"
+          - "rules/CLAUDE.md"
+          - "agents/ptm-tde.md"
+      - id: STORY-03
+        title: "Scenario Foundation — 场景链 / 动作源 / 只读 MCP"
+        milestone: M1
+        requirements: [REQ-005, REQ-006, REQ-007, REQ-023, REQ-024, REQ-025, REQ-026, REQ-028]
+        tasks: 8
+        size: L
+        depends_on: []
+        status: verified
+        files:
+          - "skills/scenario-discovery/SKILL.md"
+          - "scripts/mcp_query_client.py"
+          - "agents/ptm-tde.md"
+    completion_criteria:
+      - "project scope Claude/Codex 安装路径和 dry-run 结果稳定"
+      - "scenario-discovery 可输出原子操作、动作源缺口、知识引用和工具抽象草案"
+
+  - id: W2
+    name: "user scope 安装 + MFQ 贯通"
+    parallel: true
+    stories:
+      - id: STORY-02
+        title: "Installer 用户级安装 — CLAUDE.md / AGENTS.md 合并"
+        milestone: M1
+        requirements: [REQ-001]
+        tasks: 7
+        size: M
+        depends_on: [STORY-01]
+        status: verified
+        files:
+          - "scripts/install.py"
+          - "rules/CLAUDE.md"
+      - id: STORY-04
+        title: "MFQ Trace Chain — M/F/Q/Integrator 贯通新模型"
+        milestone: M2
+        requirements: [REQ-009, REQ-010, REQ-011]
+        tasks: 8
+        size: L
+        depends_on: [STORY-03]
+        status: verified
+        files:
+          - "skills/m-analyzer/SKILL.md"
+          - "skills/f-analyzer/SKILL.md"
+          - "skills/q-analyzer/SKILL.md"
+          - "skills/test-point-integrator/SKILL.md"
+    completion_criteria:
+      - "user scope 合并不覆盖既有全局规则文件"
+      - "TP/LC 输出可回链到 Scenario Chain 与 Action Source"
+
+  - id: W3
+    name: "设计计划层"
+    parallel: false
+    stories:
+      - id: STORY-05
+        title: "Design Planner — CAE→PPDCS 完整推断与设计计划"
+        milestone: M3
+        requirements: [REQ-012]
+        tasks: 6
+        size: M
+        depends_on: [STORY-04]
+        status: verified
+        files:
+          - "skills/design-planner/SKILL.md"
+          - "agents/ptm-tde.md"
+    completion_criteria:
+      - "design-planner 输出 reasoning、候选特征、排除理由和推荐方法"
+
+  - id: W4
+    name: "五类设计方法成组落地"
+    parallel: true
+    stories:
+      - id: STORY-06
+        title: "Graph Design Pack — process-design + state-design"
+        milestone: M4
+        requirements: [REQ-013, REQ-017]
+        tasks: 7
+        size: L
+        depends_on: [STORY-05]
+        status: verified
+        files:
+          - "skills/process-design/SKILL.md"
+          - "skills/state-design/SKILL.md"
+      - id: STORY-07
+        title: "Rule/Data Design Pack — parameter/data/combination"
+        milestone: M4
+        requirements: [REQ-014, REQ-015, REQ-016]
+        tasks: 9
+        size: XL
+        depends_on: [STORY-05]
+        status: verified
+        files:
+          - "skills/parameter-design/SKILL.md"
+          - "skills/data-design/SKILL.md"
+          - "skills/combination-design/SKILL.md"
+    completion_criteria:
+      - "五类设计 Skill 全部输出完整分析过程"
+
+  - id: W5
+    name: "覆盖、交付与检索"
+    parallel: false
+    stories:
+      - id: STORY-08
+        title: "Delivery & Retrieval — 覆盖、交付、标签检索"
+        milestone: M5
+        requirements: [REQ-018, REQ-019, REQ-022]
+        tasks: 8
+        size: L
+        depends_on: [STORY-06, STORY-07]
+        status: verified
+        files:
+          - "skills/coverage-verifier/SKILL.md"
+          - "skills/deliverable-renderer/SKILL.md"
+          - "skills/case-retriever/SKILL.md"
+          - "agents/ptm-tde.md"
+    completion_criteria:
+      - "覆盖报告、交付物和 case-index.yaml 输出口径统一"
+      - "检索仅按需求 / LC / 功能分类标签命中"
+
+  - id: W6
+    name: "反馈驱动链路"
+    parallel: false
+    stories:
+      - id: STORY-09
+        title: "Feedback Adaptation — 变更影响与问题单适配新模型"
+        milestone: M6
+        requirements: [REQ-020, REQ-021]
+        tasks: 6
+        size: M
+        depends_on: [STORY-04, STORY-08]
+        status: verified
+        files:
+          - "skills/change-impact-analyzer/SKILL.md"
+          - "skills/bug-gap-analyzer/SKILL.md"
+    completion_criteria:
+      - "增量分析和问题单分析均可消费 Scenario Chain / Action Source / CASE-INDEX"
+
+dag: |
+  graph LR
+    STORY-01 --> STORY-02
+    STORY-03 --> STORY-04
+    STORY-04 --> STORY-05
+    STORY-05 --> STORY-06
+    STORY-05 --> STORY-07
+    STORY-06 --> STORY-08
+    STORY-07 --> STORY-08
+    STORY-04 --> STORY-09
+    STORY-08 --> STORY-09

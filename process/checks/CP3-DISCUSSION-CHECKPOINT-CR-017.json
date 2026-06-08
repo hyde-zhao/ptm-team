@@ -1,0 +1,19 @@
+{
+  "checkpoint": "CP3-DISCUSSION-CR-017",
+  "cr_id": "CR-017-factor-library-discovery-gap",
+  "created_at": "2026-06-06T00:00:00+08:00",
+  "status": "complete",
+  "gray_areas": {
+    "AGA-01": {"status": "resolved", "decision": "Step 1.5 因子库清单加载，CR-016 插入 Step 1.6"},
+    "AGA-02": {"status": "resolved", "decision": "match_confidence 分级（CR intake DQ-02 已 approved）"},
+    "AGA-03": {"status": "proposed", "decision": "首次自动创建 lock + 变更 WARNING，待用户 CP3 确认"},
+    "AGA-04": {"status": "resolved", "decision": "反查在候选汇总之前（Step 4.5.1.5）"}
+  },
+  "scenario_simulations": {
+    "SIM-01": "PASS",
+    "SIM-02": "PASS",
+    "SIM-03": "PASS"
+  },
+  "pending_user_questions": ["Q1", "Q2", "Q3"],
+  "next_step": "生成 CP3 自动预检 → meta-po 汇总 Decision Brief → CP3 人工确认"
+}

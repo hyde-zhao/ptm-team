@@ -1,0 +1,137 @@
+# CP8-DELIVERY-CONTEXT.yaml — ptm-tde v1.0 终验上下文胶囊
+# 生成日期: 2026-06-08
+# read_profile: compact
+# 默认策略: 先读本 capsule；仅在缺失、冲突、字段不足、人工审计或深度评审时读取完整文档
+
+capsule:
+  workflow_id: "WF-PTM-TEAM-20260520-001"
+  target_agent: "ptm-tde"
+  phase: "delivered"
+  created_at: "2026-06-08T02:00:00+08:00"
+  read_profile: "compact"
+  expansion_policy: "only-on-missing-conflict-audit-or-deep-review"
+
+release_scope:
+  agent: "ptm-tde（测试设计工程师）"
+  version: "v1.0"
+  description: "基于 MFQ&PPDCS 方法论的 AI 测试用例设计 Agent，三阶段框架（KYM → MFQ → PPDCS）+ 5 个入口/出口门控"
+  delivered_crs:
+    - id: "CR-010"
+      name: "三阶段框架改造（结构层）"
+      stories: 6
+      status: "closed"
+    - id: "CR-011"
+      name: "KYM 阶段改造（内容层）"
+      stories: 4
+      status: "closed"
+    - id: "CR-012"
+      name: "MFQ 阶段改造（扩展范围）"
+      stories: 8
+      status: "closed"
+    - id: "CR-013"
+      name: "PPDCS 阶段改造"
+      stories: 4
+      status: "closed"
+    - id: "CR-015"
+      name: "AskUserQuestion 交互增强"
+      workflow_mode: "fast-lane"
+      status: "closed"
+    - id: "CR-016"
+      name: "原子操作消费缺口修复"
+      status: "closed"
+    - id: "CR-017"
+      name: "因子库发现缺口修复"
+      status: "closed"
+
+version_info:
+  baseline_commit: "350b1b9"
+  latest_commits:
+    - "f3e7a73 (CR-016 fix: 彻底移除硬编码同义词)"
+    - "44e8aa1 (CR-016 fix: 语义匹配切换到 atomic-ops aliases)"
+    - "24c0a0b (CR-016 feat: m-analyzer 原子操作消费缺口修复)"
+    - "befeeb3 (CR-017 feat: m-analyzer 因子库发现机制修复)"
+  total_stories: 23
+  total_product_files_modified: ~40
+
+quality_summary:
+  cp3_hld: "4 个 CR 级 CP3 自动预检全部 PASS，人工审查全部 approved"
+  cp5_lld: "4 个 CR 级 CP5 batch 全部 approved，约 25 个 Story LLD 自动预检 PASS"
+  cp6_coding: "约 28 个 Story CP6 全部 PASS，Agent Dispatch Evidence 完整"
+  cp7_verification: "约 12 个 CR/Story 级 CP7 全部 PASS，无 BLOCKER/HIGH 遗留缺陷"
+  cp8_delivery: "4 个 CR 级 CP8 自动预检全部 PASS（CR-011 20/20，CR-015 10/10，CR-016 10/10，CR-017 10/10）"
+  gate_inheritance: "CP0-CP5 门控继承自 ptm-tde 源仓库，视为已通过"
+
+non_authorized_items:
+  - "真实运行环境验证（依赖防火墙硬件/拓扑/仪表，不在本交付范围内）"
+  - "生产凭据/密钥（本交付不涉及）"
+  - "外部接口实时调用（atomic-ops CLI、禅道 API 等外部依赖的运行时行为）"
+  - "publish/live 发布动作（本 capsule 只判定 READY，不授权真实发布）"
+
+risk_acceptance:
+  - id: "RA-01"
+    description: "CP0-CP5 通过 gate_inheritance 继承，未在本仓库重新执行完整 CP0-CP5 流程"
+    accepted_by: "user (via gate_inheritance declaration)"
+    fallback: "若后续发现需求/场景/架构基线问题，需发起 CR 回溯修正"
+
+  - id: "RA-02"
+    description: "低风险 Story 缺少独立 IMPLEMENTATION.md 实现执行证据文件"
+    accepted_by: "implicit (CR 级 CP6 checks 已覆盖实现对象/契约映射/测试/fixture/切片验证/交接摘要)"
+    fallback: "P1 补充 STORY-IMPLEMENTATION.md 或显式 N/A 理由"
+
+follow_up_tracking:
+  candidates:
+    - id: "CR-011-T-01"
+      description: "断点恢复机制"
+      status: "candidate"
+      tracking: "process/changes/CR-011-FOLLOW-UP-TRACKING-2026-06-02.md"
+    - id: "CR-011-T-02"
+      description: "关键词调优"
+      status: "candidate"
+      tracking: "process/changes/CR-011-FOLLOW-UP-TRACKING-2026-06-02.md"
+    - id: "CR-015-T-01"
+      description: "Codex 平台整改"
+      status: "candidate"
+      tracking: "process/changes/CR-015-FOLLOW-UP-TRACKING-2026-06-04.md"
+  spike_candidates:
+    - id: "CR-016-spike"
+      description: "atomic-ops aliases 剩余 47 个无歧义 op 按需补充"
+      status: "spike_candidate"
+
+evidence_paths:
+  cp3_checks:
+    - "process/checks/CP3-HLD-CONSISTENCY-CR-011.md"
+    - "process/checks/CP3-HLD-CONSISTENCY-CR-012.md"
+    - "process/checks/CP3-HLD-CONSISTENCY-CR-016.md"
+    - "process/checks/CP3-HLD-CONSISTENCY-CR-017.md"
+  cp3_manual:
+    - "process/checkpoints/CP3-HLD-REVIEW-CR-011.md"
+    - "process/checkpoints/CP3-HLD-REVIEW-CR-012.md"
+    - "process/checkpoints/CP3-HLD-REVIEW-CR-016.md"
+    - "process/checkpoints/CP3-HLD-REVIEW-CR-017.md"
+  cp5_check_examples:
+    - "process/checks/CP5-STORY-011-01-kym-skill-LLD-IMPLEMENTABILITY.md"
+    - "process/checks/CP5-STORY-017-01-factor-library-discovery-LLD-IMPLEMENTABILITY.md"
+  cp5_manual:
+    - "process/checkpoints/CP5-ALL-STORIES-LLD-BATCH-CR-011.md"
+    - "process/checkpoints/CP5-ALL-STORIES-LLD-BATCH-CR-012.md"
+    - "process/checkpoints/CP5-ALL-STORIES-LLD-BATCH-CR-013.md"
+    - "process/checkpoints/CP5-ALL-STORIES-LLD-BATCH-CR-017.md"
+  cp8_auto:
+    - "process/checks/CP8-DELIVERY-READINESS-CR-011.md"
+    - "process/checks/CP8-DELIVERY-READINESS-CR-015.md"
+    - "process/checks/CP8-DELIVERY-READINESS-CR-016.md"
+    - "process/checks/CP8-DELIVERY-READINESS-CR-017.md"
+  cp8_manual:
+    - "process/checkpoints/CP8-DELIVERY-READINESS-CR-011.md"
+    - "process/checkpoints/CP8-DELIVERY-READINESS-CR-015.md"
+    - "process/checkpoints/CP8-DELIVERY-READINESS-CR-017-CR-016.md"
+  cr_index: "process/changes/CR-INDEX.yaml"
+  state: "process/STATE.md"
+  blueprint: "docs/ptm-team-blueprint.md"
+  agent_docs: "docs/ptm-tde/"
+
+release_decision:
+  status: "READY"
+  reason: "全部 7 条 CR 通过 CP3/CP5/CP6/CP7/CP8，人工终验 approved"
+  profile: "compact"
+  profile_reason: "standard 模式交付，无真实运行/凭据/外部接口运行时授权需求"

@@ -1,0 +1,69 @@
+{
+  "workflow_id": "WF-PTM-TEAM-20260520-001",
+  "change_id": "CR-011",
+  "phase": "solution-design",
+  "discussion_round": 6,
+  "created_at": "2026-06-02T00:00:00+08:00",
+  "updated_at": "2026-06-02T03:44:00+08:00",
+  "architecture_gray_areas": [
+    {
+      "id": "AGA-01",
+      "title": "kym Skill 归属形态",
+      "options": ["independent-skill", "merged-into-feature-parser"],
+      "recommendation": "independent-skill",
+      "status": "resolved",
+      "resolved_at": "2026-06-02T03:44:00+08:00",
+      "resolution": "方案A: kym 作为独立 Skill"
+    },
+    {
+      "id": "AGA-02",
+      "title": "启发式探索框架设计",
+      "options": ["preset-dimensions-plus-extension", "fully-user-customizable", "reference-only"],
+      "recommendation": "preset-dimensions-plus-extension",
+      "status": "resolved",
+      "resolved_at": "2026-06-02T03:44:00+08:00",
+      "resolution": "方案A: CIDTESTD 8 维度预设+扩展"
+    },
+    {
+      "id": "AGA-03",
+      "title": "Gate 自检 vs 人工确认划分边界",
+      "options": ["existence-auto-semantic-manual", "all-manual", "dual-layer"],
+      "recommendation": "existence-auto-semantic-manual",
+      "status": "resolved",
+      "resolved_at": "2026-06-02T03:44:00+08:00",
+      "resolution": "方案A: 保持当前分类"
+    },
+    {
+      "id": "AGA-04",
+      "title": "路径迁移范围边界",
+      "options": ["strict-kym-plus-doc-examples", "output-paths-only", "all-skills-at-once"],
+      "recommendation": "strict-kym-plus-doc-examples",
+      "status": "resolved",
+      "resolved_at": "2026-06-02T03:44:00+08:00",
+      "resolution": "方案A: 严格KYM边界"
+    }
+  ],
+  "forward_looking_decisions": {
+    "tsp": {
+      "implementation": "deferred-to-CR-012",
+      "design_in_hld": "complete-with-draft-annotation"
+    },
+    "cae_r": {
+      "implementation": "deferred-to-CR-012-or-013",
+      "design_in_hld": "complete-with-draft-annotation",
+      "evolution_path": "progressive-superset"
+    },
+    "factor_format": {
+      "implementation": "deferred-to-future-CR",
+      "strategy": "progressive-compatible",
+      "new_fields": ["factor_type", "tags"]
+    },
+    "tracking_chain": {
+      "implementation": "deferred-to-CR-012",
+      "current_action": "annotation-only"
+    }
+  },
+  "deferred_options": [],
+  "next_action": "hld_drafting",
+  "hld_output": "process/HLD-CR-011.md"
+}

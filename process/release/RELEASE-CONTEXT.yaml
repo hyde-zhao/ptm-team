@@ -1,0 +1,88 @@
+# RELEASE-CONTEXT.yaml — ptm-tde v1.0 发布上下文胶囊
+# 生成日期: 2026-06-08
+# 遵循 CP8 capsule-first 原则：只含摘要、计数、风险 ID、决策 ID 和证据路径
+# 不得包含完整文档内容、全文 diff 或完整会话 transcript
+
+release:
+  agent: "ptm-tde"
+  version: "v1.0"
+  release_date: "2026-06-06"
+  release_decision: "READY"
+  release_artifact_profile: "compact"
+  profile_reason: >
+    standard 模式交付，无真实运行/凭据/外部接口运行时授权需求。
+    发布产物按 compact profile：RELEASE-NOTES + DEPLOY-CHECKLIST 为必须；
+    ROLLBACK/MIGRATION/FEEDBACK 按需或 N/A。
+
+scope:
+  delivered_crs: 7
+  total_stories: 23
+  total_product_files: ~40
+  baseline_commit: "350b1b9"
+  cr_list:
+    - "CR-010: 三阶段框架改造（结构层，6 Stories）"
+    - "CR-011: KYM 阶段改造（内容层，4 Stories）"
+    - "CR-012: MFQ 阶段改造（扩展范围，8 Stories）"
+    - "CR-013: PPDCS 阶段改造（4 Stories）"
+    - "CR-015: AskUserQuestion 交互增强（fast-lane）"
+    - "CR-016: 原子操作消费缺口修复"
+    - "CR-017: 因子库发现缺口修复"
+
+quality:
+  cp3_pass_rate: "4/4 CR 级 CP3 自动预检 PASS"
+  cp5_pass_rate: "4/4 CR 级 CP5 batch approved"
+  cp6_pass_rate: "约 28/28 Story CP6 PASS"
+  cp7_pass_rate: "约 12/12 全局/Story CP7 PASS"
+  cp8_pass_rate: "4/4 CR 级 CP8 自动预检 PASS"
+  blocking_defects: 0
+  high_risk_open: 0
+
+risk_ids:
+  accepted:
+    - "RA-01: CP0-CP5 gate_inheritance（用户接受，回退条件：发现基线问题时发起 CR 回溯）"
+    - "RA-02: 低风险 Story 缺少独立 IMPLEMENTATION.md（CR 级 CP6 已覆盖）"
+
+decision_ids:
+  cp8:
+    - "CP8-DQ-01: CR-011 交付就绪确认 → approved"
+    - "CP8-DQ-02: CR-011 后续台账 → approved"
+    - "CP8-DQ-01-CR-015: CR-015 交付就绪确认 → approved"
+    - "CP8-DQ-02-CR-015: CR-015 Codex 整改 → approved"
+  cp0:
+    - "CR016-DQ-01/02/03/04: 全部 approved"
+    - "CR017-DQ-01/02/03: 全部 approved"
+
+non_authorized:
+  - "真实运行环境验证"
+  - "生产凭据/密钥"
+  - "外部接口实时调用"
+  - "publish/live 发布动作"
+
+follow_up:
+  candidates: 3
+  spike_candidates: 1
+  tracking_files:
+    - "process/changes/CR-011-FOLLOW-UP-TRACKING-2026-06-02.md"
+    - "process/changes/CR-015-FOLLOW-UP-TRACKING-2026-06-04.md"
+
+evidence:
+  capsule: "process/context/CP8-DELIVERY-CONTEXT.yaml"
+  cp8_auto:
+    - "process/checks/CP8-DELIVERY-READINESS-CR-011.md"
+    - "process/checks/CP8-DELIVERY-READINESS-CR-015.md"
+    - "process/checks/CP8-DELIVERY-READINESS-CR-016.md"
+    - "process/checks/CP8-DELIVERY-READINESS-CR-017.md"
+  cp8_manual:
+    - "process/checkpoints/CP8-DELIVERY-READINESS-CR-011.md"
+    - "process/checkpoints/CP8-DELIVERY-READINESS-CR-015.md"
+    - "process/checkpoints/CP8-DELIVERY-READINESS-CR-017-CR-016.md"
+  state: "process/STATE.md"
+  cr_index: "process/changes/CR-INDEX.yaml"
+
+install_verification:
+  status: "n/a"
+  reason: "ptm-tde 作为 Claude Code Agent/Skill 集合，通过文件复制安装到目标项目；不需要独立安装脚本验证"
+
+migration_compatibility:
+  status: "n/a"
+  reason: "ptm-tde v1.0 是首次正式交付，无前置版本需迁移兼容"

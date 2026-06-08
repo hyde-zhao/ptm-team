@@ -1,0 +1,30 @@
+# docs/.gitignore — 默认忽略全部，仅白名单放行
+*
+
+# === 白名单 ===
+
+# 各 Agent README（入口文档）
+!*/README.md
+!README.md
+
+# 用户手册
+!*/USER-MANUAL.md
+
+# 项目蓝图（架构入口）
+!ptm-team-blueprint.md
+
+# 组件手册（主流程 + Skill 调用关系）
+!ptm-tde/component-manual.md
+
+# Gate & Checkpoint 规约（安全门控）
+!ptm-tde/gate-spec.md
+!ptm-tde/checkpoint-spec.md
+
+# Skill 映射表（运行时依赖清单）
+!ptm-tde/skill-references.md
+
+# 运行产物契约（产物目录结构）
+!ptm-tde/runtime-artifacts.md
+
+# 部署检查清单（安装安全验证）
+!release/DEPLOY-CHECKLIST.md
