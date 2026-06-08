@@ -124,11 +124,11 @@ def status_line(ok: bool, evidence: str, blocked_hint: str = "") -> tuple[str, s
     return "BLOCKING", blocked_hint or evidence
 
 
-def probe_atomic_ops() -> tuple[bool, str]:
-    """Check whether the global `atomic-ops` command is available."""
-    executable = shutil.which("atomic-ops")
+def probe_ptm_atomic() -> tuple[bool, str]:
+    """Check whether the global `ptm-atomic` command is available."""
+    executable = shutil.which("ptm-atomic")
     if not executable:
-        return False, "global command atomic-ops not found"
+        return False, "global command ptm-atomic not found"
     try:
         completed = subprocess.run(
             [executable, "list", "--format", "json"],
@@ -138,11 +138,11 @@ def probe_atomic_ops() -> tuple[bool, str]:
             timeout=15,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return False, f"atomic-ops command failed: {exc}"
+        return False, f"ptm-atomic command failed: {exc}"
     if completed.returncode == 0:
-        return True, f"atomic-ops list --format json ok: {executable}"
+        return True, f"ptm-atomic list --format json ok: {executable}"
     stderr = completed.stderr.strip() or completed.stdout.strip()
-    return False, f"atomic-ops returned {completed.returncode}: {stderr}"
+    return False, f"ptm-atomic returned {completed.returncode}: {stderr}"
 
 
 def probe_factor_libraries() -> tuple[bool, str]:
@@ -293,7 +293,7 @@ def run_gate_1(args: argparse.Namespace) -> int:
     )
     topo_hits = find_files(input_root, TOPO_MARKERS)
     coupling_hits = find_files(input_root, COUPLING_MARKERS)
-    atomic_ok, atomic_evidence = probe_atomic_ops()
+    ptm_atomic_ok, ptm_atomic_evidence = probe_ptm_atomic()
     factor_ok, factor_evidence = probe_factor_libraries()
 
     title = read_title(requirement_hits[0]) if requirement_hits else ""
@@ -323,11 +323,11 @@ def run_gate_1(args: argparse.Namespace) -> int:
         ),
     ))
     checks.append((
-        3, "atomic-ops 可用或 wiki 兜底",
+        3, "ptm-atomic 可用或 wiki 兜底",
         *status_line(
-            bool(atomic_ok or args.wiki_index),
-            atomic_evidence if atomic_ok else wiki_note,
-            "全局命令 atomic-ops 不可用，且未提供 wiki 兜底信息。",
+            bool(ptm_atomic_ok or args.wiki_index),
+            ptm_atomic_evidence if ptm_atomic_ok else wiki_note,
+            "全局命令 ptm-atomic 不可用，且未提供 wiki 兜底信息。",
         ),
     ))
     checks.append((
@@ -416,7 +416,7 @@ def run_gate_2(args: argparse.Namespace) -> int:
         (3, "Seed-to-Scenario Mapping"),
         (4, "范围收敛"),
         (5, "Topology Catalog"),
-        (6, "atomic-ops 唯一口径"),
+        (6, "ptm-atomic 唯一口径"),
         (7, "场景链完整"),
         (8, "正常路径可追溯"),
         (9, "选择组完整"),
