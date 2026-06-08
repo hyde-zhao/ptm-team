@@ -49,6 +49,17 @@ status: active
 | `logic-cases.md` | `LC-ID`, `source_tp_ids`, `关联SR`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_binding_status`, `trace_refs`, `confirmation_gap_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则` | 交付主骨架与拓扑绑定表 |
 | `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `topology_binding_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | 设计过程与数据回链 |
 
+### 3. 候选对比表输入（步骤 4/5 消费）
+
+| 来源 | 用途 | 缺失处理 |
+|------|------|---------|
+| `mfq/ptm-atomic-usage/candidate-ptm-atomic.yaml` | 原子操作候选对比表的主要数据源 | 缺失时检查 `test-objects-factors.md` 中的候选引用；仍无则跳过，输出"未发现新候选" |
+| `ptm-atomic list --format json` | 现有原子操作清单，用于对比 | 命令不可用时标记"⚠️ 无法对比，得分和匹配结果不可用" |
+| `mfq/f-analysis/coupling-test-points.md` 末尾 | F 分析耦合因子候选 | 缺失时跳过该源 |
+| `mfq/m-analysis/candidate-factor-proposals.yaml` | M 分析因子候选 | 缺失时跳过该源 |
+| `mfq/m-analysis/test-objects-factors.md` | `source=new-candidate` 的因子 | 缺失时跳过该源 |
+| `resource/factor-libraries/index.yaml` → `~/.ptm-team/resource/factor-libraries/` | 公共因子库索引，用于因子匹配对比 | 不可用时不阻断，标记"⚠️ 无法检索公共因子库" |
+
 ### 2. STORY-06 / STORY-07 设计层（必须全量消费）
 
 | 来源 | 必收字段 | 用途 |
@@ -164,29 +175,97 @@ ptm-tde 默认交付物：特性测试方案 + 特性测试用例 + 原子操作
 
 ### 步骤 4：渲染原子操作候选对比表
 
-消费 `mfq/ptm-atomic-usage/candidate-ptm-atomic.yaml`，生成对比分析表。
+#### 4a. 信息获取
 
-**输入字段**：`op_id`（候选操作 ID）、`match_attempt`（L1-L4 匹配 + score）、`source`（来源场景/步骤）、`scenario_refs`
+**优先读取**：
+1. `mfq/ptm-atomic-usage/candidate-ptm-atomic.yaml` — M 分析产出的候选原子操作列表
+2. 全局命令 `ptm-atomic list --format json` — 现有原子操作清单（用于对比）
 
-| 候选 op_id | 操作描述 | L1名称 | L2参数 | L3输出 | L4错误码 | 综合得分 | 现有库匹配 | 匹配结果 | 来源场景 |
-|------------|---------|--------|--------|--------|----------|:---:|---------|:---:|---------|
-| CAND-OP-001 | 删除日志服务器 | fw_log_server_delete | --id | success\|error | 2xx\|4xx | 85 | fw_log_server_delete | ✅ 已匹配 | SCN-LOG-001 |
+**候选 YAML 中的关键字段**：
+- `op_id` — 候选操作 ID
+- `description` — 操作描述（来自场景步骤）
+- `match_attempt` — 语义匹配结果，含 `L1`（名称匹配）、`L2`（参数匹配）、`L3`（输出匹配）、`L4`（错误码匹配）、`score`（综合得分 0-100）
+- `source` — 来源（场景 ID + 步骤 ID）
+- `scenario_refs` — 关联场景引用
+- `confirmation_gap_refs` — 未确认项引用
 
-- **匹配结果**：`✅ 已匹配`（score ≥ 80）、`⚠️ 部分匹配`（50-79）、`❌ 未匹配`（< 50 或无匹配）
-- **未匹配候选**在表后附摘要：”本次分析共发现 N 个新候选原子操作，建议提交 ptm-tae 进行工具开发”
+**若候选 YAML 不存在**：
+- 检查 `mfq/m-analysis/test-objects-factors.md` 中是否有 `source=candidate` 的操作引用
+- 若仍无 → 输出 “本次分析未发现新的原子操作候选”，不生成空表
+
+#### 4b. 对比逻辑
+
+1. 读取候选列表，逐条与 `ptm-atomic list --format json` 的现有操作清单对比
+2. 若已有 `match_attempt` → 使用其 L1-L4 和 score
+3. 若无 `match_attempt` → 按 `op_id` 精确匹配现有清单
+4. 确定匹配结果：
+   - `✅ 已匹配`：score ≥ 80 或 op_id 精确匹配
+   - `⚠️ 部分匹配`：score 50-79
+   - `❌ 未匹配`：score < 50 或无匹配
+
+#### 4c. 输出标准
+
+| 列 | 取值来源 | 必填 | 说明 |
+|----|---------|:---:|------|
+| 候选 op_id | `candidate.op_id` | ✅ | |
+| 操作描述 | `candidate.description` | ✅ | 一行概括，≤50 字 |
+| L1 名称 | `match_attempt.L1` | | 候选名称 vs 现有名称 |
+| L2 参数 | `match_attempt.L2` | | 参数签名匹配 |
+| L3 输出 | `match_attempt.L3` | | 输出格式匹配 |
+| L4 错误码 | `match_attempt.L4` | | 错误码语义匹配 |
+| 综合得分 | `match_attempt.score` | ✅ | 0-100 |
+| 现有库匹配 | 匹配到的现有 `op_id` | | 未匹配写 `—` |
+| 匹配结果 | 判定逻辑 | ✅ | `✅` / `⚠️` / `❌` |
+| 来源场景 | `candidate.source` | ✅ | 场景 ID + 步骤 |
+
+**排序规则**：按匹配结果（❌ → ⚠️ → ✅）排序，同结果按 score 降序。
+**表后摘要**：
+- 总计 N 个候选，其中 X 个已匹配、Y 个部分匹配、Z 个未匹配
+- 未匹配候选列表 + “建议提交 ptm-tae 进行工具开发”
 
 ### 步骤 5：渲染测试因子候选对比表
 
-消费 `mfq/f-analysis/coupling-test-points.md` 末尾的耦合因子候选列表 + `mfq/m-analysis/candidate-factor-proposals.yaml`，合并去重后生成对比分析表。
+#### 5a. 信息获取
 
-| factor_id | 候选名称 | data_domain | 来源类型 | 现有公共因子 | 匹配结果 | 所属 TSP | 来源场景 |
-|-----------|---------|-------------|:---:|-----------|:---:|---------|---------|
-| FAC-F-CAND-001 | 规则冲突处理结果 | 冲突/未冲突/部分冲突 | new-coupling | — | 🆕 新增 | TSP-M2-001 | SCN-COUP-001 |
-| FAC-M-CAND-005 | 接口工作模式 | L2/L3/接口对 | new-candidate | FAC-INTF-MODE | ✅ 已匹配 | TSP-M1-003 | SCN-INTF-001 |
+**多源合并**，按优先级读取：
 
-- **来源类型**：`new-coupling`（F 分析耦合发现）、`new-candidate`（M 分析因子候选）
-- **匹配结果**：`✅ 已匹配`（公共库中存在等价因子）、`🆕 新增`（无匹配，建议入库）
-- **未匹配候选**在表后附摘要：”本次分析共发现 N 个新候选测试因子，建议提交 ptm-tde 因子库维护流程进行评审入库”
+| 优先级 | 来源文件 | 提取内容 |
+|:---:|------|------|
+| 1 | `mfq/f-analysis/coupling-test-points.md` 末尾「耦合因子候选列表」 | F 分析发现的耦合因子候选 |
+| 2 | `mfq/m-analysis/candidate-factor-proposals.yaml` | M 分析产生的因子候选 |
+| 3 | `mfq/m-analysis/test-objects-factors.md` | `source=new-candidate` 的因子 |
+
+公共因子库索引用于对比：`resource/factor-libraries/index.yaml` → `~/.ptm-team/resource/factor-libraries/` → `$PTM_TEAM_RESOURCE_HOME/factor-libraries/`
+
+**合并去重规则**：以 `(factor_name, data_domain)` 为 key，跨源合并，保留第一个非空的 `tsp_ref` 和 `scenario_refs`。
+
+**若三源均无候选** → 输出 “本次分析未发现新的测试因子候选”，不生成空表。
+
+#### 5b. 对比逻辑
+
+1. 逐条候选因子读取 `factor_name` + `data_domain`
+2. 在公共因子库中检索等价因子（按名称、域、owner_object 三级匹配）
+3. 确定匹配结果：
+   - `✅ 已匹配`：公共库中已有等价因子，填现有 `factor_id`
+   - `🆕 新增`：无匹配，建议入库
+
+#### 5c. 输出标准
+
+| 列 | 取值来源 | 必填 | 说明 |
+|----|---------|:---:|------|
+| factor_id | 候选的 `factor_id` | ✅ | |
+| 候选名称 | `factor_name` | ✅ | |
+| data_domain | `data_domain` | ✅ | 取值域 |
+| 来源类型 | `source` 字段 | ✅ | `new-coupling` / `new-candidate` |
+| 现有公共因子 | 匹配到的现有 `factor_id` | | 未匹配写 `—` |
+| 匹配结果 | 判定逻辑 | ✅ | `✅ 已匹配` / `🆕 新增` |
+| 所属 TSP | `tsp_ref` | ✅ | 来源 TSP 编号 |
+| 来源场景 | `scenario_refs` | ✅ | 来源场景 ID |
+
+**排序规则**：按匹配结果（🆕 → ✅）排序，同结果按来源类型（new-coupling → new-candidate）排序。
+**表后摘要**：
+- 总计 N 个候选，其中 X 个已匹配、Y 个新增
+- 新增候选列表 + “建议提交因子库维护流程进行评审入库”
 
 ## 输出文件
 
@@ -236,9 +315,14 @@ ptm-tde 默认交付物：特性测试方案 + 特性测试用例 + 原子操作
 - [ ] 汇总表覆盖 `ppdcs/pc/` 下所有 PC 文件的全部 PC 行
 - [ ] 各 LC 详情不重复渲染 PC 表（改为 PC 编号引用行）
 - [ ] `fact_status=needs-confirmation` 的 PC 在用例名称末尾标注 ` ⚠️待确认`
-- [ ] 原子操作候选对比表包含 op_id、match_attempt、score、匹配结果、来源场景
-- [ ] 测试因子候选对比表包含 factor_id、data_domain、来源类型、匹配结果、TSP
-- [ ] 未匹配候选附摘要说明（数量 + 建议后续动作）
+- [ ] 原子操作候选对比表包含 op_id、描述、match_attempt（L1-L4+score）、现有库匹配、匹配结果 ✅/⚠️/❌、来源场景；按 未匹配→已匹配 排序
+- [ ] 原子操作候选对比表表后摘要含统计（总计/已匹配/部分匹配/未匹配）+ 未匹配列表 + 建议提交 ptm-tae
+- [ ] 原子操作候选无数据时不生成空表，输出"未发现新候选"
+- [ ] 测试因子候选对比表包含 factor_id、名称、data_domain、来源类型（new-coupling/new-candidate）、现有公共因子、匹配结果 ✅/🆕、TSP、场景
+- [ ] 测试因子候选对比表多源合并去重（以 factor_name+data_domain 为 key）
+- [ ] 测试因子候选对比表表后摘要含统计（总计/已匹配/新增）+ 新增列表 + 建议入库评审
+- [ ] 测试因子候选无数据时不生成空表，输出"未发现新候选"
+- [ ] 公共库不可用时对比表标注"⚠️ 无法检索公共因子库"，不阻断
 - [ ] 测试用例文档消费 STORY-06 / STORY-07 的完整过程文档，而非仅最终 PC
 - [ ] 交付物保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status`
 - [ ] 交付物不把真实端口、真实链路或 `DUT.port1` / `TG.port1` 展示为因子
