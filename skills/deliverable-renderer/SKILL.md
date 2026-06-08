@@ -2,7 +2,7 @@
 name: deliverable-renderer
 description: >-
   将 MFQ 分析、完整 PPDCS 设计过程和覆盖结果渲染为最终交付物，
-  只输出测试方案和测试用例两份 Markdown。
+  输出四份 Markdown：测试方案、测试用例、原子操作候选对比表、测试因子候选对比表。
   触发词包括：生成交付物、输出文档、测试方案、测试用例文档。
   适用场景：MFQ 分析的 delivery 阶段。
 argument-hint: "特性名称"
@@ -71,22 +71,23 @@ status: active
 - `header`: "Delivery"
 - `multiSelect`: false（单选）
 - `options`:
-  1. `label`: "全部生成", `description`: "特性测试方案 + 特性测试用例（16列PC汇总表 + LC设计过程）"
+  1. `label`: "全部生成", `description`: "测试方案 + 测试用例 + 原子操作候选对比表 + 测试因子候选对比表"
 
-> 如需排除某项，用户可选中后通过 Other 输入"修改: 仅生成测试方案"或"修改: 仅生成测试用例"。
+> 如需排除某项，用户可选中后通过 Other 输入"修改: 仅生成测试方案"等。
 
 ⛔ **禁止将以下中间产物作为交付选项**：
 - "逻辑用例文档" — `mfq/integration/` 中的中间产物，其内容已包含在测试用例中
 - "覆盖率报告" — `ppdcs/coverage/` 中的中间产物，其摘要已包含在测试方案中
+- 原始候选 YAML — 原子操作和测试因子候选应加工为对比表后交付，不应直接输出原始 YAML
 
 **AskUserQuestion 不可用时的回退文本**：
 
 ```
 ## 交付确认
 
-ptm-tde 默认交付物：特性测试方案 + 特性测试用例
+ptm-tde 默认交付物：特性测试方案 + 特性测试用例 + 原子操作候选对比表 + 测试因子候选对比表
 
-回复 "approve" 确认全部生成，或 "修改: 仅生成测试方案" / "修改: 仅生成测试用例" 调整。
+回复 "approve" 确认全部生成，或 "修改: 仅生成测试方案" 调整。
 ```
 
 ### 步骤 1：装配交付基线
@@ -161,19 +162,47 @@ ptm-tde 默认交付物：特性测试方案 + 特性测试用例
 | `data-design` | factor catalog、等价类/边界值表、独立性检查、data row |
 | `combination-design` | factor catalog、约束表、压缩策略、组合表、pair coverage checklist / fallback 记录 |
 
+### 步骤 4：渲染原子操作候选对比表
+
+消费 `mfq/ptm-atomic-usage/candidate-ptm-atomic.yaml`，生成对比分析表。
+
+**输入字段**：`op_id`（候选操作 ID）、`match_attempt`（L1-L4 匹配 + score）、`source`（来源场景/步骤）、`scenario_refs`
+
+| 候选 op_id | 操作描述 | L1名称 | L2参数 | L3输出 | L4错误码 | 综合得分 | 现有库匹配 | 匹配结果 | 来源场景 |
+|------------|---------|--------|--------|--------|----------|:---:|---------|:---:|---------|
+| CAND-OP-001 | 删除日志服务器 | fw_log_server_delete | --id | success\|error | 2xx\|4xx | 85 | fw_log_server_delete | ✅ 已匹配 | SCN-LOG-001 |
+
+- **匹配结果**：`✅ 已匹配`（score ≥ 80）、`⚠️ 部分匹配`（50-79）、`❌ 未匹配`（< 50 或无匹配）
+- **未匹配候选**在表后附摘要：”本次分析共发现 N 个新候选原子操作，建议提交 ptm-tae 进行工具开发”
+
+### 步骤 5：渲染测试因子候选对比表
+
+消费 `mfq/f-analysis/coupling-test-points.md` 末尾的耦合因子候选列表 + `mfq/m-analysis/candidate-factor-proposals.yaml`，合并去重后生成对比分析表。
+
+| factor_id | 候选名称 | data_domain | 来源类型 | 现有公共因子 | 匹配结果 | 所属 TSP | 来源场景 |
+|-----------|---------|-------------|:---:|-----------|:---:|---------|---------|
+| FAC-F-CAND-001 | 规则冲突处理结果 | 冲突/未冲突/部分冲突 | new-coupling | — | 🆕 新增 | TSP-M2-001 | SCN-COUP-001 |
+| FAC-M-CAND-005 | 接口工作模式 | L2/L3/接口对 | new-candidate | FAC-INTF-MODE | ✅ 已匹配 | TSP-M1-003 | SCN-INTF-001 |
+
+- **来源类型**：`new-coupling`（F 分析耦合发现）、`new-candidate`（M 分析因子候选）
+- **匹配结果**：`✅ 已匹配`（公共库中存在等价因子）、`🆕 新增`（无匹配，建议入库）
+- **未匹配候选**在表后附摘要：”本次分析共发现 N 个新候选测试因子，建议提交 ptm-tde 因子库维护流程进行评审入库”
+
 ## 输出文件
 
 | 文件 | 内容 |
 |------|------|
 | `<特性名>特性测试方案.md` | 覆盖测试方案、场景、分析与覆盖摘要 |
 | `<特性名>特性测试用例.md` | 统一 16 列 PC 汇总表（全文最前） + 按 LC 组织的完整设计过程（全文后部，不重复渲染 PC 表） |
+| `<特性名>原子操作候选对比表.md` | 候选 ptm-atomic 与现有库的匹配对比（L1-L4 + score），标注已匹配/部分匹配/未匹配 |
+| `<特性名>测试因子候选对比表.md` | 候选测试因子与公共因子库的匹配对比，标注已匹配/新增，按 TSP 和来源类型组织 |
 
 ## 渲染规则
 
 1. **不丢过程**：必须带出 STORY-06 / STORY-07 完整设计过程
 2. **统一 PC 表**：全文仅一张 16 列 PC 汇总表，来自所有 `ppdcs/pc/*.md` 的 PC 行合并
 3. **不丢字段**：不得删掉 trace / gap / topology / fact_status；若存在 `topology_ref`，不得在场景章节中丢失
-4. **不扩展交付文件**：`ppdcs/delivery/` 只输出测试方案和测试用例两份 Markdown
+4. **候选对比表独立交付**：原子操作和测试因子候选对比表以独立 Markdown 输出，不嵌入测试方案/用例中
 5. **不混淆对象**：测试因子、拓扑角色和真实组网对象分开展示；`DUT.port1`、`TG.port1`、link 实例不得进入”因子-取值表”。
 6. **不提升状态**：`fact_status=needs-confirmation` 或 `topology_binding_status=needs-confirmation` 的条目必须原样进入交付物，不能因已生成 PC 改为 confirmed。PC 汇总表中 needs-confirmation 的条目在用例名称末尾追加 ` ⚠️待确认`。
 
@@ -200,11 +229,14 @@ ptm-tde 默认交付物：特性测试方案 + 特性测试用例
 
 ## 验收标准
 
-- [ ] 只输出测试方案、测试用例两份 Markdown
+- [ ] 输出四份交付物：测试方案 + 测试用例 + 原子操作候选对比表 + 测试因子候选对比表
 - [ ] 测试用例文档全文仅一张 16 列 PC 汇总表（来自所有 `ppdcs/pc/*.md` 的 PC 行合并）
 - [ ] 汇总表覆盖 `ppdcs/pc/` 下所有 PC 文件的全部 PC 行
 - [ ] 各 LC 详情不重复渲染 PC 表（改为 PC 编号引用行）
 - [ ] `fact_status=needs-confirmation` 的 PC 在用例名称末尾标注 ` ⚠️待确认`
+- [ ] 原子操作候选对比表包含 op_id、match_attempt、score、匹配结果、来源场景
+- [ ] 测试因子候选对比表包含 factor_id、data_domain、来源类型、匹配结果、TSP
+- [ ] 未匹配候选附摘要说明（数量 + 建议后续动作）
 - [ ] 测试用例文档消费 STORY-06 / STORY-07 的完整过程文档，而非仅最终 PC
 - [ ] 交付物保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status`
 - [ ] 交付物不把真实端口、真实链路或 `DUT.port1` / `TG.port1` 展示为因子
