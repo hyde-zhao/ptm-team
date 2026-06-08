@@ -165,6 +165,37 @@ def probe_factor_libraries() -> tuple[bool, str]:
     return False, "factor-libraries not found (checked PTM_TEAM_RESOURCE_HOME, ~/.ptm-team, cwd/resource)"
 
 
+def _resource_candidates(resource_subdir: str) -> list[Path]:
+    """Return candidate paths for a shared resource subdirectory.
+
+    Lookup order:
+      1. $PTM_TEAM_RESOURCE_HOME/<subdir>
+      2. ~/.ptm-team/resource/<subdir>
+      3. cwd/resource/<subdir> (dev mode)
+    """
+    candidates: list[Path] = []
+    env_home = os.environ.get("PTM_TEAM_RESOURCE_HOME")
+    if env_home:
+        candidates.append(Path(env_home).expanduser() / resource_subdir)
+    candidates.append(Path.home() / ".ptm-team" / "resource" / resource_subdir)
+    candidates.append(Path.cwd() / "resource" / resource_subdir)
+    return candidates
+
+
+def find_resource_files(resource_subdir: str, glob_pattern: str) -> list[Path]:
+    """Search for resource files across shared resource directories.
+
+    Returns list of matching file paths (may be empty).
+    """
+    hits: list[Path] = []
+    for candidate in _resource_candidates(resource_subdir):
+        if candidate.is_dir():
+            for matched in sorted(candidate.glob(glob_pattern)):
+                if matched.is_file():
+                    hits.append(matched)
+    return hits
+
+
 # ---------------------------------------------------------------------------
 # I/O helpers
 # ---------------------------------------------------------------------------
@@ -292,7 +323,9 @@ def run_gate_1(args: argparse.Namespace) -> int:
         [requirement] if requirement and requirement.exists() else find_files(input_root)
     )
     topo_hits = find_files(input_root, TOPO_MARKERS)
+    topo_resource_hits = find_resource_files("network-topology", "*.md")
     coupling_hits = find_files(input_root, COUPLING_MARKERS)
+    coupling_resource_hits = find_resource_files("coupling-matrix", "*.yaml")
     ptm_atomic_ok, ptm_atomic_evidence = probe_ptm_atomic()
     factor_ok, factor_evidence = probe_factor_libraries()
 
@@ -330,20 +363,24 @@ def run_gate_1(args: argparse.Namespace) -> int:
             "全局命令 ptm-atomic 不可用，且未提供 wiki 兜底信息。",
         ),
     ))
+    topo_all = topo_hits + topo_resource_hits
+    topo_evidence = ", ".join(str(p) for p in topo_all) or wiki_note
     checks.append((
         4, "防火墙 topo 可用或 wiki 兜底",
         *status_line(
-            bool(topo_hits or args.wiki_index),
-            ", ".join(str(p) for p in topo_hits) or wiki_note,
-            "本地 input/ 未找到 topo，wiki 也未提供；请补充防火墙 topo 文件或 wiki 文档。",
+            bool(topo_all or args.wiki_index), topo_evidence,
+            "本地 input/ 和 resource/network-topology/ 均未找到 topo，wiki 也未提供；请补充防火墙 topo 文件或 wiki 文档。",
         ),
     ))
+
+    coupling_all = coupling_hits + coupling_resource_hits
+    coupling_evidence = ", ".join(str(p) for p in coupling_all) or wiki_note
     checks.append((
-        5, "耦合矩阵可用或 wiki 兜底",
+        5, "耦合矩阵与特性树可用或 wiki 兜底",
         *status_line(
-            bool(coupling_hits or args.wiki_index),
-            ", ".join(str(p) for p in coupling_hits) or wiki_note,
-            "本地 input/ 未找到耦合矩阵，wiki 也未提供；请补充耦合矩阵或 wiki 文档。",
+            bool(coupling_all or args.wiki_index),
+            coupling_evidence,
+            "本地 input/ 和 resource/coupling-matrix/ 均未找到耦合矩阵或特性树，wiki 也未提供。两者至少一个存在即通过；缺失方将在后续步骤中由模型推理补充。",
         ),
     ))
     checks.append((
@@ -360,6 +397,39 @@ def run_gate_1(args: argparse.Namespace) -> int:
     # Override status for factor check: warn but never block
     if not factor_ok:
         checks[-1] = (7, "公共因子库可解析", "WARN", factor_evidence)
+
+    # 8: KYM 产物目录就绪
+    kym_mission_dir = project_root / "kym" / "mission-understanding"
+    kym_mission_ok = kym_mission_dir.is_dir()
+    checks.append((
+        8, "KYM 产物目录就绪",
+        *status_line(
+            kym_mission_ok,
+            "kym/mission-understanding/ 已就绪" if kym_mission_ok else "kym/mission-understanding/ 不存在",
+            "无法创建 kym/mission-understanding/（权限不足或路径被普通文件占用）",
+        ),
+    ))
+
+    # 9: mission-statement 模板可访问（骨架检查：kym skill 目录存在即视为可访问）
+    kym_skill_dir = Path(__file__).resolve().parent.parent.parent / "kym"
+    mission_tmpl_ok = kym_skill_dir.is_dir()
+    checks.append((
+        9, "mission-statement 模板可访问",
+        *status_line(
+            mission_tmpl_ok,
+            "kym skill 目录存在" if mission_tmpl_ok else "kym skill 目录不存在",
+            "kym skill 模板不可访问，无法正常运行 KYM 阶段",
+        ),
+    ))
+
+    # 10: 组网图资源可用
+    topo_resource_ok = len(topo_resource_hits) > 0
+    topo_resource_evidence = ", ".join(str(p) for p in topo_resource_hits) if topo_resource_hits else "WARNING: resource/network-topology/ 无可用文件"
+    checks.append((
+        10, "组网图资源可用",
+        "PASS" if topo_resource_ok else "WARN",
+        topo_resource_evidence,
+    ))
 
     overall = "PASS" if all(status in ("PASS", "WARN") for _, status, _, _ in checks) else "BLOCKED"
     result_path = write_skeleton_result(
