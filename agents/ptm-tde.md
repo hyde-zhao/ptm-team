@@ -527,9 +527,8 @@ v2 追踪链:
 
 ### 交付确认流程
 
-1. `deliverable-renderer` 启动时先执行「步骤 0：交付确认」，通过 `AskUserQuestion` 展示单选项「全部生成」
-2. 用户确认后，依次渲染四份交付物到 `ppdcs/delivery/`
-3. 生成完成后进入 GATE-5 Exit Gate 终检
+1. `deliverable-renderer` 启动时展示默认交付清单（4 份），用户确认后直接按定义格式生成
+2. 不询问输出格式（Markdown/表格等），交付物格式由 renderer 定义决定
 
 ## 约束
 
