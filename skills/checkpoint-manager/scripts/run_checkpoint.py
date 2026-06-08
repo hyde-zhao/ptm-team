@@ -497,6 +497,23 @@ def run_gate_2(args: argparse.Namespace) -> int:
         (14, "输出质量检查"),
     ]
 
+    # N1-N4: KYM mission understanding checks (skeleton)
+    mission_md = project_root / "kym" / "mission-understanding" / "mission-statement.md"
+    n1_ok = mission_md.is_file() and mission_md.stat().st_size > 0
+    checks.append((
+        len(checks) + 1, "N1: 使命文档存在",
+        "PASS" if n1_ok else "BLOCKING",
+        str(mission_md) if n1_ok else f"缺失: {mission_md}",
+    ))
+
+    # N2-N4: skeleton check only — detailed analysis deferred to main agent
+    for n_id, n_label in [("N2", "启发式探索已执行"), ("N3", "范围边界已界定"), ("N4", "待澄清问题已收集")]:
+        checks.append((
+            len(checks) + 1, f"{n_id}: {n_label}",
+            "PENDING" if n1_ok else "SKIPPED",
+            "需主 Agent 解析 mission-statement.md 后判定" if n1_ok else "N1 未通过，跳过",
+        ))
+
     overall = "PASS" if entry_ok else "BLOCKED"
     # GATE-2 is auto + manual: output -auto.md first
     result_path = write_skeleton_result(
@@ -546,17 +563,27 @@ def run_gate_3(args: argparse.Namespace) -> int:
         "| W2 | PPDCS 可消费 plan | WARNING | 设计计划可被 PPDCS 阶段正确读取（骨架检查不验证，PPDCS Exit Gate 二次检查） |\n"
     )
 
-    # Pending detailed checks
+    # Pending detailed checks (M1-M9 from gate-spec.md GATE-3 Checklist)
     pending_items = [
-        (1, "M 分析输出完整"),
-        (2, "F 分析输出完整"),
-        (3, "Q 分析输出完整"),
-        (4, "测试点整合完整"),
-        (5, "LC topology_bindings 一致"),
-        (6, "设计计划存在"),
-        (7, "公共因子库 lock 有效"),
-        (8, "plan 存在性和格式"),
+        (1, "M1: M 分析输出完整"),
+        (2, "M2: F 分析输出完整"),
+        (3, "M3: Q 分析输出完整"),
+        (4, "M4: 测试点整合完整"),
+        (5, "M5: LC topology_bindings 一致"),
+        (6, "M6: 设计计划存在"),
+        (7, "M7: 公共因子库 lock 有效"),
+        (8, "M8: 因子库扫描完整性 (N_scanned == index)"),
+        (9, "M9: 原子操作匹配完整性 (candidate-ptm-atomic.yaml)"),
     ]
+
+    # Entry Criteria: factor-library-lock.yaml existence check
+    factor_lock = project_root / "mfq" / "factor-usage" / "factor-library-lock.yaml"
+    factor_lock_ok = factor_lock.is_file()
+    checks.append((
+        len(checks) + 1, "Entry Criteria: factor-library-lock.yaml",
+        "PASS" if factor_lock_ok else "WARN",
+        str(factor_lock) if factor_lock_ok else f"缺失: {factor_lock}（因子消费未锁定，后续阶段可补）",
+    ))
 
     overall = "PASS" if entry_ok else "BLOCKED"
     result_path = write_skeleton_result(
