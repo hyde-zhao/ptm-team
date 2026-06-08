@@ -6,17 +6,16 @@ TGFW测试组 PTM (Product Test Management) Team 项目
 
 ### Agent 一键安装
 
-把下面这句话发给 Claude Code 即可完成全部安装：
+把下面这段话发给 Claude Code 即可完成全部安装：
 
-> 请帮我从 git 仓库 clone ptm-team 项目，并安装 ptm-team 和 ptm-atomic 命令
-
-Agent 收到后将自动执行：
-1. 检查 `uv` 是否已安装；若不存在则先执行 `curl -LsSf https://astral.sh/uv/install.sh | sh` 安装 uv
-2. 询问用户 ptm-team 存放目录，默认 `~/ptm-team`，确认后执行 `git clone git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team.git <目标目录>`，已存在则 `git pull` 更新
-3. `cd ~/ptm-team && uv tool install .` — 安装 `ptm-team` 全局命令
-4. `uv tool install git+ssh://git@<IP_ADDRESS>/<INTERNAL_GIT_PATH>/ptm-atomic.git` — 安装 `ptm-atomic` 全局命令
-5. `ptm-atomic sync git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-atomic.git` — 同步 ptm-atomic 运行时资源
-6. 安装完成后，提示用户进入目标项目目录，运行 `ptm-team install claude --agent ptm-tde` 安装 agent
+> 请帮我完成 ptm-team 和 ptm-atomic 的安装，按以下步骤执行：
+>
+> 1. 检查 `uv` 是否已安装；若不存在则先执行 `curl -LsSf https://astral.sh/uv/install.sh | sh` 安装 uv
+> 2. 询问我 ptm-team 存放目录，默认 `~/ptm-team`，确认后执行 `git clone git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team.git <目标目录>`，已存在则 `git pull` 更新
+> 3. `cd <目标目录> && uv tool install .` — 安装 `ptm-team` 全局命令
+> 4. `uv tool install git+ssh://git@<IP_ADDRESS>/<INTERNAL_GIT_PATH>/ptm-atomic.git` — 安装 `ptm-atomic` 全局命令
+> 5. `ptm-atomic sync git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-atomic.git` — 同步 ptm-atomic 运行时资源
+> 6. 安装完成后提示我进入目标项目目录，运行 `ptm-team install claude --agent ptm-tde` 安装 agent
 
 ### 全局命令安装（推荐）
 
