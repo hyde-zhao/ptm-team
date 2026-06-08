@@ -197,7 +197,9 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 │   ├── coverage/                             # 双层覆盖率报告
 │   └── delivery/                             # 最终交付物
 │       ├── <特性名>特性测试方案.md
-│       └── <特性名>特性测试用例.md
+│       ├── <特性名>特性测试用例.md
+│       ├── <特性名>原子操作候选对比表.md
+│       └── <特性名>测试因子候选对比表.md
 ├── process/                                  # 跨阶段边界产物
 │   ├── plan/                                 # 设计计划（MFQ 阶段 design-planner 写入，PPDCS 阶段读取）
 │   ├── checkpoints/                          # Gate 检查点结果
@@ -227,7 +229,7 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 2. `input/` 只读，任何分析产物都不能写入 `input/`。
 3. KYM 分析写入 `kym/`，MFQ 分析写入 `mfq/`（含 `mfq/factor-usage/`），跨阶段计划写入 `process/plan/`，PPDCS 设计与交付写入 `ppdcs/`，检查点写入 `process/checkpoints/`，状态写入 `process/STATE.yaml`。
 4. `ppdcs/ppdcs/` 和 `ppdcs/pc/` 均按每个逻辑用例单文件输出，文件名固定为 `<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，不创建深层模块目录。
-5. `ppdcs/delivery/` 只允许输出 `<特性名>特性测试方案.md` 和 `<特性名>特性测试用例.md`。
+5. `ppdcs/delivery/` 输出四份交付物：特性测试方案 + 特性测试用例 + 原子操作候选对比表 + 测试因子候选对比表。
 6. `process/plan/` 是跨阶段边界产物：MFQ 阶段的 design-planner 写入，PPDCS 阶段的 Skill 读取。主 Agent 在 PPDCS 阶段启动时检查 plan 存在性。
 
 **绝对路径示例**（假设 cwd = `D:\workspace\myproject`）：
@@ -514,8 +516,20 @@ v2 追踪链:
 
 ## 交付物
 
-1. **`<特性名>特性测试方案.md`**：特性概述、场景分析（含 `topology_ref`、`topology_bindings`、来源和确认状态）、需求分析、MFQ(PPDCS) 分析表、测试点整合
-2. **`<特性名>特性测试用例.md`**：测试点分析表 + 按五级目录组织的每个逻辑用例的完整设计过程，并保留拓扑角色到真实组网对象的物化链路
+所有交付物输出到 `ppdcs/delivery/`：
+
+| 文件 | 内容 | 消费方 |
+|------|------|--------|
+| `<特性名>特性测试方案.md` | 特性概述、场景分析（含 `topology_ref`、`topology_bindings`、来源和确认状态）、需求分析、MFQ(PPDCS) 分析表、测试点整合 | 测试团队、评审 |
+| `<特性名>特性测试用例.md` | 统一 16 列 PC 汇总表 + 按五级目录组织的每个 LC 完整设计过程，保留拓扑角色到真实组网对象的物化链路 | 测试执行（ptm-te） |
+| `<特性名>原子操作候选对比表.md` | 候选 ptm-atomic 与现有库的 L1-L4 匹配对比（op_id、match_attempt、score、匹配结果 ✅/⚠️/❌），未匹配候选附后续开发建议 | ptm-tae 工具开发 |
+| `<特性名>测试因子候选对比表.md` | 候选测试因子与公共因子库的匹配对比（factor_id、data_domain、来源类型、匹配结果 ✅/🆕），按 TSP 组织，未匹配候选附入库建议 | 因子库维护 |
+
+### 交付确认流程
+
+1. `deliverable-renderer` 启动时先执行「步骤 0：交付确认」，通过 `AskUserQuestion` 展示单选项「全部生成」
+2. 用户确认后，依次渲染四份交付物到 `ppdcs/delivery/`
+3. 生成完成后进入 GATE-5 Exit Gate 终检
 
 ## 约束
 
