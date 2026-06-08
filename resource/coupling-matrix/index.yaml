@@ -1,0 +1,25 @@
+schema_version: 1
+matrices:
+  - matrix_id: tgfw-coupling
+    resource_type: coupling-matrix
+    display_name: "TGFW 产品耦合矩阵"
+    description: "合并数通&高可用 + 安全&系统两个域，共 173 个源特性 × 62 个目标特性，562 条强耦合关系"
+    version: "1.0"
+    status: active
+    source: tgfw-coupling-matrix.yaml
+    feature_tree: tgfw-feature-tree.yaml
+    domains:
+      - datacom-ha
+      - security-system
+    compatible_consumers: [ptm-tde]
+    note: "加工自 NGFW系列 V60R1C00 特性树&耦合矩阵&形态差异三表.xlsx"
+
+  - matrix_id: tgfw-platform-diff
+    resource_type: coupling-matrix
+    display_name: "TGFW 形态差异矩阵"
+    description: "各特性在 J1900/C236/EP/ARM 平台上的支持差异。当前平台数据尚未填入，仅有特性结构骨架。"
+    version: "0.1.0"
+    status: candidate
+    source: tgfw-platform-diff.yaml
+    compatible_consumers: [ptm-tde, ptm-te]
+    note: "平台差异数据待后续填充"

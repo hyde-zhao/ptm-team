@@ -289,26 +289,49 @@ def resource_home() -> Path:
     return DEFAULT_RESOURCE_HOME.expanduser().resolve()
 
 
-def parse_resource_index(source_dir: Path) -> dict[str, dict[str, str]]:
-    """Parse resource/factor-libraries/index.yaml for library paths."""
-    index_path = source_dir / "resource" / "factor-libraries" / "index.yaml"
+def parse_resource_index(source_dir: Path, resource_type: str = "factor-library") -> dict[str, dict[str, str]]:
+    """Parse resource index.yaml for a given resource type.
+
+    Returns a dict keyed by resource identifier (library_id / matrix_id / topo_id).
+    """
+    # Map resource_type to directory name
+    type_to_dir = {
+        "factor-library": "factor-libraries",
+        "coupling-matrix": "coupling-matrix",
+        "network-topology": "network-topology",
+    }
+    dir_name = type_to_dir.get(resource_type)
+    if not dir_name:
+        return {}
+
+    index_path = source_dir / "resource" / dir_name / "index.yaml"
     if not index_path.is_file():
         return {}
 
-    libraries: dict[str, dict[str, str]] = {}
+    items: dict[str, dict[str, str]] = {}
     current: dict[str, str] | None = None
+    current_id = ""
+
+    # Determine the key field based on resource type
+    key_fields = {
+        "factor-library": "library_id",
+        "coupling-matrix": "matrix_id",
+        "network-topology": "topo_id",
+    }
+    key_field = key_fields.get(resource_type, "library_id")
+
     for raw_line in index_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        if line.startswith("- library_id:"):
-            library_id = strip_yaml_value(line.split(":", 1)[1])
-            current = {"library_id": library_id}
-            libraries[library_id] = current
+        if line.startswith(f"- {key_field}:"):
+            current_id = strip_yaml_value(line.split(":", 1)[1])
+            current = {key_field: current_id}
+            items[current_id] = current
         elif current is not None and ":" in line:
             key, value = line.split(":", 1)
             current[key.strip()] = strip_yaml_value(value)
-    return libraries
+    return items
 
 
 def parse_component_resource_links(source_dir: Path) -> dict[str, list[dict[str, str]]]:
@@ -345,38 +368,53 @@ def get_component_resources(
 ) -> list[dict[str, str]]:
     """Get resources associated with a component.
 
-    When library_id is "all", expands to every library in the index.
+    Supports resource types: factor-library, coupling-matrix, network-topology.
+    When id field is "all", expands to every entry in the type's index.
     """
     links = parse_component_resource_links(source_dir)
     resources = links.get(component_id, [])
     explicit = set(explicit_resources or [])
     selected: list[dict[str, str]] = []
 
+    # Key field mapping per resource type
+    type_key = {
+        "factor-library": "library_id",
+        "coupling-matrix": "matrix_id",
+        "network-topology": "topo_id",
+    }
+
     for resource in resources:
-        if resource.get("resource_type") != "factor-library":
+        rtype = resource.get("resource_type", "")
+        if rtype not in type_key:
             continue
-        library_id = resource.get("library_id", "")
+        key_field = type_key[rtype]
+        rid = resource.get(key_field, "")
         policy = resource.get("install_policy", "optional")
 
-        # library_id: all → expand to every library in the index
-        if library_id == "all":
-            index = parse_resource_index(source_dir)
-            for lid in index:
-                selected.append({
-                    "resource_type": "factor-library",
-                    "library_id": lid,
-                    "install_policy": policy,
-                })
+        # "all" → expand to every entry in the type's index
+        if rid == "all" or (isinstance(rid, str) and rid.strip().startswith("[")):
+            # Handle YAML list syntax like "[tgfw-coupling, tgfw-platform-diff]"
+            import re
+            rid_clean = re.sub(r"[\[\]]", "", str(rid))
+            id_list = [x.strip() for x in rid_clean.split(",") if x.strip()]
+            index = parse_resource_index(source_dir, rtype)
+            for item_id in id_list:
+                if item_id in index:
+                    selected.append({
+                        "resource_type": rtype,
+                        key_field: item_id,
+                        "install_policy": policy,
+                    })
             continue
 
-        if policy == "required" or (policy == "recommended" and include_recommended) or library_id in explicit:
+        if policy == "required" or (policy == "recommended" and include_recommended) or rid in explicit:
             selected.append(resource)
 
-    known = {r.get("library_id", "") for r in resources}
-    for library_id in explicit - known:
+    known = {r.get(type_key.get(r.get("resource_type", ""), "library_id"), "") for r in resources}
+    for rid in explicit - known:
         selected.append({
             "resource_type": "factor-library",
-            "library_id": library_id,
+            "library_id": rid,
             "install_policy": "explicit",
         })
     return selected
@@ -541,38 +579,105 @@ def install_agent(
     )
     if resources:
         print(f"\n安装 {agent_name} 关联的 {len(resources)} 个公共 resources:")
-        index = parse_resource_index(source_dir)
-        source_resource_root = source_dir / "resource" / "factor-libraries"
-        dest_resource_root = resource_home() / "factor-libraries"
-        index_src = source_resource_root / "index.yaml"
-        index_dest = dest_resource_root / "index.yaml"
 
-        if dry_run:
-            print(f"  [DryRun] 复制 resource index: {index_src} -> {index_dest}")
-        else:
-            ensure_directory(dest_resource_root)
-            if index_src.is_file():
-                shutil.copy2(index_src, index_dest)
+        # Group resources by type
+        by_type: dict[str, list[dict[str, str]]] = {}
+        for r in resources:
+            rtype = r.get("resource_type", "factor-library")
+            by_type.setdefault(rtype, []).append(r)
 
-        for resource in resources:
-            library_id = resource.get("library_id", "")
-            if not library_id:
+        # Resource type → directory name mapping
+        type_dir = {
+            "factor-library": "factor-libraries",
+            "coupling-matrix": "coupling-matrix",
+            "network-topology": "network-topology",
+        }
+        # Resource type → key field mapping
+        type_key = {
+            "factor-library": "library_id",
+            "coupling-matrix": "matrix_id",
+            "network-topology": "topo_id",
+        }
+
+        for rtype, rlist in by_type.items():
+            if rtype not in type_dir:
                 continue
-            library_meta = index.get(library_id, {})
-            library_file = library_meta.get("path", f"{library_id}/factor-library.yaml")
-            library_dir = source_resource_root / Path(library_file).parts[0]
-            if not library_dir.is_dir():
-                fail(f"公共因子库不存在: {library_id} ({library_dir})")
-            dest = dest_resource_root / library_dir.name
-            copy_resource_tree(library_dir, dest, dry_run)
-            entries.append(ManifestEntry(
-                kind="resource",
-                name=library_id,
-                path=str(dest),
-                remove_path=str(dest),
-                resource_type="factor-library",
-                installed_for=[agent_name],
-            ))
+            key_field = type_key[rtype]
+            dir_name = type_dir[rtype]
+            index = parse_resource_index(source_dir, rtype)
+
+            src_root = source_dir / "resource" / dir_name
+            dest_root = resource_home() / dir_name
+
+            # Copy index.yaml
+            index_src = src_root / "index.yaml"
+            index_dest = dest_root / "index.yaml"
+            if dry_run:
+                print(f"  [DryRun] 复制 {rtype} index: {index_src} -> {index_dest}")
+            else:
+                ensure_directory(dest_root)
+                if index_src.is_file():
+                    shutil.copy2(index_src, index_dest)
+                    print(f"  ✓ 复制 {rtype} index")
+
+            for resource in rlist:
+                rid = resource.get(key_field, "")
+                if not rid:
+                    continue
+                meta = index.get(rid, {})
+
+                if rtype == "factor-library":
+                    # Existing: copy individual library subdirectory
+                    lib_file = meta.get("path", f"{rid}/factor-library.yaml")
+                    lib_dir = src_root / Path(lib_file).parts[0]
+                    if not lib_dir.is_dir():
+                        fail(f"公共因子库不存在: {rid} ({lib_dir})")
+                    dest = dest_root / lib_dir.name
+                    copy_resource_tree(lib_dir, dest, dry_run)
+                elif rtype == "coupling-matrix":
+                    # Copy individual YAML files listed in index source field
+                    src_file = meta.get("source", "")
+                    if src_file:
+                        src_path = src_root / src_file
+                        if src_path.is_file():
+                            dest = dest_root / src_file
+                            if dry_run:
+                                print(f"  [DryRun] 复制: {src_path} -> {dest}")
+                            else:
+                                shutil.copy2(src_path, dest)
+                                print(f"  ✓ 安装 coupling-matrix: {src_file}")
+                    # Also copy feature_tree if referenced
+                    ft_file = meta.get("feature_tree", "")
+                    if ft_file:
+                        ft_path = src_root / ft_file
+                        if ft_path.is_file():
+                            dest = dest_root / ft_file
+                            if dry_run:
+                                print(f"  [DryRun] 复制: {ft_path} -> {dest}")
+                            else:
+                                shutil.copy2(ft_path, dest)
+                elif rtype == "network-topology":
+                    # Copy markdown files listed in index source field
+                    for field in ("source", "spec", "collection"):
+                        src_file = meta.get(field, "")
+                        if src_file:
+                            src_path = src_root / src_file
+                            if src_path.is_file():
+                                dest = dest_root / src_file
+                                if dry_run:
+                                    print(f"  [DryRun] 复制: {src_path} -> {dest}")
+                                else:
+                                    shutil.copy2(src_path, dest)
+                                    print(f"  ✓ 安装 network-topology: {src_file}")
+
+                entries.append(ManifestEntry(
+                    kind="resource",
+                    name=rid,
+                    path=str(dest_root),
+                    remove_path=str(dest_root),
+                    resource_type=rtype,
+                    installed_for=[agent_name],
+                ))
 
     return entries
 
@@ -869,39 +974,82 @@ def list_installed(platform: str, workspace_root: Path, manifest: dict) -> None:
 
 def list_resources(source_dir: Path) -> None:
     """List source resource libraries."""
-    libraries = parse_resource_index(source_dir)
-    if not libraries:
-        print("没有找到公共因子库索引")
-        return
-    print("公共因子库:")
-    for library_id, meta in sorted(libraries.items()):
-        print(f"  - {library_id}: {meta.get('display_name', '')} ({meta.get('version', 'unknown')})")
+    for rtype, label, dir_name in [
+        ("factor-library", "公共因子库", "factor-libraries"),
+        ("coupling-matrix", "耦合矩阵", "coupling-matrix"),
+        ("network-topology", "测试组网图", "network-topology"),
+    ]:
+        items = parse_resource_index(source_dir, rtype)
+        if not items:
+            continue
+        print(f"{label}:")
+        for rid, meta in sorted(items.items()):
+            print(f"  - {rid}: {meta.get('display_name', '')} ({meta.get('version', 'unknown')})")
 
 
 def validate_resources(source_dir: Path) -> None:
-    """Validate resource index and component links."""
-    libraries = parse_resource_index(source_dir)
-    if not libraries:
-        fail("公共因子库索引不存在或为空: resource/factor-libraries/index.yaml")
-
-    root = source_dir / "resource" / "factor-libraries"
+    """Validate resource index and component links for all resource types."""
     errors: list[str] = []
-    for library_id, meta in libraries.items():
-        rel_path = meta.get("path", f"{library_id}/factor-library.yaml")
-        library_file = root / rel_path
-        if not library_file.is_file():
-            errors.append(f"{library_id}: 缺少 {library_file}")
-        for doc_key in ("library_doc", "groups_doc", "change_log"):
-            doc_rel = meta.get(doc_key, "")
-            if doc_rel and not (root / doc_rel).is_file():
-                errors.append(f"{library_id}: 缺少 {root / doc_rel}")
 
+    # Validate each resource type
+    type_configs = [
+        ("factor-library", "factor-libraries", "library_id", "factor-library.yaml"),
+        ("coupling-matrix", "coupling-matrix", "matrix_id", ""),
+        ("network-topology", "network-topology", "topo_id", ""),
+    ]
+
+    all_ids: dict[str, set[str]] = {}
+
+    for rtype, dir_name, key_field, default_file in type_configs:
+        items = parse_resource_index(source_dir, rtype)
+        all_ids[rtype] = set(items.keys())
+        if not items:
+            continue
+
+        root = source_dir / "resource" / dir_name
+        for rid, meta in items.items():
+            # Validate source file
+            if rtype == "factor-library":
+                rel_path = meta.get("path", f"{rid}/{default_file}")
+                lib_file = root / rel_path
+                if not lib_file.is_file():
+                    errors.append(f"{rtype}/{rid}: 缺少 {lib_file}")
+                for doc_key in ("library_doc", "groups_doc", "change_log"):
+                    doc_rel = meta.get(doc_key, "")
+                    if doc_rel and not (root / doc_rel).is_file():
+                        errors.append(f"{rtype}/{rid}: 缺少文档 {root / doc_rel}")
+            elif rtype in ("coupling-matrix", "network-topology"):
+                src_file = meta.get("source", "")
+                if src_file and not (root / src_file).is_file():
+                    errors.append(f"{rtype}/{rid}: 缺少 {root / src_file}")
+                # Also check feature_tree for coupling-matrix
+                if rtype == "coupling-matrix":
+                    ft = meta.get("feature_tree", "")
+                    if ft and not (root / ft).is_file():
+                        errors.append(f"{rtype}/{rid}: 缺少特性树 {root / ft}")
+
+    # Validate component-resource-links references
     links = parse_component_resource_links(source_dir)
     for component_id, resources in links.items():
         for resource in resources:
-            library_id = resource.get("library_id", "")
-            if resource.get("resource_type") == "factor-library" and library_id not in libraries:
-                errors.append(f"{component_id}: 未知 factor-library {library_id}")
+            rtype = resource.get("resource_type", "")
+            key_field = {
+                "factor-library": "library_id",
+                "coupling-matrix": "matrix_id",
+                "network-topology": "topo_id",
+            }.get(rtype, "library_id")
+            rid = resource.get(key_field, "")
+            # Skip special keywords
+            if str(rid).strip().lower() == "all":
+                continue
+            if rtype in all_ids:
+                # Check YAML list expansion
+                import re
+                rid_clean = re.sub(r"[\[\]]", "", str(rid))
+                id_list = [x.strip() for x in rid_clean.split(",") if x.strip()]
+                for item_id in id_list:
+                    if item_id not in all_ids.get(rtype, set()):
+                        errors.append(f"{component_id}: 未知 {rtype} {item_id}")
 
     if errors:
         for error in errors:

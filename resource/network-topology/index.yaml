@@ -1,0 +1,19 @@
+schema_version: 1
+topologies:
+  - topo_id: tgfw-topo-spec
+    resource_type: network-topology
+    display_name: "TGFW 产品测试组网方案和规范"
+    description: "定义测试组网的对象模型（DUT/TG/SW/Mock/link）、Mermaid 规则、YAML 规则。版本 v1.0-draft。"
+    version: "1.0"
+    status: active
+    source: topology-spec.md
+    compatible_consumers: [ptm-tde, ptm-te]
+
+  - topo_id: tgfw-topo-collection
+    resource_type: network-topology
+    display_name: "TGFW 测试组网图集合"
+    description: "覆盖全部测试场景的标准化逻辑 Topo 模板（node2 ~ node8），含 Mermaid 拓扑图 + YAML 属性描述。"
+    version: "0.2"
+    status: active
+    source: topology-collection.md
+    compatible_consumers: [ptm-tde, ptm-te]

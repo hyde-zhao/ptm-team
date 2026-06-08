@@ -108,7 +108,7 @@ PPDCS 阶段调用顺序：
 | 阶段 | 包含步骤 | 关键 Skill | 入口 Gate | 出口 Gate | 产物目录 |
 |------|----------|-----------|-----------|-----------|----------|
 | **KYM**（Know Your Mission） | feature-parser → kym Skill → scenario-discovery | `feature-parser`、`kym`、`scenario-discovery` | GATE-1 Entry Gate（纯自检） | GATE-2 KYM Exit Gate（自检+人工） | `kym/feature-input/`、`kym/mission-understanding/`、`kym/scenarios/` |
-| **MFQ**（M/F/Q Analysis） | m-analyzer → (f-analyzer ∥ q-analyzer) → test-point-integrator → design-planner | `m-analyzer`、`f-analyzer`、`q-analyzer`、`test-point-integrator`、`design-planner` | GATE-2（通过后进入） | GATE-3 MFQ Exit Gate（自检+人工） | `mfq/m-analysis/`、`mfq/f-analysis/`、`mfq/q-analysis/`、`mfq/integration/`、`mfq/factor-usage/`、`mfq/atomic-op-usage/`、`process/plan/` |
+| **MFQ**（M/F/Q Analysis） | m-analyzer → (f-analyzer ∥ q-analyzer) → test-point-integrator → design-planner | `m-analyzer`、`f-analyzer`、`q-analyzer`、`test-point-integrator`、`design-planner` | GATE-2（通过后进入） | GATE-3 MFQ Exit Gate（自检+人工） | `mfq/m-analysis/`、`mfq/f-analysis/`、`mfq/q-analysis/`、`mfq/integration/`、`mfq/factor-usage/`、`mfq/ptm-atomic-usage/`、`process/plan/` |
 | **PPDCS**（Design & Delivery） | design-ppdcs-analyzer → (5设计Skill ∥ PC) → coverage-verifier → deliverable-renderer | `design-ppdcs-analyzer`、5设计Skill（可并行）、`coverage-verifier`、`deliverable-renderer` | GATE-3（通过后进入） | GATE-4 PPDCS Exit Gate（自检+人工） | `ppdcs/ppdcs/`、`ppdcs/pc/`、`ppdcs/coverage/`、`ppdcs/delivery/` |
 
 ### Gate 门控总览
@@ -168,7 +168,7 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 - **`process/STATE.yaml`** — 当前特性项目运行状态。
 - **`input/`** — 原始输入目录，只读；放置特性需求文件、防火墙 topo 文件、耦合矩阵 Excel、参考资料等。
 - **`mfq/factor-usage/`** — 本项目因子库消费记录，只保存公共库 lock、factor bindings、候选提案和解析报告；不得保存公共因子库主库。
-- **`mfq/atomic-op-usage/`** — 本项目原子操作消费记录，保存 atomic-ops CLI lock、bindings 和解析报告。与 factor-usage/ 平行独立维护。（CR-016 新增）
+- **`mfq/ptm-atomic-usage/`** — 本项目原子操作消费记录，保存 ptm-atomic CLI lock、bindings 和解析报告。与 factor-usage/ 平行独立维护。（CR-016 新增）
 - **`kym/scenarios/confirmed-scenarios.md`** — 已确认场景、Topology 与真实设备/端口/链路来源基线，供 LC `topology_bindings` 和 PC 物化回链。
 
 ```
@@ -181,7 +181,7 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 ├── kym/                                      # KYM 阶段产物
 │   ├── feature-input/                        # 解析后的结构化需求与目录
 │   ├── mission-understanding/                # 使命理解产物（kym Skill 写入）
-│   └── scenarios/                            # 已确认场景、Topology、atomic-ops
+│   └── scenarios/                            # 已确认场景、Topology、ptm-atomic
 │       └── confirmed-scenarios.md            # 已确认场景与真实设备/端口/链路基线
 ├── mfq/                                      # MFQ 阶段产物
 │   ├── m-analysis/                           # M 测试点、PPDCS 标注
@@ -312,7 +312,7 @@ CAE 中使用因子占位符：
 在用户明确回复 `approve` 之前，**绝对禁止**进入下一阶段。禁止自行审阅产物并自行决定放行。
 
 ### GATE-2 KYM Exit Gate（自检 + 人工确认）
-**确认内容**：目录结构 + Seed-to-Scenario Mapping + Scenario Chain / Operation Path / Topology / atomic-ops / Knowledge Reference / 待确认缺口
+**确认内容**：目录结构 + Seed-to-Scenario Mapping + Scenario Chain / Operation Path / Topology / ptm-atomic / Knowledge Reference / 待确认缺口
 **硬门控**：禁止在用户 approve 前调用 m-analyzer、f-analyzer、q-analyzer 或任何 MFQ 阶段 Skill。禁止以「产物质量很高」为由自行放行。
 
 ### GATE-3 MFQ Exit Gate（自检 + 人工确认）
@@ -523,5 +523,5 @@ v2 追踪链:
 - 变更和问题单分析时，不修改未受影响的用例
 - 设计方法选择基于 PPDCS 特征匹配，尽量避免直接分析法
 - 所有 Mermaid 图使用标准语法，确保可渲染
-- 当场景目标、前置条件、原子操作、观察点、atomic-ops 或知识引用不确定时，必须先向用户确认，禁止猜测后继续推进
+- 当场景目标、前置条件、原子操作、观察点、ptm-atomic 或知识引用不确定时，必须先向用户确认，禁止猜测后继续推进
 - 在任一确认节点暂停前，必须收集全部待确认问题并以统一决策清单呈现；每个决策项含推荐方案、至少 1 个备选方案（2 个为宜）和优劣分析；禁止逐条分散确认

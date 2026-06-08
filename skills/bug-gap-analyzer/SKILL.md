@@ -83,7 +83,7 @@ status: active
                 → 匹配 TP / tool-analysis？
                     ├── 找到 TP 但未转为 LC / PC → `missing_stage=mfq`
                     └── 未找到 TP → 继续查找
-                        → 匹配场景链 / atomic-ops / 因子？
+                        → 匹配场景链 / ptm-atomic / 因子？
                             ├── 找到场景证据但未进 MFQ → `missing_stage=mfq`
                             └── 找不到场景证据 → `missing_stage=scenario`
 
@@ -111,7 +111,7 @@ status: active
 
 | 遗漏环节 | 说明 | 典型原因 |
 |---------|------|---------|
-| `scenario` | 场景链、atomic-ops 或知识依据未建立 | 场景遗漏、原子操作缺失、观察点未建模 |
+| `scenario` | 场景链、ptm-atomic 或知识依据未建立 | 场景遗漏、原子操作缺失、观察点未建模 |
 | `mfq` | 场景已存在，但 TP / LC / tool-analysis 未落地 | M/F/Q 分析遗漏、整合丢失、因子未进入 LC |
 | `design` | LC 已存在，但设计过程 / TD / PC 不足 | 路径/状态/规则/数据覆盖不足 |
 | `delivery` | 设计已落地，但交付总表未正确暴露 | renderer 漏列、测试用例总表缺项、trace 未进入交付 |
@@ -169,7 +169,7 @@ status: active
 | `logic_case_refs` | 命中的 LC |
 | `physical_case_refs` | 命中的 PC |
 | `scenario_refs` | 场景链回链 |
-| `action_source_refs` | atomic-ops `op_id` 回链 |
+| `action_source_refs` | ptm-atomic `op_id` 回链 |
 | `factor_refs` | 因子回链 |
 | `tool_analysis_refs` | 已使用工具条目 |
 | `tool_gap_refs` | 工具缺口条目 |

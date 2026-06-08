@@ -7,3 +7,11 @@ components:
         library_id: all
         install_policy: required
         reason: "公共因子库整体安装——通用网络、命名对象、流量构造、接口、路由、策略路由、负载均衡、HA、DFX 全部因子供测试设计复用。"
+      - resource_type: coupling-matrix
+        matrix_id: [tgfw-coupling, tgfw-platform-diff]
+        install_policy: required
+        reason: "ptm-tde 入口检查、场景设计、MFQ 分析——特性树优先读取用于目录划分，耦合矩阵用于 F 分析耦合发现。安装时同步安装耦合矩阵 YAML 和特性树。"
+      - resource_type: network-topology
+        topo_id: [tgfw-topo-collection]
+        install_policy: required
+        reason: "ptm-tde 场景设计中组网拓扑匹配与引用。安装时同步安装组网图集合。"

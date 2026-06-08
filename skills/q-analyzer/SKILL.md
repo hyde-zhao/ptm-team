@@ -36,7 +36,7 @@ status: active
 - [ ] M 分析的 TSP 列表可用（`mfq/m-analysis/tsp/`，每个 TSP 含 `id / m_id / topic / scope / purpose / q_tags / covered_scenario_segments`）
 - [ ] M 分析的覆盖矩阵可用（`mfq/m-analysis/scenario-tsp-coverage.md`，含 Q 分析线索列表）
 - [ ] 场景文档已确认（`kym/scenarios/confirmed-scenarios.md`）
-- [ ] `Scenario Chain / atomic-ops / Knowledge Reference / confirmation_gaps` 可读取
+- [ ] `Scenario Chain / ptm-atomic / Knowledge Reference / confirmation_gaps` 可读取
 - [ ] 未确认事实已明确哪些可以带 `[待确认]` 下传
 
 ⛔ **HARD-STOP（STOP-03）**：禁止 Agent 绕过本 Skill 直接生成 Q 分析产物。Q 分析必须通过 q-analyzer Skill 调用执行。
@@ -246,7 +246,7 @@ status: active
 | 步骤 1 的逐 TSP 相关性评估 | 确定每个 TSP 需要生成的范围 |
 | 步骤 2 的逐 TSP 质量对象 + 质量因子 | C 条件和 factor_refs |
 | M 分析的测试对象/因子 | 补充引用 |
-| `confirmed-scenarios.md` + 全局 atomic-ops | trace 和 A 动作 |
+| `confirmed-scenarios.md` + 全局 ptm-atomic | trace 和 A 动作 |
 
 **🔄 处理逻辑**：
 
@@ -281,7 +281,7 @@ status: active
 | E 预期 | 可观测的质量属性表现（含量化指标或定性状态） |
 | `scenario_refs` | 来源场景 |
 | `scenario_chain_refs` | 对应 PRE / AO / 最小逻辑链节点 |
-| `action_source_refs` | 涉及的 atomic-ops `op_id` |
+| `action_source_refs` | 涉及的 ptm-atomic `op_id` |
 | `knowledge_refs` | 依据引用 |
 | `confirmation_gap_refs` | 未确认事实 |
 | `test_object_refs` | 关联测试对象 |
@@ -307,7 +307,7 @@ status: active
 
 ### 步骤 4：工具观测能力评估
 
-对每个质量测试点，评估现有 atomic-ops/工具是否能够：
+对每个质量测试点，评估现有 ptm-atomic/工具是否能够：
 
 1. 施加质量压力或触发场景
 2. 采集质量观测数据
@@ -324,7 +324,7 @@ status: active
 | `main_usage` | 主要用法 |
 | `purpose` | 在质量场景中的用途 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 关联 atomic-ops `op_id` |
+| `action_source_refs` | 关联 ptm-atomic `op_id` |
 | `covered_objects` | 已覆盖对象 |
 | `covered_factors` | 已覆盖因子 |
 | `status` | `ready / partial / needs-confirmation` |
@@ -345,7 +345,7 @@ status: active
 | `io_behavior_matrix` | 输入/输出条件下的处理逻辑 |
 | `output_contract` | 输出内容、阈值、时间序列或状态契约 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 关联 atomic-ops `op_id` |
+| `action_source_refs` | 关联 ptm-atomic `op_id` |
 | `factor_refs` | 关联因子 |
 | `status` | `gap / needs-confirmation` |
 
@@ -361,7 +361,7 @@ status: active
 
 ### 步骤 5：写入 Q 分析产物
 
-> 追踪链：`SR → Scenario Chain → atomic-ops / Knowledge Reference → TSP → TP-Q(CAE + quality trace) → LC → Test Data → PC`
+> 追踪链：`SR → Scenario Chain → ptm-atomic / Knowledge Reference → TSP → TP-Q(CAE + quality trace) → LC → Test Data → PC`
 
 **⚠️ 写入前置校验**：写入前校验目标父目录 `mfq/q-analysis/` 存在且为目录。若不存在或为普通文件，**停止并提示用户**：`目标目录 mfq/q-analysis/ 不存在或为非目录，请确认 M 分析是否已完成路径初始化`。**禁止执行 `mkdir` 或创建目录**。
 

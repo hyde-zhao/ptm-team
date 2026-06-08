@@ -112,7 +112,7 @@ status: active
 | `feature_tags` | 来自 PC / 设计输出的标签 |
 | `trace_refs` | 汇总 trace |
 | `scenario_refs` | 汇总场景 |
-| `action_source_refs` | 汇总 atomic-ops `op_id` |
+| `action_source_refs` | 汇总 ptm-atomic `op_id` |
 | `topology_role_refs` | CAE / LC 中的拓扑角色引用 |
 | `topology_bindings` | LC/PC 使用的真实设备、端口和链路绑定 |
 | `topology_binding_status` | `confirmed / needs-confirmation` |
@@ -144,7 +144,7 @@ status: active
 | `feature_tags` | 关联标签 |
 | `trace_refs` | trace 链 |
 | `scenario_refs` | 场景来源 |
-| `action_source_refs` | atomic-ops `op_id` |
+| `action_source_refs` | ptm-atomic `op_id` |
 | `factor_refs` | 因子 |
 | `topology_role_refs` | 拓扑角色引用 |
 | `topology_bindings` | 真实拓扑绑定摘要 |

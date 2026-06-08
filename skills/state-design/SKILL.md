@@ -58,7 +58,7 @@ status: active
 |------|----------|------|
 | `logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `topology_bindings`, `trace_refs`, `fact_status`, `动作路径`, `因子-取值表`, `CAE聚合规则`, `关联SR` | 识别状态主体、迁移动作、拓扑绑定目录与 trace 链 |
 | `test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `source_section`, `scenario_refs`, `action_source_refs`, `trace_refs`, `confirmation_gap_refs`, `status` | 分析守卫条件、迁移触发数据与非法迁移 |
-| `confirmed-scenarios.md` | `precondition_operations`, `atomic_operations`, `observation_points`, `expected_state`, `minimal_logic_chain`, `data_overlay_slots`, `atomic-ops`, `Knowledge Reference`, `confirmation_gaps` | 推导稳定状态、迁移与观察点 |
+| `confirmed-scenarios.md` | `precondition_operations`, `atomic_operations`, `observation_points`, `expected_state`, `minimal_logic_chain`, `data_overlay_slots`, `ptm-atomic`, `Knowledge Reference`, `confirmation_gaps` | 推导稳定状态、迁移与观察点 |
 
 > 若某状态、迁移方向或守卫条件仅能从模糊表述猜测：
 > - 不得脑补；
@@ -216,7 +216,7 @@ PC 由 `覆盖策略选中的 state_path × data_overlay_set` 生成。
 | `trace_refs` | trace 链 |
 | `scenario_refs` | 来源场景 |
 | `scenario_chain_refs` | PRE/AO 引用 |
-| `action_source_refs` | atomic-ops `op_id` |
+| `action_source_refs` | ptm-atomic `op_id` |
 | `confirmation_gap_refs` | 未确认事实 |
 | `fact_status` | `confirmed / needs-confirmation` |
 

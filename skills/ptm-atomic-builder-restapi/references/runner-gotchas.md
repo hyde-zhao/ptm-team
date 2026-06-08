@@ -67,13 +67,13 @@ Common statuses are repository-specific, but dry-run, success, and failed states
 
 ## Cache And Global Command
 
-`atomic-ops list` may read a synced/global cache instead of the current working tree. When new operations do not appear:
+`ptm-atomic list` may read a synced/global cache instead of the current working tree. When new operations do not appear:
 
 1. Confirm the atom was added to the correct package or registry.
 2. Confirm schema and adapter validation pass.
 3. Refresh the sync cache using repository tooling.
 4. Reinstall the global command and clear stale build artifacts if needed.
-5. Re-run `atomic-ops list` and an operation dry-run through the same command the user will run.
+5. Re-run `ptm-atomic list` and an operation dry-run through the same command the user will run.
 
 Do not assume `uv tool install . --force` always uses the newest package contents.
 

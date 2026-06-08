@@ -32,7 +32,7 @@ status: active
 - [ ] 上游 TP 已包含 `trace_refs / scenario_refs / action_source_refs / test_object_refs / factor_refs / topology_refs / topology_role_refs`
 - [ ] 上游工具评估文件存在，或明确标记为”无工具分析结果”
 - [ ] M 分析覆盖矩阵存在（`mfq/m-analysis/scenario-tsp-coverage.md` 存在）
-- [ ] M 分析候选文件存在（`mfq/m-analysis/candidate-factor-proposals.yaml` 和 `mfq/m-analysis/candidate-atomic-ops.yaml` 存在）
+- [ ] M 分析候选文件存在（`mfq/m-analysis/candidate-factor-proposals.yaml` 和 `mfq/m-analysis/candidate-ptm-atomic.yaml` 存在）
 
 ## 输入契约（Story-04）
 
@@ -43,7 +43,7 @@ integrator 必须消费并透传以下字段：
 | M/F/Q TP | `trace_refs`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `knowledge_refs`, `confirmation_gap_refs`, `test_object_refs`, `factor_refs`, `topology_refs`, `topology_role_refs`, `topology_binding_status`, `topology_gap_refs`, `fact_status` |
 | M 对象/因子 | `object_id`, `factor_id`, `data_domain`, `related_object_id` |
 | F/Q 工具评估 | `Existing Tool Summary`, `Tool Capability Gap` |
-| 场景链 | `minimal_logic_chain`, `atomic-ops`, `Knowledge Reference`, `confirmation_gaps`, `TOPO` / 组网实例 |
+| 场景链 | `minimal_logic_chain`, `ptm-atomic`, `Knowledge Reference`, `confirmation_gaps`, `TOPO` / 组网实例 |
 
 ## 三层绑定边界
 
@@ -64,7 +64,7 @@ integrator 必须消费并透传以下字段：
 3. **读取覆盖矩阵**：加载 `mfq/m-analysis/scenario-tsp-coverage.md`，解析视角 A 的覆盖矩阵（场景→TSP，含 covered/uncovered/excluded 统计）。**若该文件不存在，报错并终止：`mfq/m-analysis/scenario-tsp-coverage.md 不存在，请先执行 M 分析（STORY-012-03）`**
 4. **声明候选列表文件路径**（用于候选归集步骤）：
    - M 因子候选：`mfq/m-analysis/candidate-factor-proposals.yaml`
-   - M 原子操作候选：`mfq/m-analysis/candidate-atomic-ops.yaml`
+   - M 原子操作候选：`mfq/m-analysis/candidate-ptm-atomic.yaml`
    - F 耦合因子候选：嵌入在 `mfq/f-analysis/coupling-test-points.md` 末尾的「耦合因子候选列表汇总」节
    - Q 质量因子候选：嵌入在 `mfq/q-analysis/quality-test-points.md` 末尾的「质量因子候选列表汇总」节
    - **若 M/F/Q 任一候选列表文件不存在，报错并终止：`<文件路径> 不存在，请先执行对应的分析器`**
@@ -83,7 +83,7 @@ integrator 必须消费并透传以下字段：
     └── TP-Q-SEC-001 (Q分析 - 安全性)
 ```
 
-归集时不得丢掉上游 trace；同一 TP 被多个场景、atomic-ops 或 gap 触达时，取并集。
+归集时不得丢掉上游 trace；同一 TP 被多个场景、ptm-atomic 或 gap 触达时，取并集。
 
 ### 步骤 2：覆盖检查
 
@@ -98,7 +98,7 @@ integrator 必须消费并透传以下字段：
 - 每个已确认场景的关键路径至少 1 个测试点
 - `minimal_logic_chain` 中每个关键原子操作至少映射到 1 个 TP 或 1 个显式未覆盖项
 
-**atomic-ops 覆盖**：
+**ptm-atomic 覆盖**：
 - 每个 `action_source_ref` 至少落到 1 个 TP / LC / TD，或显式标注为 `仅场景存在，未形成测试资产`
 
 **确认缺口覆盖**：
@@ -261,7 +261,7 @@ integrator 必须消费并透传以下字段：
 从以下路径读取候选列表（文件路径与步骤 1 中声明的候选列表路径一致）：
 
 - M 因子候选：`mfq/m-analysis/candidate-factor-proposals.yaml`
-- M 原子操作候选：`mfq/m-analysis/candidate-atomic-ops.yaml`
+- M 原子操作候选：`mfq/m-analysis/candidate-ptm-atomic.yaml`
 - F 耦合因子候选：`mfq/f-analysis/coupling-test-points.md` 末尾「耦合因子候选列表汇总」节
 - Q 质量因子候选：`mfq/q-analysis/quality-test-points.md` 末尾「质量因子候选列表汇总」节
 
@@ -302,31 +302,31 @@ integrator 必须消费并透传以下字段：
 
 ##### 4.5.1.6 原子操作候选交叉验证
 
-> 用 atomic-ops CLI 对候选原子操作做反向查询，验证是否有已存在的操作可覆盖该候选。
+> 用 ptm-atomic CLI 对候选原子操作做反向查询，验证是否有已存在的操作可覆盖该候选。
 
 **交叉验证逻辑**：
 
 ```
 1. 读取候选列表：
-   - M 原子操作候选：mfq/m-analysis/candidate-atomic-ops.yaml
+   - M 原子操作候选：mfq/m-analysis/candidate-ptm-atomic.yaml
 
-2. 若 atomic-ops CLI 可用：
-   a. 执行 atomic-ops list --format json，获取全部操作的 op_id / description / tags / aliases
+2. 若 ptm-atomic CLI 可用：
+   a. 执行 ptm-atomic list --format json，获取全部操作的 op_id / description / tags / aliases
    b. 对每个候选原子操作：
       → 用 candidate_op_name 的分词在全部 op 的 op_id / description / tags / aliases 中做关键词匹配
-      → aliases 字段由 atomic-ops 仓库定义和维护，integrator 直接从 CLI 输出消费，不做本地映射
+      → aliases 字段由 ptm-atomic 仓库定义和维护，integrator 直接从 CLI 输出消费，不做本地映射
    c. 命中已有操作：
       → 标记 "已有原子操作可覆盖"（matched_op_id + match_source）
       → 优先级降级为 low，汇总时标记 [已有可覆盖]
-      → 记录到 atomic-op-bindings.yaml
+      → 记录到 ptm-atomic-bindings.yaml
    c. 未命中 → 保留为候选，按现有流程处理
 
-3. 若 CLI 不可用 → ⚠️ Warning："atomic-ops CLI 不可用，跳过候选交叉验证"，继续
+3. 若 CLI 不可用 → ⚠️ Warning："ptm-atomic CLI 不可用，跳过候选交叉验证"，继续
 ```
 
 **交叉验证结果**：
 
-- 写入 `mfq/atomic-op-usage/atomic-op-bindings.yaml`（命中绑定时）
+- 写入 `mfq/ptm-atomic-usage/ptm-atomic-bindings.yaml`（命中绑定时）
 - 交叉验证命中的候选仍展示在汇总表，标记为 `[已有可覆盖]` 且优先级 low
 
 #### 4.5.2 去重合并与优先级判定
@@ -388,7 +388,7 @@ integrator 必须消费并透传以下字段：
 
 | 用户选择 | 执行动作 |
 |---------|---------|
-| ✅ 全部确认 | 所有候选 `decision=confirmed`，写入 `mfq/candidates/factor-candidates.md` 和 `mfq/candidates/atomic-op-candidates.md` |
+| ✅ 全部确认 | 所有候选 `decision=confirmed`，写入 `mfq/candidates/factor-candidates.md` 和 `mfq/candidates/ptm-atomic-candidates.md` |
 | ✏️ 逐项确认 | 逐项标记 `confirmed` / `rejected` / `modified`（含修改后内容），确认项写入最终产物，拒绝项保留决定记录 |
 | 📝 批量修改 | 收集用户修改意见，批量调整后展示更新汇总表，再次等待确认 |
 | ❌ 全部拒绝 | 所有候选 `decision=rejected`，不写入最终产物，在汇总表中保留决定记录 |
@@ -407,7 +407,7 @@ integrator 必须消费并透传以下字段：
 | `value_set` | 取值 / 边界 / 组合说明 |
 | `source_section` | `condition / action-input / observation / environment` |
 | `scenario_refs` | 来源场景 |
-| `action_source_refs` | 关联 atomic-ops `op_id` |
+| `action_source_refs` | 关联 ptm-atomic `op_id` |
 | `trace_refs` | 继承 LC trace |
 | `confirmation_gap_refs` | 未确认边界 |
 | `status` | `ready / needs-confirmation` |
@@ -428,7 +428,7 @@ integrator 必须消费并透传以下字段：
 | `main_usage` | 已使用工具的主要用法 |
 | `purpose` | 用途 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 关联 atomic-ops `op_id` |
+| `action_source_refs` | 关联 ptm-atomic `op_id` |
 | `factor_refs` | 关联因子 |
 | `covered_objects` | 保留上游原始覆盖对象字段 |
 | `covered_object_refs` | `covered_objects` 的统一别名 |
@@ -465,7 +465,7 @@ integrator 必须消费并透传以下字段：
 **读取三源候选列表**：
 
 1. **M 因子候选**：读取 `mfq/m-analysis/candidate-factor-proposals.yaml`，提取 `candidate_id / factor_name / data_domain / source / scenario_refs`
-2. **M 原子操作候选**：读取 `mfq/m-analysis/candidate-atomic-ops.yaml`，提取 `candidate_id / op_name / op_desc / related_object_id / scenario_refs`
+2. **M 原子操作候选**：读取 `mfq/m-analysis/candidate-ptm-atomic.yaml`，提取 `candidate_id / op_name / op_desc / related_object_id / scenario_refs`
 3. **F 耦合因子候选**：从 `mfq/f-analysis/coupling-test-points.md` 末尾的「耦合因子候选列表汇总」节提取 `factor_id / factor_name / data_domain / tsp_ref / coupling_ref / source`
 4. **Q 质量因子候选**：从 `mfq/q-analysis/quality-test-points.md` 末尾的「质量因子候选列表汇总」节提取 `factor_id / factor_name / data_domain / tsp_ref / quality_dimension / source / generation_basis`
 
@@ -479,7 +479,7 @@ integrator 必须消费并透传以下字段：
 | 文件 | 内容 |
 |------|------|
 | `mfq/candidates/factor-candidates.md` | M/F/Q 三源因子候选合并（按 `factor_id` 去重），含 `候选ID / 因子名称 / 数据域 / 来源分析器（M/F/Q）/ 关联 TSP / 优先级 / 原始来源` |
-| `mfq/candidates/atomic-op-candidates.md` | M 分析原子操作候选，含 `候选ID / 操作名称 / 操作描述 / 关联对象 / 关联场景` |
+| `mfq/candidates/ptm-atomic-candidates.md` | M 分析原子操作候选，含 `候选ID / 操作名称 / 操作描述 / 关联对象 / 关联场景` |
 
 > 写入前必须校验目标父目录 `mfq/candidates/` 存在且为目录（STOP-04 规则）。禁止 Agent 手动 mkdir。
 
@@ -495,7 +495,7 @@ integrator 必须消费并透传以下字段：
 | `mfq/integration/tool-analysis.md` | 归并后的 Existing Tool Summary + Tool Capability Gap（renderer 别名已对齐） |
 | `mfq/integration/coverage-matrix.md` | `SR→Scenario→TP→LC→TD` 的追踪矩阵 |
 | `mfq/candidates/factor-candidates.md` | M/F/Q 三源因子候选归集（按 `factor_id` 去重，为候选汇总阶段准备数据） |
-| `mfq/candidates/atomic-op-candidates.md` | 原子操作候选归集（为候选汇总阶段准备数据） |
+| `mfq/candidates/ptm-atomic-candidates.md` | 原子操作候选归集（为候选汇总阶段准备数据） |
 
 > 写入前必须校验目标父目录存在且为目录（STOP-04 规则）。禁止 Agent 手动 mkdir。
 

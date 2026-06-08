@@ -1,19 +1,19 @@
 ---
-name: atomic-ops-builder-restapi
-description: 将浏览器 F12 或 DevTools 抓到的防火墙 REST API 请求转换为 atomic-ops 仓库中的 atomic operation specs、adapter profile mappings、atomic-ops run runner、CLI 参数、测试和发布缓存刷新步骤。Use when the user provides endpoint/method/payload/query/response/auth details from firewall APIs, asks to implement OSPFv2, OSPFv3, BFD or similar firewall operations, or needs method-level atomic ops generated from F12 captures.
+name: ptm-atomic-builder-restapi
+description: 将浏览器 F12 或 DevTools 抓到的防火墙 REST API 请求转换为 ptm-atomic 仓库中的 atomic operation specs、adapter profile mappings、ptm-atomic run runner、CLI 参数、测试和发布缓存刷新步骤。Use when the user provides endpoint/method/payload/query/response/auth details from firewall APIs, asks to implement OSPFv2, OSPFv3, BFD or similar firewall operations, or needs method-level atomic ops generated from F12 captures.
 ---
 
 # Atomic Ops Builder REST API
 
 ## Overview
 
-Use this skill to turn F12 / DevTools REST API evidence into runnable atomic-ops operations. The default output is a method-level atomic operation set, an adapter profile mapping, runner/CLI support, tests, validation commands, and a clear note about global command cache refresh.
+Use this skill to turn F12 / DevTools REST API evidence into runnable ptm-atomic operations. The default output is a method-level atomic operation set, an adapter profile mapping, runner/CLI support, tests, validation commands, and a clear note about global command cache refresh.
 
 ## First Steps
 
-1. Read current repository facts before designing or editing. Check `atoms/`, `adapters/`, `schemas/`, `src/atomic_ops/commands/run.py`, `src/atomic_ops/runner/`, `packages/`, and `tests/` if they exist.
+1. Read current repository facts before designing or editing. Check `atoms/`, `adapters/`, `schemas/`, `src/ptm_atomic/commands/run.py`, `src/ptm_atomic/runner/`, `packages/`, and `tests/` if they exist.
 2. Read [references/f12-api-extraction.md](references/f12-api-extraction.md) when parsing raw browser capture data.
-3. Read [references/atomic-ops-workflow.md](references/atomic-ops-workflow.md) before creating specs, adapter mappings, packages, runner dispatch, or validation steps.
+3. Read [references/ptm-atomic-workflow.md](references/ptm-atomic-workflow.md) before creating specs, adapter mappings, packages, runner dispatch, or validation steps.
 4. Read [references/runner-gotchas.md](references/runner-gotchas.md) before implementing live execution, auth/session handling, DELETE behavior, error classification, cache refresh, or smoke tests.
 5. If the repository structure differs from this skill, follow the repository. Do not invent missing paths without first explaining the mismatch and choosing the smallest compatible implementation.
 
@@ -42,7 +42,7 @@ Use this skill to turn F12 / DevTools REST API evidence into runnable atomic-ops
 7. Add tests for dry-run rendering, method/path/query/payload, GET-without-body, DELETE query/body/path differences, CLI args, output envelope, error classification, schema validation, and adapter validation.
 8. Run repository validation commands. Prefer existing test and guardrail entry points over new scripts.
 9. For live smoke tests, start with GET, then idempotent PUT, then POST/DELETE only on explicit test objects. Verify each change with GET.
-10. If `atomic-ops list` cannot see new operations after code changes, check package membership, global sync cache, and command reinstall/cache refresh.
+10. If `ptm-atomic list` cannot see new operations after code changes, check package membership, global sync cache, and command reinstall/cache refresh.
 
 ## Implementation Notes
 
@@ -50,7 +50,7 @@ Use this skill to turn F12 / DevTools REST API evidence into runnable atomic-ops
 - For `PUT`, prefer idempotent config semantics. For `POST`, require a unique key or returned identifier. For `DELETE`, document whether repeat deletion is genuinely idempotent or only returns a misleading success.
 - Add CLI parameters from captured fields, such as `--id`, `--interface`, `--network`, `--area`, `--metric`, `--page`, `--size`, and `--json-payload`, only when the operation needs them.
 - Keep adapter payload templates to business fields. Authentication belongs in runtime session/auth handling.
-- Update the package or registry surface that feeds `atomic-ops list`; repository files alone may not update the global synced cache.
+- Update the package or registry surface that feeds `ptm-atomic list`; repository files alone may not update the global synced cache.
 - When publishing the global command, force reinstall and refresh caches according to the repo's packaging flow. Do not assume `uv tool install . --force` always uses the newest build.
 
 ## Required Final Report

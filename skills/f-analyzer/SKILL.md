@@ -84,18 +84,20 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 |---------|---------|------|
 | M 分析的 TSP 列表 | 全部 TSP（`id / m_id / topic / scope / purpose / f_tags / covered_scenario_segments`） | **F 分析的核心驱动单元** |
 | M 分析的覆盖矩阵 | **F 分析线索汇总表**（所有 `[F→]` 标签行：`来源场景 / 步骤 / 标签 / 目标 M/系统 / 说明`） | **耦合分析的种子线索**，优先展开已标记的耦合点 |
-| 耦合矩阵 Excel 文件 | 全部 | 已有耦合关系基线 |
+| 耦合矩阵 Excel 文件或 YAML 基线 | 全部 | 已有耦合关系基线 |
 
 **🔄 处理逻辑**：
 
-1. 调用 Excel 工具读取矩阵基线：
+1. 读取矩阵基线（按优先级尝试）：
+   a. **Excel 矩阵（优先）**：若用户提供了 Excel 路径：
    ```bash
    python scripts/excel_coupling_tool.py read "<excel_path>" \
      --output "mfq/f-analysis/coupling-graph.json"
    python scripts/excel_coupling_tool.py query \
      "mfq/f-analysis/coupling-graph.json" --feature "<特性名>"
    ```
-   输出 `matrix-baseline.yaml`（Excel 矩阵基线摘要）。
+   b. **YAML 基线（fallback）**：若无 Excel，读取 `resource/coupling-matrix/tgfw-coupling-matrix.yaml`，按 `domain` 字段过滤当前特性所在域，构建矩阵基线。若 `resource/` 不可用，检查 `~/.ptm-team/resource/coupling-matrix/` 或 `$PTM_TEAM_RESOURCE_HOME/coupling-matrix/`。
+   输出 `matrix-baseline.yaml`（矩阵基线摘要）。
 
 2. 加载 TSP 列表，建立 `TSP → M` 映射和 `TSP → covered_scenario_segments` 索引。
 
@@ -165,14 +167,14 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
   │        · 同特性内的其他 TSP（TSP-M1、TSP-M3...）                │
   │        · 其他特性的 TSP（来自耦合矩阵 + 代码依赖）              │
   │        · 外部系统/环境                                         │
-  │        · 共享同一 atomic-ops op_id 或测试对象                   │
+  │        · 共享同一 ptm-atomic op_id 或测试对象                   │
   │      - 发生交互时，标注 discovery_source=scenario-inference     │
   │                                                               │
   │   3. 确定耦合类型和强度：                                       │
   │      - 操作 A 模块的配置影响了 B 模块的行为 → 顺序耦合          │
   │      - 数据在模块间传递 → 数据耦合                             │
   │      - 异常路径涉及故障隔离 → 容错耦合                         │
-  │      - 共享 atomic-ops op_id 或测试对象 → 接口/资源耦合         │
+  │      - 共享 ptm-atomic op_id 或测试对象 → 接口/资源耦合         │
   │      - coupling_strength：strong / normal / weak               │
   │                                                               │
   │   4. 记录耦合关系：                                             │
@@ -310,7 +312,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 | 步骤 4/5 的有效耦合关系 | 测试点来源 |
 | 步骤 2 的耦合对象 + 耦合因子 | C 条件和 factor_refs |
 | M 分析的测试对象/因子 | 补充引用 |
-| `kym/scenarios/confirmed-scenarios.md` + 全局 atomic-ops | trace 和 A 动作 |
+| `kym/scenarios/confirmed-scenarios.md` + 全局 ptm-atomic | trace 和 A 动作 |
 
 **🔄 处理逻辑**：
 
@@ -350,7 +352,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 | `discovery_source` | `f-tag-seed / scenario-inference` |
 | `scenario_refs` | 来源场景 |
 | `scenario_chain_refs` | 涉及的 PRE / AO / 最小逻辑链节点 |
-| `action_source_refs` | 关联 atomic-ops `op_id` |
+| `action_source_refs` | 关联 ptm-atomic `op_id` |
 | `knowledge_refs` | 支撑耦合判断的知识引用 |
 | `confirmation_gap_refs` | 未确认事实引用 |
 | `test_object_refs` | 被影响对象 |
@@ -370,7 +372,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 - C：包含触发耦合交互的前置状态和环境条件（含耦合目标的前置状态）
 - A：操作当前特性（触发耦合效果），**不得直接操作耦合目标**
 - E：包含耦合目标的可观测行为；E="待定" 时须附批注 `[待定原因: <如"被耦合目标行为规格待确认">]`
-- 若耦合判断依赖 `Knowledge Reference=missing/unavailable` 或 `atomic-ops=gap/unknown`，必须保留原状态并标记 `fact_status=needs-confirmation`
+- 若耦合判断依赖 `Knowledge Reference=missing/unavailable` 或 `ptm-atomic=gap/unknown`，必须保留原状态并标记 `fact_status=needs-confirmation`
 - 若耦合判断依赖 `DUT.port*`、`TG.port*`、link 或 TOPO 实例，必须通过 `topology_binding_refs` 回链来源；不得写入 `factor_refs`
 
 **📤 生产**：
@@ -382,7 +384,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 
 ### 步骤 7：工具覆盖评估
 
-对每个耦合测试点，评估现有工具/atomic-ops 是否能够：
+对每个耦合测试点，评估现有工具/ptm-atomic 是否能够：
 
 1. 触发耦合前置与主动作
 2. 观察耦合目标状态
@@ -399,7 +401,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 | `main_usage` | 主要用法 |
 | `purpose` | 在当前耦合场景中的用途 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 依赖的 atomic-ops `op_id` |
+| `action_source_refs` | 依赖的 ptm-atomic `op_id` |
 | `covered_objects` | 已覆盖对象 |
 | `covered_factors` | 已覆盖因子 |
 | `status` | `ready / partial / needs-confirmation` |
@@ -420,7 +422,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 | `io_behavior_matrix` | 不同输入/输出条件下的处理逻辑 |
 | `output_contract` | 输出内容与观察点契约 |
 | `scenario_refs` | 关联场景 |
-| `action_source_refs` | 关联 atomic-ops `op_id` |
+| `action_source_refs` | 关联 ptm-atomic `op_id` |
 | `factor_refs` | 关联因子 |
 | `status` | `gap / needs-confirmation` |
 
@@ -500,7 +502,7 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "mfq/f-analy
 
 ## 输出文件
 
-> 追踪链：`SR → Scenario Chain → atomic-ops / Knowledge Reference → TSP → TP-F(CAE + coupling trace) → LC → Test Data → PC`
+> 追踪链：`SR → Scenario Chain → ptm-atomic / Knowledge Reference → TSP → TP-F(CAE + coupling trace) → LC → Test Data → PC`
 
 全部写入 `mfq/f-analysis/`：
 
@@ -573,7 +575,7 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "mfq/f-analy
 - 场景耦合推理可能产生误报，需用户确认
 - 不要漏掉"反向耦合"：A→B 存在时检查 B→A
 - `confirmation_gaps` 影响耦合成立性时，允许输出候选 TP，但不能包装成已确认耦合
-- 工具评估只基于已给定 atomic-ops / Existing Tool Usage Seed / Tool Draft，不能自行发明现有工具能力
+- 工具评估只基于已给定 ptm-atomic / Existing Tool Usage Seed / Tool Draft，不能自行发明现有工具能力
 - 不得把 `DUT.port1/TG.port2`、link 或 TOPO 实例写入 `factor_refs / factor_bindings / covered_factors`；真实组网对象必须登记拓扑来源，来源不明则降级 `needs-confirmation`
 - **（v3.0 新增）F 线索指向不存在的 TSP**：当覆盖矩阵的 F 线索汇总表中某行的目标 TSP 在 TSP 列表中不存在时，记录 `confirmation_gap`（类型 `f-tag-target-tsp-missing`）并警告，不阻断分析。该线索不作为种子线索参与步骤 2 的优先展开
 - **（v3.0 新增）同一耦合关系多 TSP 视角去重**：某耦合关系 `TSP-M1 ↔ TSP-M2` 可能同时在 TSP-M1 和 TSP-M2 的分析中被发现。步骤 2 汇总时以 `(source_tsp, target_tsp)` 为 key 内部去重，步骤 4 三源合并时再次去重。`discovery_source` 取并集

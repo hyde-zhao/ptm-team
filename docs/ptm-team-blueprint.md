@@ -270,10 +270,10 @@ ptm-te 一次测试执行
 
 已完成工作：
 - **规范写作**：定义了原子操作的标准 YAML schema（op_id、parameters、returns、幂等性等字段），设备类型枚举（fw/tg/mock/sw），操作动词词汇表（create/delete/config/enable/disable/send/capture 等），以及命名规范 `{device}_{verb}_{target}`
-- **框架开发**：基于 Python CLI（`atomic-ops`，通过 `uv tool install` 分发），采用 `git clone/pull` 离线优先策略，支持 git sparse-checkout 减少同步量，14 个错误码覆盖全部操作场景
+- **框架开发**：基于 Python CLI（`ptm-atomic`，通过 `uv tool install` 分发），采用 `git clone/pull` 离线优先策略，支持 git sparse-checkout 减少同步量，14 个错误码覆盖全部操作场景
 - **防火墙策略配置原子能力**：基于框架完成了安全策略增删改查的原子能力封装，作为首批原子能力示例
 
-> 原子能力框架的完整设计文档见 [research/atomic-operations/sources/HLD.md](research/atomic-operations/sources/HLD.md)（HLD v2.3 draft，待人工确认）和 [research/atomic-operations/sources/STATE.md](research/atomic-operations/sources/STATE.md)。下一步在 HLD 确认后进入 Story 拆解阶段（预计 12 个 Story，分 2 个 Wave 交付）。
+> 原子能力框架的完整设计文档见 [research/ptm-atomicerations/sources/HLD.md](research/ptm-atomicerations/sources/HLD.md)（HLD v2.3 draft，待人工确认）和 [research/ptm-atomicerations/sources/STATE.md](research/ptm-atomicerations/sources/STATE.md)。下一步在 HLD 确认后进入 Story 拆解阶段（预计 12 个 Story，分 2 个 Wave 交付）。
 
 **防火墙配置能力补齐（建设中）**
 
@@ -777,8 +777,8 @@ ptm-tm（调度核心）
 | [sources/ptm-tae/交接清单.md](sources/ptm-tae/交接清单.md) | ptm-tae 交接清单 |
 | [research/network-topology/plan.md](research/network-topology/plan.md) | 组网研究计划 |
 | [research/network-topology/final/TGFW产品测试组网方案和规范.md](research/network-topology/final/TGFW产品测试组网方案和规范.md) | 组网描述规范 |
-| [research/atomic-operations/sources/HLD.md](research/atomic-operations/sources/HLD.md) | 原子操作 HLD v2.3 |
-| [research/atomic-operations/sources/STATE.md](research/atomic-operations/sources/STATE.md) | 原子操作运行时状态 |
+| [research/ptm-atomicerations/sources/HLD.md](research/ptm-atomicerations/sources/HLD.md) | 原子操作 HLD v2.3 |
+| [research/ptm-atomicerations/sources/STATE.md](research/ptm-atomicerations/sources/STATE.md) | 原子操作运行时状态 |
 
 ---
 

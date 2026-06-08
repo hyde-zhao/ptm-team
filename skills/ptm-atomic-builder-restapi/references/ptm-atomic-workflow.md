@@ -11,8 +11,8 @@ Check:
 - `atoms/`
 - `adapters/`
 - `schemas/`
-- `src/atomic_ops/commands/run.py`
-- `src/atomic_ops/runner/`
+- `src/ptm_atomic/commands/run.py`
+- `src/ptm_atomic/runner/`
 - `packages/`
 - `tests/`
 
@@ -81,7 +81,7 @@ Rules:
 
 ## Runner And CLI
 
-Implement in the repository's existing runner structure, usually under `src/atomic_ops/runner/`, and wire dispatch in `src/atomic_ops/commands/run.py`.
+Implement in the repository's existing runner structure, usually under `src/ptm_atomic/runner/`, and wire dispatch in `src/ptm_atomic/commands/run.py`.
 
 Runner requirements:
 
@@ -122,7 +122,7 @@ Run repository-native commands. Typical checks include:
 - Atomic spec schema validation
 - Adapter profile validation
 - Layout/security guardrails
-- `atomic-ops list` visibility check
+- `ptm-atomic list` visibility check
 - Dry-run through the installed or global command
 
 If the global command does not show the new operation, inspect package membership and sync cache. Reinstall or refresh global command/cache according to repository instructions instead of assuming current workspace files are enough.

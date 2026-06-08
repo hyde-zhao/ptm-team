@@ -9,4 +9,4 @@
 - 公共主库位于 `resource/factor-libraries/common-network/`。
 - 安装后位于 `~/.ptm-team/resource/factor-libraries/common-network/`，或 `PTM_TEAM_RESOURCE_HOME/factor-libraries/common-network/`。
 - 项目运行时只记录 lock、binding 和候选提案，不回写本库。
-- `atomic-ops` 是动作能力来源，不得作为测试因子。
+- `ptm-atomic` 是动作能力来源，不得作为测试因子。

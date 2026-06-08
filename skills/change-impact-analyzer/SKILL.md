@@ -13,7 +13,7 @@ status: active
 ## 目标
 
 当特性的测试资产已按 v6 追踪链归档后，收到需求变更时：
-1. 直接消费 `Scenario Chain / atomic-ops / Knowledge Reference / delivery/<特性名>特性测试用例.md`
+1. 直接消费 `Scenario Chain / ptm-atomic / Knowledge Reference / delivery/<特性名>特性测试用例.md`
 2. 复用最终测试用例总表的**精确检索语义**命中最小受影响范围
 3. 仅对受影响的 MFQ / 设计 / 覆盖资产执行增量处理
 4. 保持未受影响资产不变，并保留原有 `trace_refs / confirmation_gap_refs / fact_status`
@@ -105,7 +105,7 @@ status: active
 
 若变更只命中：
 - `factor_refs` → 优先缩到相关 LC / TD / PC
-- `action_source_refs` → 优先缩到同 atomic-ops `op_id` 下的 LC / PC / tool-analysis
+- `action_source_refs` → 优先缩到同 ptm-atomic `op_id` 下的 LC / PC / tool-analysis
 - `tool_gap_refs / tool_analysis_refs` → 只更新对应工具分析与受影响用例链
 
 ### 步骤 4：增量整合
@@ -152,7 +152,7 @@ status: active
 | `logic_case_refs` | 受影响 LC |
 | `physical_case_refs` | 受影响 PC |
 | `scenario_refs` | 回链场景 |
-| `action_source_refs` | 回链 atomic-ops `op_id` |
+| `action_source_refs` | 回链 ptm-atomic `op_id` |
 | `factor_refs` | 回链因子 |
 | `tool_analysis_refs` | 已使用工具条目 |
 | `tool_gap_refs` | 工具缺口条目 |
