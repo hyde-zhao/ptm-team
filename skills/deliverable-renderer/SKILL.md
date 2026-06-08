@@ -83,6 +83,7 @@ status: active
 - `multiSelect`: false（单选）
 - `options`:
   1. `label`: "确认生成", `description`: "测试方案 + 测试用例 + 原子操作候选对比表 + 测试因子候选对比表"
+  2. `label`: "仅核心两份", `description`: "只生成测试方案和测试用例，跳过候选对比表"
 
 > 用户有其他需求时通过 Other 输入，如 "修改: 仅生成测试方案和测试用例"。
 
