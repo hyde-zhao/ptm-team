@@ -59,9 +59,31 @@ status: active
 2. 列表格式：识别编号列表，按格式模式匹配
 3. 标题格式：识别 Markdown 标题层级，按层级推断模块归属
 
-### 步骤 3：目录结构构建
+### 步骤 3：查询特性树获取规范目录
 
-根据提取的需求条目，构建三~五级目录结构：
+⛔ **HARD-STOP**：禁止在未查询特性树的情况下自行发明四级/五级目录名称。特性树是目录命名的唯一真相源（source of truth）。
+
+**特性树查找顺序**：
+1. `resource/coupling-matrix/tgfw-feature-tree.yaml`（开发态仓库）
+2. `~/.ptm-team/resource/coupling-matrix/tgfw-feature-tree.yaml`（已安装）
+3. `$PTM_TEAM_RESOURCE_HOME/coupling-matrix/tgfw-feature-tree.yaml`（团队共享）
+4. `input/` 下的特性树文件（用户手动放置）
+
+**匹配流程**：
+1. 从步骤 2 提取的「所属模块」字段中获取模块路径（如 `/TGFW-03数通组件/TGFW-03.04 三层组件/TGFW-03.04.06 策略路由`）
+2. 在特性树中按 `level3` 字段匹配当前特性（如 `策略路由`）
+3. 在该特性节点下查找 `level4` 和 `level5` 作为规范的四级/五级目录
+4. 将每个 SR 按描述内容映射到匹配的规范目录节点
+5. 记录匹配来源：`source: feature-tree`（特性树匹配）或 `source: model-inference`（模型推理）
+
+**未匹配处理**：
+- 若特性树中找不到对应特性 → 标记 `source: model-inference`，由模型根据需求语义聚合生成
+- 若特性树中有特性但部分 SR 无法匹配到五级节点 → 保留 `source: model-inference`，并在确认时特别标注
+- 模型推理生成的目录必须在确认时与特性树来源目录明确区分
+
+### 步骤 4：目录结构构建
+
+根据特性树规范目录和提取的需求条目，构建三~五级目录结构：
 
 ```
 <特性名>（三级）
@@ -74,11 +96,12 @@ status: active
 ```
 
 **构建规则**：
-- 三级目录 = 特性名称，优先级为用户显式提供 > 需求标题 > 特性项目目录最后一级
-- 四级目录 = 需求条目中的"所属模块"字段去重
-- 五级目录 = 同一模块下的需求按功能子类聚合
+- 三级目录 = 特性名称，优先级为用户显式提供 > 需求标题 > 项目目录最后一级
+- 四级目录 = **优先从特性树 `level4` 匹配**，未命中时从需求"所属模块"字段去重（标记 `model-inference`）
+- 五级目录 = **优先从特性树 `level5` 匹配**，未命中时按功能子类聚合（标记 `model-inference`）
+- 每个目录节点必须标注 `source` 字段：`feature-tree` 或 `model-inference`
 
-### 步骤 4：用户确认
+### 步骤 5：用户确认
 
 将构建的目录结构展示给用户，使用 `ask_user` 工具发起结构化确认：
 
@@ -99,7 +122,7 @@ status: active
 2. ✏️ 需要修改 — 请输入需要调整的模块或子模块，调整后重新确认
 3. ➕ 需要补充 — 请输入需要新增的模块或子模块，补充后重新确认
 
-### 步骤 5：输出持久化
+### 步骤 6：输出持久化
 
 将结果写入 `kym/feature-input/`：
 
@@ -131,10 +154,11 @@ status: active
 
 ## Gotchas
 
-- **⚠️ 输出路径必须是 `kym/feature-input/`**（相对于特性项目根），不是 `kym/feature-input/`，也不是 `kym/feature-input/`。例如 cwd=`D:\project` 时，正确绝对路径是 `D:\project\kym\feature-input\raw-requirements.md`
+- **⛔ 禁止自行发明目录名**：四级/五级目录必须优先从 `tgfw-feature-tree.yaml` 匹配，禁止凭语义直觉自创分类。特性树未命中时才允许模型推理（标记 `model-inference`）。
+- **⚠️ 输出路径必须是 `kym/feature-input/`**：正确绝对路径为 `<项目根>\kym\feature-input\raw-requirements.md`
 - Excel 转换后可能出现 `NaN`、`Unnamed` 等伪值，需清洗
 - 合并单元格转换后模块归属可能丢失，需从上下文推断
-- 部分需求文件没有明确的模块分类，需通过功能语义聚合
+- 部分需求文件没有明确的模块分类，需通过功能语义聚合——但仍须先查特性树
 - 中文文件名需注意编码问题
 
 ## 验收标准
