@@ -184,6 +184,7 @@ def render_claude_agent(
     commit: str,
     generated: str,
     color: str = "",
+    tools: str = "",
 ) -> str:
     """Render agent content in Claude Code format (.md)."""
     frontmatter = [
@@ -193,6 +194,8 @@ def render_claude_agent(
     ]
     if color:
         frontmatter.append(f"color: {yaml_scalar(color)}")
+    if tools:
+        frontmatter.append(f"tools: {tools}")
     frontmatter.append("---")
 
     audit = f"<!-- ptm-team-managed: version={MANAGED_VERSION} canonical-commit={commit} generated={generated} -->"
@@ -524,12 +527,13 @@ def install_agent(
     fields, body = parse_frontmatter(content)
     description = fields.get("description", "")
     color = fields.get("color", "")
+    tools = fields.get("tools", "")
 
     # Render for platform
     agents_dir = workspace_root / PLATFORM_DIRS[platform]["agents"]
     if platform == "claude":
         dest = agents_dir / f"{agent_name}.md"
-        rendered = render_claude_agent(agent_name, description, body, commit, generated, color)
+        rendered = render_claude_agent(agent_name, description, body, commit, generated, color, tools)
     else:
         dest = agents_dir / f"{agent_name}.toml"
         rendered = render_codex_agent(agent_name, description, body, commit, generated)
