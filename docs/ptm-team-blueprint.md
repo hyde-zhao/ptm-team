@@ -47,16 +47,85 @@ PTM Team（Product Test Method Team）是一个由 **6 个 AI Agent 角色** 组
   对照用例 Check 点给出 Pass/Fail 判定和失败原因摘要
 ```
 
-### 1.4 四步演进愿景
+### 1.4 四阶段演进路线
+
+#### 阶段演进路标
 
 ```
-Step 1 ──────────► Step 2 ──────────► Step 3 ──────────► Step 4
-Copilot 准备      Copilot 人工主导   Copilot Agent 主导  Autopilot
-工具开发、知识库   人工主导 Agent 按  Agent 主导流程，    全自动运行，
-建设、Skill 建设   指定流程完成任务   人工辅助 Check      人工仅处理异常
+Step 1                   Step 2                   Step 3                   Step 4
+┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│    准备阶段       │    │    人工主导       │    │   Agent 主导     │    │   Autopilot     │
+│    Copilot       │───►│    Copilot       │───►│    Copilot       │───►│   全自动         │
+│    基础设施       │    │    辅助执行       │    │    自主调度       │    │   数字员工       │
+└──────────────────┘    └──────────────────┘    └──────────────────┘    └──────────────────┘
+      当前阶段
+
+Agent 就绪:
+tde ✓ + te 🔄 + tae 🔄    三大 Agent 持续优化       +tm +tse +qa 补齐六大     全自动闭环
 ```
 
-**最终目标**：每位工程师拥有自己的数字员工——公共 Skill 和工具作为共享基础设施，个人元提示词和元工作流作为私有扩展。
+---
+
+#### Step 1 — 准备阶段：Copilot 基础设施（当前阶段）
+
+建设六大支柱，搭建三大 Agent，完成从 0 到 1 的基础设施建设。
+
+| 维度 | 任务 | 目标 |
+|------|------|------|
+| **因子库** | ① 公共因子库全部建设完成：包括公共基础因子库（数据类型、边界值模板、通用约束规则）和公共特性因子库（接口、对象、路由、安全策略等跨特性通用因子）| 公共因子一次建设、多特性复用；因子格式统一为 YAML schema，ptm-tde 设计格式、ptm-tae 实现解析工具、ptm-te 在执行中积累数据 |
+| | ② 至少完成 1 个专有特性因子库的所有因子建设（如策略路由 PBR 因子：等价类、边界值、组合约束、正向/反向/异常因子全覆盖）| 跑通专有特性因子库的完整建设流程，为其他特性因子库扩展提供可复制的模版 |
+| **原子操作** | ① 公共特性原子操作建设：覆盖防火墙全部常用特性的 REST API 封装（安全策略、NAT、接口、路由、VPN 等），支持增删改查 + 批量下发 + 回滚 | 形成统一的原子操作 CLI（`atomic-ops`），按 `{device}_{verb}_{target}` 命名规范，14 个错误码覆盖全部操作场景 |
+| | ② 工具原子操作建设：数通仪表（BPS/IXIA，支持 L2-L4 层基础打流模板、结果数据自动采集与结构化输出）、安全仪表（应用层流量：HTTP/HTTPS/FTP/DNS 等协议模拟）、环境管理（交换机 VLAN/VRF 配置、设备状态查询）| 工具类原子操作统一接口，Agent 可按需调用，不感知底层设备差异 |
+| **耦合矩阵** | ① 完成耦合矩阵模版探索：定义耦合关系的数据模型（模块节点、耦合边、耦合类型、影响范围）| 耦合矩阵格式定稿，与因子库 YAML schema 对齐，可通过工具自动解析和更新 |
+| | ② 完成第一轮代码分析结果补充：对现有防火墙代码库做静态依赖分析，将识别到的模块间调用关系、共享数据结构、配置项依赖填充到耦合矩阵中 | 初始耦合矩阵覆盖核心模块 80% 以上的已知耦合关系，为 ptm-tde 的 F 分析提供数据基础 |
+| **Wiki 体系** | 私人 Wiki 建设：为每位工程师搭建个人 Wiki 空间，支持私人知识沉淀（测试经验、问题定位记录、特性理解笔记）| 私人 Wiki 可用、可搜索，与公共 Wiki 通过引用机制联通，隐私数据不进入公共检索索引 |
+| **Agent 交付** | ① ptm-tde：完成 12 步主流程全部 Skill 开发，HLD + REQUIREMENTS 定稿，9 个 Story 全部 verified | ptm-tde Agent ready，可独立完成从需求到用例的完整设计流程 |
+| | ② ptm-te：完成功能能力和架构设计（用例解析 → 环境准备 → 配置下发 → 流量发送 → 结果判定 → 执行记录全链路方案定稿），核心 Skill 完成初版开发 | ptm-te 架构方案确认，核心执行链路可走通 |
+| | ③ ptm-tae：完成功能能力和架构设计（AI 测试工作流 4 阶段方案定稿），公共 Skill 和工具框架搭建完成 | ptm-tae 基础设施层就绪，可支撑 ptm-te 的工具调用需求 |
+
+---
+
+#### Step 2 — 人工主导：Copilot 辅助执行
+
+人工掌握流程控制权，Agent 在执行环节提供智能辅助，打通「需求分析 → 用例设计 → 任务执行 → 自动化翻译 → 回归运行」全链路。
+
+| 维度 | 任务 | 目标 |
+|------|------|------|
+| **因子库** | 所有特性的原子操作和因子库建设完成：在 Step 1 公共因子 + 1 个专有特性因子的基础上，将因子库扩展到全部防火墙特性（安全策略、NAT、HA、VPN、PPPoE、IPv6、SD-WAN 等）| 每个特性的因子覆盖等价类、边界值、组合约束、正向/反向/异常因子，支持 Pairwise 组合生成 |
+| **原子操作** | 所有特性的原子操作建设完成：覆盖防火墙全部特性的配置接口，工具原子操作（数通仪表、安全仪表、环境管理）达到生产可用 | 任一特性的测试执行均可通过原子操作完成，无需手工操作 WebUI 或命令行 |
+| **耦合矩阵** | 耦合矩阵进入持续维护阶段：随着代码变更和测试深入，实时迭代分析开发修改影响并刷新耦合矩阵 | 耦合矩阵与代码仓库保持同步，ptm-tde 的 F 分析可直接消费最新耦合数据；新功能开发时耦合矩阵自动提示受影响的模块范围 |
+| **Wiki 体系** | ① 完成公共 Wiki 建设：将所有特性的关键文档纳入 Wiki 体系 | 公共 Wiki 覆盖全部特性，成为团队统一的知识检索入口 |
+| | ② 完成所有特性关键文档交付：特性描述、配置手册、问题定位指南、测试分析报告、已知缺陷与限制 | 每个特性在 Wiki 中有完整的知识页，新成员可通过 Wiki 快速了解任一特性的测试要点 |
+| **Agent 交付** | ① ptm-tde、ptm-te、ptm-tae 所有专属 Skill 开发完毕，12 步设计流程 + 结构化执行 + 自动化翻译三条链路均可稳定持续运行 | 三个 Agent 形成稳定闭环：tde 设计 → te 执行 → tae 翻译沉淀，人工调用 Agent 可完成全部测试工作 |
+| | ② ptm-tm、ptm-tse、ptm-qa 功能能力建设完成：三个管理 Agent 的专属 Skill 和 Workflow 方案定稿并完成初版开发 | 管理 Agent 具备基础功能，为 Step 3 的自主调度能力打基础 |
+
+---
+
+#### Step 3 — Agent 主导：Copilot 自主调度
+
+以 ptm-tm 为调度核心，六大 Agent 形成自主协同体系，人工退居关键决策点和质量闸门确认。
+
+| 维度 | 任务 | 目标 |
+|------|------|------|
+| **自动调度能力** | ptm-tm、ptm-tse、ptm-qa 全面建成自动调度能力：ptm-tm 自动截取禅道任务 → 制定测试计划 → 调度 ptm-tse 做需求分析与策略制定 → 调度 ptm-tde 做用例设计 → 调度 ptm-te/ptm-tae 做执行与自动化沉淀 → 调度 ptm-qa 做质量评估与审计 | 从任务接入到报告输出的全流程由 Agent 自主调度完成，人工仅在 4 个关键闸门介入确认（tm 计划、tse 策略、tde 用例、qa 质量报告） |
+| **调度策略** | ptm-tm 实现智能调度策略：基于任务优先级、Agent 负载、特性风险等级自动分配和调整资源 | 多项目/多版本并行时调度不冲突，资源利用率最大化 |
+| **异常处理** | 各 Agent 具备已知异常的自主处理能力：ptm-tae 自动修复可识别的脚本失败、ptm-te 执行异常时自动调用 debug-skill 初步定位 | 已知异常自动闭环，仅未知异常升级给人工 |
+
+---
+
+#### Step 4 — Autopilot：全自动数字员工
+
+六大 Agent 全部完成开发，形成全自动闭环。从任务接入到报告输出完全自动化，人工角色从「操作者」和「调度者」彻底转变为「监督者」。
+
+| 维度 | 任务 | 目标 |
+|------|------|------|
+| **全自动运行** | 六大 Agent 自动监听禅道/版本转测通知 → 自动完成需求分析、用例设计、测试执行、自动化沉淀、质量评估 → 自动输出测试报告并推送钉钉 | 端到端零人工干预，测试全流程自动化运转 |
+| **质量自愈** | ptm-qa 自动评估过程质量和产品质量，识别质量退化趋势；ptm-tae 自动修复失败的自动化脚本，修复失败时自动升级给人工 | 测试系统具备自我诊断和自我修复能力，质量异常在人工介入前已有初步分析和建议方案 |
+| **持续演进** | Agent 从每次测试执行中持续学习：新发现的缺陷模式自动补充到因子库，新的耦合关系自动更新耦合矩阵，新的问题定位经验自动沉淀到 Wiki | Wiki 知识库、因子库、耦合矩阵随项目推进自动增长，Agent 的测试能力持续提升 |
+| **人工职责** | ① 每日查看 ptm-tm 汇总的项目执行摘要和风险看板<br>② 处理 Agent 标记的异常（无法自动修复的脚本、未识别的错误模式、调度死锁）<br>③ 审核关键交付物（测试方案、质量报告）<br>④ 持续优化 Agent 的元提示词和元工作流 | 人工从执行者转变为策略优化者和质量监督者，时间投入从执行操作转向能力建设和知识沉淀 |
+| **最终愿景** | 每位工程师拥有自己的数字员工——公共 Skill 和工具作为共享基础设施（由 ptm-tae 统一维护），个人元提示词和元工作流作为私有扩展（每位工程师按自身习惯定制 Agent 行为） | AI 不仅是工具使用者，更是测试设计、执行、分析的主体；工程师专注于创造性工作，重复性劳动由数字员工承担 |
+
+> **设计原则贯穿始终**：渐进落地（Skill → 工作流 → Agent，单点跑通再组合）、分层解耦（规划层/执行层/感知层独立演进）、共建共用（公共 Skill 和工具由 ptm-tae 统一维护）、AI 原生（框架同时服务 AI 自治和手工测试辅助）。
 
 ---
 
@@ -270,10 +339,10 @@ ptm-te 一次测试执行
 
 已完成工作：
 - **规范写作**：定义了原子操作的标准 YAML schema（op_id、parameters、returns、幂等性等字段），设备类型枚举（fw/tg/mock/sw），操作动词词汇表（create/delete/config/enable/disable/send/capture 等），以及命名规范 `{device}_{verb}_{target}`
-- **框架开发**：基于 Python CLI（`ptm-atomic`，通过 `uv tool install` 分发），采用 `git clone/pull` 离线优先策略，支持 git sparse-checkout 减少同步量，14 个错误码覆盖全部操作场景
+- **框架开发**：基于 Python CLI（`atomic-ops`，通过 `uv tool install` 分发），采用 `git clone/pull` 离线优先策略，支持 git sparse-checkout 减少同步量，14 个错误码覆盖全部操作场景
 - **防火墙策略配置原子能力**：基于框架完成了安全策略增删改查的原子能力封装，作为首批原子能力示例
 
-> 原子能力框架的完整设计文档见 [research/ptm-atomicerations/sources/HLD.md](research/ptm-atomicerations/sources/HLD.md)（HLD v2.3 draft，待人工确认）和 [research/ptm-atomicerations/sources/STATE.md](research/ptm-atomicerations/sources/STATE.md)。下一步在 HLD 确认后进入 Story 拆解阶段（预计 12 个 Story，分 2 个 Wave 交付）。
+> 原子能力框架的完整设计文档见 [research/atomic-operations/sources/HLD.md](research/atomic-operations/sources/HLD.md)（HLD v2.3 draft，待人工确认）和 [research/atomic-operations/sources/STATE.md](research/atomic-operations/sources/STATE.md)。下一步在 HLD 确认后进入 Story 拆解阶段（预计 12 个 Story，分 2 个 Wave 交付）。
 
 **防火墙配置能力补齐（建设中）**
 
@@ -777,8 +846,8 @@ ptm-tm（调度核心）
 | [sources/ptm-tae/交接清单.md](sources/ptm-tae/交接清单.md) | ptm-tae 交接清单 |
 | [research/network-topology/plan.md](research/network-topology/plan.md) | 组网研究计划 |
 | [research/network-topology/final/TGFW产品测试组网方案和规范.md](research/network-topology/final/TGFW产品测试组网方案和规范.md) | 组网描述规范 |
-| [research/ptm-atomicerations/sources/HLD.md](research/ptm-atomicerations/sources/HLD.md) | 原子操作 HLD v2.3 |
-| [research/ptm-atomicerations/sources/STATE.md](research/ptm-atomicerations/sources/STATE.md) | 原子操作运行时状态 |
+| [research/atomic-operations/sources/HLD.md](research/atomic-operations/sources/HLD.md) | 原子操作 HLD v2.3 |
+| [research/atomic-operations/sources/STATE.md](research/atomic-operations/sources/STATE.md) | 原子操作运行时状态 |
 
 ---
 
