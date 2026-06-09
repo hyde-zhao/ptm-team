@@ -139,22 +139,52 @@ def canonical_commit(root: Path) -> str:
 
 
 def parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
-    """Parse YAML frontmatter from markdown content."""
+    """Parse YAML frontmatter from markdown content.
+
+    Handles YAML block scalars (``>-`` folded, ``|`` literal) so multi-line
+    descriptions survive the round-trip without turning into bare ``>-``.
+    """
     match = FRONTMATTER_RE.match(content)
     if not match:
         return {}, content
 
+    raw = match.group(1)
+    lines = raw.splitlines()
+
     fields: dict[str, str] = {}
-    for line in match.group(1).splitlines():
-        line = line.strip()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
         if not line or line.startswith("#"):
             continue
         if ":" not in line:
             continue
-        key, value = line.split(":", 1)
+
+        key, sep, value = line.partition(":")
         key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        fields[key] = value
+        value = value.strip()
+
+        # Detect YAML block scalar indicators (|, |-, |+, >, >-, >+)
+        block_indicators = frozenset(("|", "|-", "|+", ">", ">-", ">+"))
+        if value in block_indicators:
+            # Collect indented continuation lines
+            parts: list[str] = []
+            while i < len(lines):
+                cont = lines[i]
+                if not cont or cont.startswith("#"):
+                    i += 1
+                    continue
+                # Stop at a non-indented line that looks like a new key
+                if not cont[0].isspace() and ":" in cont:
+                    break
+                parts.append(cont.strip())
+                i += 1
+            fields[key] = " ".join(parts) if value.startswith(">") else "\n".join(parts)
+        else:
+            # Simple scalar — strip surrounding quotes
+            value = value.strip().strip('"').strip("'")
+            fields[key] = value
 
     body = content[match.end():].lstrip()
     return fields, body
@@ -209,6 +239,8 @@ def render_codex_agent(
     commit: str,
     generated: str,
     nicknames: list[str] | None = None,
+    color: str = "",
+    tools_raw: str = "",
 ) -> str:
     """Render agent content in Codex format (.toml)."""
     audit = f"# ptm-team-managed: version={MANAGED_VERSION} canonical-commit={commit} generated={generated}"
@@ -220,6 +252,11 @@ def render_codex_agent(
     if nicknames:
         nickname_array = "[" + ", ".join(toml_string(n) for n in nicknames) + "]"
         lines.append(f"nickname_candidates = {nickname_array}")
+    if color:
+        lines.append(f"color = {toml_string(color)}")
+    if tools_raw:
+        # Codex tools format: same list syntax as Claude
+        lines.append(f"tools = {tools_raw}")
     lines.extend([
         'description = """',
         toml_multiline(description),
@@ -536,7 +573,8 @@ def install_agent(
         rendered = render_claude_agent(agent_name, description, body, commit, generated, color, tools)
     else:
         dest = agents_dir / f"{agent_name}.toml"
-        rendered = render_codex_agent(agent_name, description, body, commit, generated)
+        rendered = render_codex_agent(agent_name, description, body, commit, generated,
+                                       color=color, tools_raw=tools)
 
     # Write agent file
     if dry_run:
