@@ -51,11 +51,14 @@ ptm-team install claude --list
 ptm-team uninstall claude
 ```
 
-> **⚠️ 强制重新安装**：拉取最新代码后，如果 `ptm-team` 命令仍使用旧版本（如安装的 skill 数量不对），需要清理构建缓存后强制重装：
+> **⚠️ 更新后必须重装**：`ptm-team` 通过 `uv tool` 安装到隔离环境，源代码修改不会自动生效。以下情况必须重新安装：
+>
+> - 拉取最新代码后
+> - 修改了 `script/ptm_team/` 下的任何代码
+> - 安装结果与预期不符（如 skill 数量、resource 数量、因子库缺失等）
 >
 > ```shell
 > cd /home/hyde/projects/ptm-team   # 或你的 ptm-team 项目路径
-> rm -rf build/ dist/ *.egg-info/
 > uv tool install . --reinstall
 > ```
 

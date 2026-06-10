@@ -432,8 +432,18 @@ def get_component_resources(
         policy = resource.get("install_policy", "optional")
 
         # "all" → expand to every entry in the type's index
-        if rid == "all" or (isinstance(rid, str) and rid.strip().startswith("[")):
-            # Handle YAML list syntax like "[tgfw-coupling, tgfw-platform-diff]"
+        if rid == "all":
+            index = parse_resource_index(source_dir, rtype)
+            for item_id in sorted(index.keys()):
+                selected.append({
+                    "resource_type": rtype,
+                    key_field: item_id,
+                    "install_policy": policy,
+                })
+            continue
+
+        # Handle YAML list syntax like "[tgfw-coupling, tgfw-platform-diff]"
+        if isinstance(rid, str) and rid.strip().startswith("["):
             import re
             rid_clean = re.sub(r"[\[\]]", "", str(rid))
             id_list = [x.strip() for x in rid_clean.split(",") if x.strip()]

@@ -165,6 +165,169 @@ def probe_factor_libraries() -> tuple[bool, str]:
     return False, "factor-libraries not found (checked PTM_TEAM_RESOURCE_HOME, ~/.ptm-team, cwd/resource)"
 
 
+def _find_factor_library_root() -> Path | None:
+    """Find the factor-libraries directory using the standard lookup order.
+
+    Returns the first accessible directory, or None.
+    """
+    env_home = os.environ.get("PTM_TEAM_RESOURCE_HOME")
+    if env_home:
+        p = Path(env_home) / "factor-libraries"
+        if p.is_dir():
+            return p
+    p = Path.home() / ".ptm-team" / "resource" / "factor-libraries"
+    if p.is_dir():
+        return p
+    p = Path.cwd() / "resource" / "factor-libraries"
+    if p.is_dir():
+        return p
+    return None
+
+
+def _strip_yaml_value(value: str) -> str:
+    """Strip a simple YAML scalar value."""
+    return value.strip().strip('"').strip("'")
+
+
+def probe_factor_library_content() -> tuple[bool, str, list[str]]:
+    """Verify that factor libraries referenced in index.yaml actually exist on disk.
+
+    Returns (ok, evidence, missing_list).
+      - ok: True if all referenced libraries exist, False if any are missing.
+      - evidence: human-readable summary.
+      - missing_list: list of missing library_id (empty if all present).
+    """
+    root = _find_factor_library_root()
+    if root is None:
+        return False, "factor-libraries 目录不可访问", []
+
+    index_path = root / "index.yaml"
+    if not index_path.is_file():
+        return False, f"index.yaml 不存在: {index_path}", []
+
+    # Parse index.yaml — simple line-by-line YAML subset
+    libraries: dict[str, dict[str, str]] = {}
+    current: dict[str, str] | None = None
+    current_id = ""
+    for raw_line in index_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("- library_id:"):
+            current_id = _strip_yaml_value(line.split(":", 1)[1])
+            current = {"library_id": current_id}
+            libraries[current_id] = current
+        elif current is not None and ":" in line:
+            key, value = line.split(":", 1)
+            current[key.strip()] = _strip_yaml_value(value)
+
+    if not libraries:
+        return True, "index.yaml 存在但未声明任何因子库", []
+
+    # Verify each library's content
+    present: list[str] = []
+    missing: list[tuple[str, str]] = []
+    for lib_id, meta in libraries.items():
+        rel_path = meta.get("path", f"{lib_id}/factor-library.yaml")
+        lib_file = root / rel_path
+        if lib_file.is_file():
+            present.append(lib_id)
+        else:
+            missing.append((lib_id, str(lib_file)))
+
+    if missing:
+        missing_ids = [m[0] for m in missing]
+        missing_paths = "; ".join(f"{m[0]} -> {m[1]}" for m in missing)
+        evidence = (
+            f"index 声明 {len(libraries)} 个因子库，"
+            f"已存在 {len(present)} 个，"
+            f"缺失 {len(missing)} 个: {missing_paths}"
+        )
+        return False, evidence, missing_ids
+
+    evidence = f"index 声明 {len(libraries)} 个因子库，全部存在: {', '.join(present)}"
+    return True, evidence, []
+
+
+def _find_coupling_matrix_root() -> Path | None:
+    """Find the coupling-matrix directory using the standard lookup order."""
+    env_home = os.environ.get("PTM_TEAM_RESOURCE_HOME")
+    if env_home:
+        p = Path(env_home) / "coupling-matrix"
+        if p.is_dir():
+            return p
+    p = Path.home() / ".ptm-team" / "resource" / "coupling-matrix"
+    if p.is_dir():
+        return p
+    p = Path.cwd() / "resource" / "coupling-matrix"
+    if p.is_dir():
+        return p
+    return None
+
+
+def probe_coupling_matrix_content() -> tuple[bool, str]:
+    """Verify that coupling matrix files referenced in index.yaml actually exist.
+
+    Returns (ok, evidence).
+      - ok: True if all referenced files exist, False if any are missing.
+      - evidence: human-readable summary including missing file paths.
+    """
+    root = _find_coupling_matrix_root()
+    if root is None:
+        return True, "coupling-matrix 目录不可访问（无可用耦合矩阵资源，不阻断）"
+
+    index_path = root / "index.yaml"
+    if not index_path.is_file():
+        return True, f"index.yaml 不存在: {index_path}（无可校验的索引，不阻断）"
+
+    # Parse index.yaml
+    matrices: dict[str, dict[str, str]] = {}
+    current: dict[str, str] | None = None
+    current_id = ""
+    for raw_line in index_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("- matrix_id:"):
+            current_id = _strip_yaml_value(line.split(":", 1)[1])
+            current = {"matrix_id": current_id}
+            matrices[current_id] = current
+        elif current is not None and ":" in line:
+            key, value = line.split(":", 1)
+            current[key.strip()] = _strip_yaml_value(value)
+
+    if not matrices:
+        return True, "index.yaml 存在但未声明任何耦合矩阵"
+
+    # Verify each matrix's source and feature_tree files
+    present: list[str] = []
+    missing_files: list[str] = []
+    for mid, meta in matrices.items():
+        all_ok = True
+        for field in ("source", "feature_tree"):
+            rel = meta.get(field, "")
+            if not rel:
+                continue
+            file_path = root / rel
+            if file_path.is_file():
+                continue
+            missing_files.append(f"{mid}:{field} -> {file_path}")
+            all_ok = False
+        if all_ok:
+            present.append(mid)
+
+    if missing_files:
+        evidence = (
+            f"index 声明 {len(matrices)} 个耦合矩阵，"
+            f"完整存在 {len(present)} 个，"
+            f"缺失文件 {len(missing_files)} 处: {'; '.join(missing_files)}"
+        )
+        return False, evidence
+
+    evidence = f"index 声明 {len(matrices)} 个耦合矩阵，全部文件存在: {', '.join(present)}"
+    return True, evidence
+
+
 def _resource_candidates(resource_subdir: str) -> list[Path]:
     """Return candidate paths for a shared resource subdirectory.
 
@@ -429,6 +592,22 @@ def run_gate_1(args: argparse.Namespace) -> int:
         10, "组网图资源可用",
         "PASS" if topo_resource_ok else "WARN",
         topo_resource_evidence,
+    ))
+
+    # 11: 公共因子库内容完整性 — 检查 index.yaml 中每个因子库的实际文件是否存在
+    factor_content_ok, factor_content_evidence, factor_content_missing = probe_factor_library_content()
+    checks.append((
+        11, "公共因子库内容完整",
+        "PASS" if factor_content_ok else "WARN",
+        factor_content_evidence,
+    ))
+
+    # 12: 耦合矩阵内容完整性 — 检查 index.yaml 中每个矩阵的 source/feature_tree 文件是否存在
+    coupling_content_ok, coupling_content_evidence = probe_coupling_matrix_content()
+    checks.append((
+        12, "耦合矩阵内容完整",
+        "PASS" if coupling_content_ok else "WARN",
+        coupling_content_evidence,
     ))
 
     overall = "PASS" if all(status in ("PASS", "WARN") for _, status, _, _ in checks) else "BLOCKED"
