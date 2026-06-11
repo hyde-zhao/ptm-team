@@ -201,11 +201,19 @@ C-Combination 是 PPDCS 五特征之一：
 
 再输出物理用例：
 
+PC 必须保留 `case_steps` 结构化步骤清单，并将其渲染到 16 列表的 `测试步骤*` 列。每一步必须同时包含：
+
+- `step_name`：面向测试人员的动作意图；
+- `atomic_op`：面向自动化执行的 ptm-atomic 操作及参数；
+- `expected_result`：步骤级预期结果。
+
+`测试步骤*` 列渲染为 `<步骤名称><br>执行对象：<target><br>原子操作：<op_id> <args...>`；不得只输出原子操作或只输出自然语言步骤。
+
 ```markdown
 | 三级目录 | 四级目录 | 五级目录 | 用例名称* | 用例编号 | 用例级别* | 组网描述* | 组网约束 | 预置条件 | 测试步骤* | 预期结果* | 首次创建版本* | 最后变更版本 | 关键词 | 测试类型* | 是否自动化* |
 |---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|------------|------------|--------|---------|----------|
-| 日志中心 | 日志服务器 | 日志外发 | 4 台服务器并发外发组合验证 | PC-SVR-CMB-001 | P1 | 单台防火墙 + 多台日志服务器 | | 已配置 4 台日志服务器 | 1.进入外发配置<br>2.按组合设置协议/模式/加密<br>3.保存并触发外发 | 1.配置保存成功<br>2.外发覆盖目标服务器 | V60R001C01 | | 组合,Pairwise | 功能 | 否 |
-| 日志中心 | 日志服务器 | 日志外发 | TLS 并发外发组合验证[待确认] | PC-SVR-CMB-006 | P2 | 单台防火墙 + 多台日志服务器 | | TLS 证书规则未确认 | 1.进入外发配置<br>2.配置 tls + 并发外发<br>3.触发外发 | 1.TLS 证书依赖与预期结果[待确认] | V60R001C01 | | 组合,待确认 | 功能 | 否 |
+| 日志中心 | 日志服务器 | 日志外发 | 4 台服务器并发外发组合验证 | PC-SVR-CMB-001 | P1 | 单台防火墙 + 多台日志服务器 | | 已配置 4 台日志服务器 | 1. 配置 4 台日志服务器并设置协议/模式/加密组合<br>执行对象：DUT<br>原子操作：config-log-servers server-count=4 protocol=syslog mode=parallel encrypt=off<br>2. 保存并触发日志外发<br>执行对象：DUT<br>原子操作：trigger-log-forwarding target=all-servers | 1.配置保存成功<br>2.外发覆盖目标服务器 | V60R001C01 | | 组合,Pairwise | 功能 | 否 |
+| 日志中心 | 日志服务器 | 日志外发 | TLS 并发外发组合验证[待确认] | PC-SVR-CMB-006 | P2 | 单台防火墙 + 多台日志服务器 | | TLS 证书规则未确认 | 1. 配置 TLS 并发外发组合<br>执行对象：DUT<br>原子操作：config-log-servers server-count=4 protocol=restAPI mode=parallel encrypt=tls<br>2. 触发 TLS 日志外发<br>执行对象：DUT<br>原子操作：trigger-log-forwarding target=all-servers tls-profile=[待确认] | 1.TLS 证书依赖与预期结果[待确认] | V60R001C01 | | 组合,待确认 | 功能 | 否 |
 ```
 
 ## 输出目录结构
@@ -256,6 +264,7 @@ ppdcs/pc/<basename>.md
 - manual fallback 无法证明覆盖完整时，必须保留 `uncovered_pairs` 和 `needs-confirmation`
 - 无效值通常单独验证，不与无效值彼此组合
 - 常见误用：把 `DUT.port1 / TG.port2` 当成 Pairwise 取值。真实端口是 PC 物化目标，不是组合因子值。
+- PC `测试步骤*` 不能只写组合取值或只写 `op_id`；必须同时给出步骤名称与 `原子操作：<op_id> <args...>`。
 
 ## 方法论细则（用户可定制）
 
@@ -295,3 +304,4 @@ combo/data_row 分配表直接决定 PC 生成（combo_id → data_row → PC）
 - [ ] 第五步已输出 data row 分配，并明确 `LC + combo/data_row = PC`
 - [ ] `needs-confirmation` / `confirmation_gap_refs` 未被静默折叠
 - [ ] 默认 Pairwise 未纳入 `topology_role`；若纳入，已记录明确测试目标和升级原因；真实端口未作为组合因子值
+- [ ] 每条物理用例包含 `case_steps`，并在 `测试步骤*` 中渲染步骤名称与原子操作

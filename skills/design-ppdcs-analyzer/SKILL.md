@@ -135,8 +135,50 @@ lookup["DFX"]        = ("IPv4策略路由", "管理维护")
 
 1. LC 基本信息与 trace；
 2. 物理用例 16 列总表；
-3. 每条 PC 回链到 `requirement_ids / logic_case_id / trace_refs / scenario_refs / action_source_refs / factor_bindings / factor_refs / topology_bindings / topology_role_refs / topology_refs / fact_status`；
-4. 指向 PPDCS 过程文件的相对路径。
+3. 每条 PC 的 `case_steps` 结构化步骤清单，步骤必须同时包含人类可读 `step_name` 与可执行 `atomic_op`；
+4. 每条 PC 回链到 `requirement_ids / logic_case_id / trace_refs / scenario_refs / action_source_refs / factor_bindings / factor_refs / topology_bindings / topology_role_refs / topology_refs / fact_status`；
+5. 指向 PPDCS 过程文件的相对路径。
+
+### PC 步骤契约
+
+`case_steps` 是 PC 的主步骤契约，16 列表中的 `测试步骤*` 是它的交付渲染结果。不得只输出原子操作而缺少步骤名称。
+
+```yaml
+case_steps:
+  - step_id: STEP-001
+    step_name: 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
+    target: DUT
+    atomic_op:
+      op_id: config-policy-route
+      args:
+        src-addr: OBJ_SRC_WEB
+    expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
+    trace_refs:
+      - TP-001
+      - TD-ADDR-001
+```
+
+字段要求：
+
+| 字段 | 必填 | 说明 |
+|---|:---:|---|
+| `step_id` | 是 | PC 内稳定步骤编号，如 `STEP-001` |
+| `step_name` | 是 | 面向测试人员的动作意图，例如“配置策略路由的匹配源地址对象 OBJ_SRC_WEB” |
+| `target` | 否 | 执行对象，如 `DUT`、`TG`、`Controller`；未知写 `—` 或 `[待确认]` |
+| `atomic_op.op_id` | 是 | ptm-atomic 操作 ID，必须同步进入 `action_source_refs` |
+| `atomic_op.args` | 是 | 原子操作参数键值；无参数写 `{}` |
+| `expected_result` | 是 | 当前步骤的预期结果；未知保留 `[待确认]` |
+| `trace_refs` | 否 | 当前步骤回链的 TP / TD / scenario chain 引用 |
+
+16 列表 `测试步骤*` 渲染规则：
+
+```text
+<序号>. <step_name>
+   执行对象：<target>
+   原子操作：<op_id> <arg1>=<value1> <arg2>=<value2>
+```
+
+Markdown 表格中使用 `<br>` 表达换行，不新增 16 列之外的列。
 
 ## 拓扑绑定校验
 
@@ -148,6 +190,7 @@ lookup["DFX"]        = ("IPv4策略路由", "管理维护")
 | TOPO 回链 | `topology_ref / binding_source` 可回链 `kym/scenarios/confirmed-scenarios.md` | 不得把真实端口写入 confirmed PC；降级 `fact_status` |
 | PC 端口使用 | PC 中出现的 `DUT.port* / TG.port* / link` 均能回链 LC `topology_bindings` 和 confirmed-scenarios.md | 记录拓扑绑定错误，不得静默通过 |
 | 因子分层 | `factor_bindings` 不包含拓扑角色或真实组网对象 | 标记设计输入污染，相关 PC `needs-confirmation` |
+| 步骤双层表达 | 每条 `case_steps[]` 同时包含 `step_name` 与 `atomic_op.op_id`，且 `atomic_op.op_id` 可回链 `action_source_refs` | 缺任一项则 PC 降级为 `needs-confirmation` 并记录交付字段缺口 |
 
 PC 表中若需要展示真实端口，只能来自 `topology_bindings.bound_object`，并同时保留 `topology_binding_id`；不得从动作文本或角色名直接推断。
 
@@ -160,6 +203,7 @@ PC 表中若需要展示真实端口，只能来自 `topology_bindings.bound_obj
 - PPDCS/PC 消费 LC `topology_bindings`，不重新推断组网绑定。
 - 真实端口可以出现在 PC 执行步骤中，但必须可回链到 LC 绑定和 confirmed-scenarios.md。
 - 拓扑角色只约束测试位置，不是 D-Data/C-Combination/P-Parameter 的测试因子。
+- PC 步骤名称表达测试动作意图；原子操作表达可执行动作和参数。两者不得互相替代。
 
 ## 验收标准
 
@@ -173,3 +217,4 @@ PC 表中若需要展示真实端口，只能来自 `topology_bindings.bound_obj
 - [ ] PPDCS 过程文件保留 LC `topology_bindings` 与拓扑绑定校验结论
 - [ ] PC 中真实端口均可回链 LC `topology_bindings` 和 `kym/scenarios/confirmed-scenarios.md`
 - [ ] 未确认或不唯一拓扑绑定导致相关 PC `fact_status=needs-confirmation`
+- [ ] 每条 PC 均包含 `case_steps`，且每一步同时包含 `step_name` 与 `atomic_op`

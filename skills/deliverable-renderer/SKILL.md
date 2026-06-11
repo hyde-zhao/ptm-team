@@ -20,7 +20,7 @@ status: active
 渲染时必须：
 
 - 消费 `ppdcs/ppdcs/` 和 `ppdcs/pc/` 的**每 LC 单文件过程工件**，不能只看最终 PC；
-- 保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status`；
+- 保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `case_steps`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status`；
 - 当上游存在 `topology_ref` 时，在测试方案的场景章节中保留对应组网引用与产物路径，并在测试用例中保留角色到真实设备/端口/链路的绑定来源。
 
 ## 适用范围
@@ -65,7 +65,7 @@ status: active
 | 来源 | 必收字段 | 用途 |
 |------|----------|------|
 | `ppdcs/ppdcs/<basename>.md` | 推荐方法、图/规则/等价类/组合/状态迁移、覆盖策略、触发数据、`topology_role_refs`, `topology_binding_refs`, `trace_refs`, `scenario_refs`, `action_source_refs`, `confirmation_gap_refs`, `fact_status` | 渲染完整 PPDCS 设计过程 |
-| `ppdcs/pc/<basename>.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status` | 渲染最终物理用例 |
+| `ppdcs/pc/<basename>.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `case_steps`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status` | 渲染最终物理用例 |
 
 > 若某 PC 缺少 `feature_tags` 或某 LC 无法回链到 `requirement_ids / trace_refs`，renderer 必须在交付物中显式暴露缺口，不得自行脑补。
 > 若某 PC 使用真实端口但无法回链到 LC `topology_bindings` 和 `confirmed-scenarios.md`，renderer 必须保留为 `needs-confirmation`，不得把该端口展示为因子或确认事实。
@@ -74,9 +74,9 @@ status: active
 
 ### 步骤 0：交付确认
 
-按平台交互协议确认 ptm-tde 默认交付物：Claude Code 且 `AskUserQuestion` 可用时使用结构化选择；Codex 或工具不可用时使用 exact text。
+使用 `AskUserQuestion` 列出 ptm-tde 默认交付物，用户可全部接受或调整。
 
-**Claude Code AskUserQuestion 参数**：
+**AskUserQuestion 参数**：
 
 - `question`: "ptm-tde 默认交付以下 4 份文档，是否确认？"
 - `header`: "Delivery"
@@ -136,7 +136,43 @@ status: active
 2. 按 `三级目录 → 四级目录 → 五级目录 → 用例编号` 排序
 3. 同一 LC 的 PC 行连续排列，中间不插入分页或重复表头
 4. PC 行中 `fact_status=needs-confirmation` 的，在用例名称末尾追加 ` ⚠️待确认`
-5. 汇总表表头只出现一次，放在全文最前
+5. `测试步骤*` 列必须由 PC `case_steps` 渲染；每一步同时展示步骤名称和原子操作
+6. 汇总表表头只出现一次，放在全文最前
+
+**PC 步骤渲染规则**：
+
+`case_steps` 是源契约，`测试步骤*` 是交付渲染。每个步骤必须包含：
+
+```yaml
+step_id: STEP-001
+step_name: 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
+target: DUT
+atomic_op:
+  op_id: config-policy-route
+  args:
+    src-addr: OBJ_SRC_WEB
+expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
+```
+
+渲染到 `测试步骤*` 列：
+
+```text
+1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
+   执行对象：DUT
+   原子操作：config-policy-route src-addr=OBJ_SRC_WEB
+```
+
+Markdown 表格单元格中使用 `<br>` 换行：
+
+```text
+1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB<br>执行对象：DUT<br>原子操作：config-policy-route src-addr=OBJ_SRC_WEB
+```
+
+规则：
+- `step_name` 表达测试动作意图，不能只复制 `atomic_op.op_id`；
+- `atomic_op.op_id` 必须进入 `action_source_refs`；
+- 缺 `step_name`、缺 `atomic_op` 或 `atomic_op` 无法回链时，在交付物中显式输出 `pc_step_contract_gap`，不得静默省略；
+- 最终 16 列表不新增“步骤名称”列，避免破坏既有交付格式。
 
 #### 3b. 各 LC 详情（全文后部）
 
@@ -295,12 +331,14 @@ status: active
 - `feature_tags` 若缺失，应在交付中列为 gap，而不是用模块名临时替代
 - `fact_status=needs-confirmation` 的 LC / PC 条目必须原样进入交付物
 - `DUT.port1`、`TG.port1` 和 link 实例是 topology materialization，不是 factor materialization
+- `测试步骤*` 必须体现“步骤名称 + 原子操作”双层表达；只保留原子操作会损失人工可读性，只保留自然语言会损失自动化可执行性
 
 ## 验收标准
 
 - [ ] 输出四份交付物：测试方案 + 测试用例 + 原子操作候选对比表 + 测试因子候选对比表
 - [ ] 测试用例文档全文仅一张 16 列 PC 汇总表（来自所有 `ppdcs/pc/*.md` 的 PC 行合并）
 - [ ] 汇总表覆盖 `ppdcs/pc/` 下所有 PC 文件的全部 PC 行
+- [ ] 汇总表 `测试步骤*` 列由 `case_steps` 渲染，每一步同时包含步骤名称和 `原子操作：<op_id> <args...>`
 - [ ] 各 LC 详情不重复渲染 PC 表（改为 PC 编号引用行）
 - [ ] `fact_status=needs-confirmation` 的 PC 在用例名称末尾标注 ` ⚠️待确认`
 - [ ] 原子操作候选对比表包含 op_id、描述、match_attempt（L1-L4+score）、现有库匹配、匹配结果 ✅/⚠️/❌、来源场景；按 未匹配→已匹配 排序
@@ -312,6 +350,7 @@ status: active
 - [ ] 测试因子候选无数据时不生成空表，输出"未发现新候选"
 - [ ] 公共库不可用时对比表标注"⚠️ 无法检索公共因子库"，不阻断
 - [ ] 测试用例文档消费 STORY-06 / STORY-07 的完整过程文档，而非仅最终 PC
-- [ ] 交付物保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status`
+- [ ] 交付物保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `case_steps`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_role`, `source`, `confirmation_gap_refs`, `fact_status`
+- [ ] 交付物保留 `case_steps` 的步骤级 `step_name / target / atomic_op / expected_result` 信息，并将 `atomic_op.op_id` 回链到 `action_source_refs`
 - [ ] 交付物不把真实端口、真实链路或 `DUT.port1` / `TG.port1` 展示为因子
 - [ ] 不生成工具分析表或 `case-index.yaml`

@@ -207,7 +207,8 @@ PC 由 `覆盖策略选中的 state_path × data_overlay_set` 生成。
 | `case_title` | 用例标题 |
 | `priority` | 优先级 |
 | `preconditions` | 前置条件 |
-| `test_steps` | 步骤 |
+| `case_steps` | 结构化步骤清单；每步必须包含 `step_name` 与 `atomic_op` |
+| `test_steps` | 由 `case_steps` 渲染出的 16 列表 `测试步骤*` 文本 |
 | `expected_results` | 预期结果 |
 | `graph_ref` | `state_path_id` |
 | `coverage_goal` | 迁移路径覆盖目标 |
@@ -221,6 +222,37 @@ PC 由 `覆盖策略选中的 state_path × data_overlay_set` 生成。
 | `fact_status` | `confirmed / needs-confirmation` |
 
 > 若 PC 依赖未确认状态名、迁移方向或守卫条件，`test_steps / expected_results / trigger_data` 必须保留 `[待确认]`。
+
+**PC 步骤结构化契约**：
+
+```yaml
+case_steps:
+  - step_id: STEP-001
+    step_name: 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
+    target: DUT
+    atomic_op:
+      op_id: config-policy-route
+      args:
+        src-addr: OBJ_SRC_WEB
+    expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
+    trace_refs:
+      - TP-001
+      - TD-ADDR-001
+```
+
+渲染到 16 列物理用例表的 `测试步骤*` 时使用：
+
+```text
+1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
+   执行对象：DUT
+   原子操作：config-policy-route src-addr=OBJ_SRC_WEB
+```
+
+规则：
+- `step_name` 表达测试动作意图，不能只复制 `op_id`；
+- `atomic_op.op_id` 必须同步进入 `action_source_refs`；
+- 原子操作参数来自 TD / data overlay / topology materialization，未确认参数保留 `[待确认]`；
+- Markdown 表格中用 `<br>` 换行表达上述多行结构，不新增 16 列之外的列。
 
 ## 输出文件结构
 
@@ -306,6 +338,7 @@ stateDiagram-v2
 - `confirmation_gap_refs`、`uncertain_facts`、`TD.status=needs-confirmation` 不能被吞掉
 - 若 `P-Process` 仍是强候选，必须写清“为何此处核心是状态迁移而非步骤流程”
 - 不得把 TOPO 实例、link 或真实端口写成状态值、迁移守卫值或测试因子值。
+- PC 步骤必须同时有人类可读 `step_name` 和可执行 `atomic_op`；不得只输出原子操作串。
 
 ## 方法论细则（用户可定制）
 
@@ -346,3 +379,4 @@ stateDiagram-v2
 - [ ] 物理用例字段骨架与 `process-design` 一致
 - [ ] 输出采用 `ppdcs/ppdcs/<basename>.md` 与 `ppdcs/pc/<basename>.md`
 - [ ] 已消费 LC `topology_bindings`；真实端口物化保留来源和 `fact_status`，且未进入 factor/data/state value
+- [ ] 每条 PC 的 `case_steps` 均包含 `step_name`、`atomic_op.op_id`、`atomic_op.args` 与步骤级 `expected_result`

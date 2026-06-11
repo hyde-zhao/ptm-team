@@ -17,7 +17,7 @@ status: active
 1. **需求层**：校验 `SR → TP → LC → TD → PC` 是否完整闭环；
 2. **测试点层**：校验 `TP → LC / ppdcs/ppdcs / ppdcs/pc` 是否落地为可执行 PC；
 3. 校验 PC 中的真实设备、端口、链路均可回链到 LC `topology_bindings` 和 `kym/scenarios/confirmed-scenarios.md`；
-4. 保留并透传 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `confirmation_gap_refs`, `fact_status`；
+4. 保留并透传 `requirement_ids`, `logic_case_id`, `feature_tags`, `case_steps`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `confirmation_gap_refs`, `fact_status`；
 5. 对缺口输出结构化原因，而不是只给覆盖率数字。
 
 ## 适用范围
@@ -54,7 +54,7 @@ status: active
 |------|----------|------|
 | `ppdcs/ppdcs/<basename>.md`（process/state） | `recommended_feature`, `design_skill`, `path_id / state_path_id`, `coverage_goal`, `td_ref`, `topology_role_refs`, `topology_binding_refs`, `trace_refs`, `scenario_refs`, `action_source_refs`, `confirmation_gap_refs`, `fact_status` | 校验 TP 是否真正进入设计过程 |
 | `ppdcs/ppdcs/<basename>.md`（parameter/data/combination） | `design_skill`, `rule_id / value_class / combo_id / data_row_id`, `factor_refs`, `topology_role_refs`, `topology_binding_refs`, `td_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 校验完整过程已进入覆盖链 |
-| `ppdcs/pc/<basename>.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_bindings`, `topology_materialization`, `confirmation_gap_refs`, `fact_status` | 校验最终 PC 覆盖与真实组网回链 |
+| `ppdcs/pc/<basename>.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `case_steps`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `topology_bindings`, `topology_materialization`, `confirmation_gap_refs`, `fact_status` | 校验最终 PC 覆盖、步骤可读性、原子操作回链与真实组网回链 |
 
 > 不允许只统计 `ppdcs/pc/*.md` 数量就判定”已覆盖”；必须确认 LC 在 `ppdcs/ppdcs/*.md` 中已有可审计过程。
 
@@ -78,6 +78,8 @@ status: active
 - 存在 `ppdcs/pc/<basename>.md`
 - PPDCS 文件中存在可回链的 `path / state_path / rule / value_class / combo / data_row`
 - PC 文件中 `logic_case_id` 与 LC 对齐
+- PC 文件中每条 `case_steps[]` 同时包含 `step_name` 和 `atomic_op.op_id`
+- `case_steps[].atomic_op.op_id` 已进入 PC `action_source_refs`
 - PC 文件中的真实 `device_id / port_id / link_id` 能解析到 LC `topology_bindings`
 - LC `topology_bindings` 的每个真实对象能回链到 `confirmed-scenarios.md` 的 `topology_ref` 和已确认场景
 
@@ -169,6 +171,9 @@ status: active
 - 缺 TD
 - 缺 `ppdcs/ppdcs/<basename>.md`
 - 缺 PC
+- PC 缺 `case_steps`
+- PC 步骤缺 `step_name` 或 `atomic_op`
+- `case_steps[].atomic_op.op_id` 无法回链到 `action_source_refs`
 - 因 `confirmation_gap_refs` 无法确认
 
 不得补写新的业务规则、状态机、接口或工具行为。
@@ -241,12 +246,15 @@ status: active
 - `topology_binding_status=needs-confirmation` 不能因 PC 已生成而被提升为 `confirmed`
 - 真实端口、真实链路、`DUT.port1` / `TG.port1` 是拓扑对象，不是公共因子值
 - `confirmation_gap_refs` 必须进入报告，不得因“先交付再说”而删除
+- PC 若只输出原子操作而缺少步骤名称，必须输出 `pc_step_contract_gap`
+- PC 若只输出自然语言步骤而缺少 `atomic_op`，必须输出 `pc_step_contract_gap`
 
 ## 验收标准
 
 - [ ] 输出需求层与测试点层双层覆盖报告
 - [ ] 覆盖检查消费 `logic-cases.md`、`test-data.md`、`ppdcs/ppdcs/*.md` 与 `ppdcs/pc/*.md`
-- [ ] 报告保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_binding_status`, `confirmation_gap_refs`, `fact_status`
+- [ ] 报告保留 `requirement_ids`, `logic_case_id`, `feature_tags`, `case_steps`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_bindings`, `factor_refs`, `topology_role_refs`, `topology_bindings`, `topology_binding_status`, `confirmation_gap_refs`, `fact_status`
 - [ ] PC 真实端口、设备和链路均可回链到 LC `topology_bindings` 与 `confirmed-scenarios.md`
+- [ ] PC 每个步骤均包含 `step_name` 与 `atomic_op`，且 `atomic_op.op_id` 可回链 `action_source_refs`
 - [ ] 未覆盖项与设计缺口被单独列出
 - [ ] 未扩写上游不存在的规则、接口或行为
