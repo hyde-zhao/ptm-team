@@ -18,11 +18,13 @@ Usage:
   uv run python script/install.py uninstall claude --agent
   uv run python script/install.py uninstall claude --skill
   uv run python script/install.py install claude --list
+  uv run python script/install.py check codex --agent ptm-tde
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -47,6 +49,11 @@ MANAGED_VERSION = "1.0.0"
 MANIFEST_FILENAME = ".ptm-team-manifest.json"
 RESOURCE_HOME_ENV = "PTM_TEAM_RESOURCE_HOME"
 DEFAULT_RESOURCE_HOME = Path.home() / ".ptm-team" / "resource"
+PTM_TDE_RULE_BLOCK_ID = "ptm-tde-workflow"
+PTM_TDE_RULE_FILES = {
+    "claude": "CLAUDE.md",
+    "codex": "AGENTS.md",
+}
 
 # Agent aliases
 AGENT_ALIASES = {
@@ -98,12 +105,17 @@ FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n?", re.DOTALL)
 
 @dataclass
 class ManifestEntry:
-    kind: str  # "agent", "skill", or "resource"
+    kind: str  # "agent", "skill", "resource", or "rule"
     name: str
     path: str
     remove_path: str
     resource_type: str = ""
+    managed_block_id: str = ""
+    source_hash: str = ""
+    installed_hash: str = ""
     installed_for: list[str] = field(default_factory=list)
+    source_files: list[str] = field(default_factory=list)
+    resource_files: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -136,6 +148,55 @@ def canonical_commit(root: Path) -> str:
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
     return result.stdout.strip() or "unknown"
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def sha256_directory(root: Path) -> str:
+    """Hash a directory deterministically by relative path and file content."""
+    h = hashlib.sha256()
+    if not root.is_dir():
+        return ""
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        rel = path.relative_to(root).as_posix()
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update(sha256_file(path).encode("ascii"))
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def sha256_file_set(root: Path, relative_files: list[str]) -> str:
+    """Hash a stable set of files under root by relative path and content."""
+    h = hashlib.sha256()
+    for rel in sorted(set(relative_files)):
+        path = root / rel
+        if not path.is_file():
+            return ""
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update(sha256_file(path).encode("ascii"))
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def relative_files_under(root: Path) -> list[str]:
+    """Return relative file paths below root, or one file name when root is a file."""
+    if root.is_file():
+        return [root.name]
+    if not root.is_dir():
+        return []
+    return sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file())
 
 
 def parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
@@ -314,6 +375,105 @@ def get_agent_skills(agent_name: str) -> list[str]:
     if agent_name == "ptm-tde":
         return PMT_TDE_SKILLS
     return []
+
+
+def render_ptm_tde_rule_body(platform: str) -> str:
+    """Render the short platform rule block installed with ptm-tde."""
+    platform_label = "Claude Code" if platform == "claude" else "Codex"
+    return f"""## ptm-tde 工作流程规则
+
+本项目安装了 `ptm-tde` 测试设计 Agent。{platform_label} 中触发 `ptm-tde` / `tde` 相关工作时必须遵守以下流程：
+
+1. **入口识别**：先定位特性工作区。标准输入目录为 `.input/`；若 `.input/` 不在项目根目录，则其父目录是本次特性的 `feature_workspace_root`。
+2. **输出隔离**：所有分析产物、运行状态和检查点必须写入 `feature_workspace_root` 下的 `kym/`、`mfq/`、`ppdcs/`、`process/` 等同级目录，不得默认写到仓库根目录。
+3. **状态隔离**：每个 `feature_workspace_root/process/STATE.yaml` 只记录该特性的状态；不同 `.input/` 目录之间不得共享或覆盖状态。
+4. **多输入保护**：同一仓库发现多个 `.input/` 且用户未指定目标时，必须暂停并要求用户选择，不得用任意启发式默认选择。
+5. **阶段顺序**：必须按 `feature-parser → kym → scenario-discovery → MFQ → PPDCS → delivery` 推进，并在 GATE-1 至 GATE-5 通过后再进入下一阶段。
+6. **Skill 证据**：声明某个 Skill 已执行时，必须更新 `feature_workspace_root/process/execution/SKILL-CALLS.yaml`，记录 `skill_name / input_refs / output_refs / status=completed / evidence_summary`；只创建 handoff 文件不等于目标 Skill 已完成。
+7. **人工确认**：遇到 Gate / 用户确认点时，按当前平台可用交互方式发起确认；无法使用结构化选择时，使用明确文本选项 `approve`、`修改: <具体修改点>`、`reject`。
+"""
+
+
+def managed_block_markers(block_id: str, commit: str, generated: str) -> tuple[str, str]:
+    start = (
+        f"<!-- ptm-team:managed:{block_id}:begin "
+        f"v={MANAGED_VERSION} commit={commit} generated={generated} -->"
+    )
+    end = f"<!-- ptm-team:managed:{block_id}:end -->"
+    return start, end
+
+
+def managed_block_pattern(block_id: str) -> re.Pattern[str]:
+    escaped = re.escape(block_id)
+    return re.compile(
+        rf"<!-- ptm-team:managed:{escaped}:begin\b[^>]*-->.*?"
+        rf"<!-- ptm-team:managed:{escaped}:end -->",
+        re.DOTALL,
+    )
+
+
+def upsert_managed_rule_block(
+    path: Path,
+    block_id: str,
+    body: str,
+    commit: str,
+    generated: str,
+    dry_run: bool,
+) -> None:
+    """Create or replace one managed block in a platform rules file."""
+    start, end = managed_block_markers(block_id, commit, generated)
+    block = f"{start}\n\n{body.rstrip()}\n\n{end}\n"
+    old = path.read_text(encoding="utf-8") if path.is_file() else ""
+    pattern = managed_block_pattern(block_id)
+    if pattern.search(old):
+        new = pattern.sub(block.rstrip(), old).rstrip() + "\n"
+        action = "更新"
+    else:
+        prefix = old.rstrip()
+        new = f"{prefix}\n\n{block}" if prefix else block
+        action = "创建" if not path.exists() else "追加"
+
+    if dry_run:
+        print(f"  [DryRun] {action}规则托管块: {path}")
+        return
+    ensure_directory(path.parent)
+    path.write_text(new, encoding="utf-8")
+    print(f"  ✓ {action}规则托管块: {path}")
+
+
+def remove_managed_rule_block(path: Path, block_id: str, dry_run: bool) -> None:
+    """Remove one managed block while preserving the rest of the rules file."""
+    if not path.is_file():
+        return
+    old = path.read_text(encoding="utf-8")
+    pattern = managed_block_pattern(block_id)
+    if not pattern.search(old):
+        return
+    new = pattern.sub("", old).strip() + "\n"
+    if dry_run:
+        print(f"  [DryRun] 删除规则托管块: {path}")
+        return
+    path.write_text(new, encoding="utf-8")
+    print(f"  ✓ 删除规则托管块: {path}")
+
+
+def extract_managed_rule_body(path: Path, block_id: str) -> str | None:
+    """Return the normalized body of a managed rule block.
+
+    The block markers include generated timestamps, so drift checks compare only
+    the managed body that carries the actual workflow rules.
+    """
+    if not path.is_file():
+        return None
+    content = path.read_text(encoding="utf-8")
+    match = managed_block_pattern(block_id).search(content)
+    if not match:
+        return None
+    lines = match.group(0).splitlines()
+    if len(lines) < 2:
+        return ""
+    body = "\n".join(lines[1:-1]).strip()
+    return f"{body}\n" if body else ""
 
 
 def strip_yaml_value(value: str) -> str:
@@ -550,6 +710,19 @@ def remove_path(path: Path, dry_run: bool) -> None:
     print(f"  ✓ 删除: {path}")
 
 
+def remove_installed_entry(entry: dict, workspace_root: Path, dry_run: bool) -> None:
+    """Remove one manifest entry without deleting shared resources by accident."""
+    path = workspace_root / entry["remove_path"]
+    if entry["kind"] == "rule":
+        remove_managed_rule_block(path, entry.get("managed_block_id", ""), dry_run)
+    elif entry["kind"] == "resource":
+        resource_type = entry.get("resource_type", "resource")
+        name = entry.get("name", "")
+        print(f"  ✓ 保留共享 resource: {resource_type}:{name} ({path})")
+    else:
+        remove_path(path, dry_run)
+
+
 def install_agent(
     platform: str,
     agent_name: str,
@@ -599,7 +772,31 @@ def install_agent(
         name=agent_name,
         path=str(dest.relative_to(workspace_root)),
         remove_path=str(dest.relative_to(workspace_root)),
+        source_hash=sha256_text(content),
+        installed_hash=sha256_text(rendered),
     ))
+
+    if agent_name == "ptm-tde":
+        rule_file = workspace_root / PTM_TDE_RULE_FILES[platform]
+        rule_body = render_ptm_tde_rule_body(platform)
+        upsert_managed_rule_block(
+            rule_file,
+            PTM_TDE_RULE_BLOCK_ID,
+            rule_body,
+            commit,
+            generated,
+            dry_run,
+        )
+        entries.append(ManifestEntry(
+            kind="rule",
+            name=f"{agent_name}:{PTM_TDE_RULE_BLOCK_ID}",
+            path=str(rule_file.relative_to(workspace_root)),
+            remove_path=str(rule_file.relative_to(workspace_root)),
+            managed_block_id=PTM_TDE_RULE_BLOCK_ID,
+            source_hash=sha256_text(rule_body),
+            installed_hash=sha256_text(rule_body),
+            installed_for=[agent_name],
+        ))
 
     # Install referenced skills
     skills = get_agent_skills(agent_name)
@@ -620,6 +817,8 @@ def install_agent(
                 name=skill_name,
                 path=str(skill_dest.relative_to(workspace_root)),
                 remove_path=str(skill_dest.relative_to(workspace_root)),
+                source_hash=sha256_directory(skill_src),
+                installed_hash=sha256_directory(skill_src),
             ))
 
     # Install associated shared resources.
@@ -677,6 +876,8 @@ def install_agent(
                 if not rid:
                     continue
                 meta = index.get(rid, {})
+                source_files: list[str] = []
+                installed_files: list[str] = []
 
                 if rtype == "factor-library":
                     # Existing: copy individual library subdirectory
@@ -685,6 +886,14 @@ def install_agent(
                     if not lib_dir.is_dir():
                         fail(f"公共因子库不存在: {rid} ({lib_dir})")
                     dest = dest_root / lib_dir.name
+                    source_files = [
+                        (lib_dir / rel).relative_to(src_root).as_posix()
+                        for rel in relative_files_under(lib_dir)
+                    ]
+                    installed_files = [
+                        (dest / rel).relative_to(dest_root).as_posix()
+                        for rel in relative_files_under(lib_dir)
+                    ]
                     copy_resource_tree(lib_dir, dest, dry_run)
                 elif rtype == "coupling-matrix":
                     # Copy individual YAML files listed in index source field
@@ -693,6 +902,8 @@ def install_agent(
                         src_path = src_root / src_file
                         if src_path.is_file():
                             dest = dest_root / src_file
+                            source_files.append(src_file)
+                            installed_files.append(src_file)
                             if dry_run:
                                 print(f"  [DryRun] 复制: {src_path} -> {dest}")
                             else:
@@ -704,6 +915,8 @@ def install_agent(
                         ft_path = src_root / ft_file
                         if ft_path.is_file():
                             dest = dest_root / ft_file
+                            source_files.append(ft_file)
+                            installed_files.append(ft_file)
                             if dry_run:
                                 print(f"  [DryRun] 复制: {ft_path} -> {dest}")
                             else:
@@ -716,11 +929,18 @@ def install_agent(
                             src_path = src_root / src_file
                             if src_path.is_file():
                                 dest = dest_root / src_file
+                                source_files.append(src_file)
+                                installed_files.append(src_file)
                                 if dry_run:
                                     print(f"  [DryRun] 复制: {src_path} -> {dest}")
                                 else:
                                     shutil.copy2(src_path, dest)
                                     print(f"  ✓ 安装 network-topology: {src_file}")
+
+                source_hash = sha256_file_set(src_root, source_files) if source_files else ""
+                installed_hash = (
+                    source_hash if dry_run else sha256_file_set(dest_root, installed_files)
+                ) if installed_files else ""
 
                 entries.append(ManifestEntry(
                     kind="resource",
@@ -728,7 +948,11 @@ def install_agent(
                     path=str(dest_root),
                     remove_path=str(dest_root),
                     resource_type=rtype,
+                    source_hash=source_hash,
+                    installed_hash=installed_hash,
                     installed_for=[agent_name],
+                    source_files=source_files,
+                    resource_files=installed_files,
                 ))
 
     return entries
@@ -743,8 +967,18 @@ def manifest_entry_to_dict(entry: ManifestEntry) -> dict:
     }
     if entry.resource_type:
         payload["resource_type"] = entry.resource_type
+    if entry.managed_block_id:
+        payload["managed_block_id"] = entry.managed_block_id
+    if entry.source_hash:
+        payload["source_hash"] = entry.source_hash
+    if entry.installed_hash:
+        payload["installed_hash"] = entry.installed_hash
     if entry.installed_for:
         payload["installed_for"] = entry.installed_for
+    if entry.source_files:
+        payload["source_files"] = entry.source_files
+    if entry.resource_files:
+        payload["resource_files"] = entry.resource_files
     return payload
 
 
@@ -845,6 +1079,8 @@ def install_skills_interactive(
                     name=skill_name,
                     path=str(skill_dest.relative_to(workspace_root)),
                     remove_path=str(skill_dest.relative_to(workspace_root)),
+                    source_hash=sha256_directory(skill_src),
+                    installed_hash=sha256_directory(skill_src),
                 ))
         else:
             print("没有新的 skill 需要安装")
@@ -883,6 +1119,8 @@ def uninstall_agent(
                 remaining_entries.append(updated)
             else:
                 entries_to_remove.append(entry)
+        elif entry["kind"] == "rule" and agent_name in entry.get("installed_for", []):
+            entries_to_remove.append(entry)
         else:
             remaining_entries.append(entry)
 
@@ -892,8 +1130,7 @@ def uninstall_agent(
     # Remove files
     print(f"卸载 agent {agent_name} 及其 skills:")
     for entry in entries_to_remove:
-        path = workspace_root / entry["remove_path"]
-        remove_path(path, dry_run)
+        remove_installed_entry(entry, workspace_root, dry_run)
 
     # Update manifest
     record["entries"] = remaining_entries
@@ -980,8 +1217,7 @@ def uninstall_all(
 
     print(f"卸载 {platform} 的所有安装内容:")
     for entry in entries:
-        path = workspace_root / entry["remove_path"]
-        remove_path(path, dry_run)
+        remove_installed_entry(entry, workspace_root, dry_run)
 
     # Update manifest
     record["status"] = "uninstalled"
@@ -1002,6 +1238,7 @@ def list_installed(platform: str, workspace_root: Path, manifest: dict) -> None:
     agents = [e for e in record.get("entries", []) if e["kind"] == "agent"]
     skills = [e for e in record.get("entries", []) if e["kind"] == "skill"]
     resources = [e for e in record.get("entries", []) if e["kind"] == "resource"]
+    rules = [e for e in record.get("entries", []) if e["kind"] == "rule"]
 
     print(f"\n{platform} 已安装内容:")
     print(f"  安装时间: {record.get('installed_at', 'unknown')}")
@@ -1022,6 +1259,129 @@ def list_installed(platform: str, workspace_root: Path, manifest: dict) -> None:
             resource_type = r.get("resource_type", "resource")
             installed_for = ", ".join(r.get("installed_for", [])) or "unknown"
             print(f"    - {resource_type}:{r['name']} (installed_for={installed_for})")
+
+    if rules:
+        print(f"\n  Rules ({len(rules)}):")
+        for r in rules:
+            print(f"    - {r['name']} -> {r['path']}")
+
+
+def current_source_hash(entry: dict, source_dir: Path, platform: str) -> str | None:
+    """Compute the current source-side hash for drift checks."""
+    kind = entry.get("kind", "")
+    name = entry.get("name", "")
+    if kind == "agent":
+        source = source_dir / "agents" / f"{name}.md"
+        return sha256_text(source.read_text(encoding="utf-8")) if source.is_file() else None
+    if kind == "skill":
+        source = source_dir / "skills" / name
+        return sha256_directory(source) if source.is_dir() else None
+    if kind == "rule" and entry.get("managed_block_id") == PTM_TDE_RULE_BLOCK_ID:
+        return sha256_text(render_ptm_tde_rule_body(platform))
+    if kind == "resource":
+        type_dir = {
+            "factor-library": "factor-libraries",
+            "coupling-matrix": "coupling-matrix",
+            "network-topology": "network-topology",
+        }
+        resource_type = entry.get("resource_type", "")
+        root = source_dir / "resource" / type_dir.get(resource_type, "")
+        source_files = entry.get("source_files", [])
+        if not root.is_dir() or not isinstance(source_files, list) or not source_files:
+            return None
+        digest = sha256_file_set(root, [str(path) for path in source_files])
+        return digest or None
+    return None
+
+
+def current_installed_hash(entry: dict, workspace_root: Path) -> str | None:
+    """Compute the installed-side hash for drift checks."""
+    kind = entry.get("kind", "")
+    path = workspace_root / entry.get("path", "")
+    if kind == "skill":
+        return sha256_directory(path) if path.is_dir() else None
+    if kind == "rule":
+        body = extract_managed_rule_body(path, entry.get("managed_block_id", ""))
+        return sha256_text(body) if body is not None else None
+    if kind == "resource":
+        resource_files = entry.get("resource_files", [])
+        if not path.is_dir() or not isinstance(resource_files, list) or not resource_files:
+            return None
+        digest = sha256_file_set(path, [str(item) for item in resource_files])
+        return digest or None
+    if path.is_file():
+        return sha256_file(path)
+    return None
+
+
+def check_installed_drift(
+    platform: str,
+    source_dir: Path,
+    workspace_root: Path,
+    manifest: dict,
+    agent_name: str = "",
+) -> None:
+    """Check manifest, source, installed files, and managed rule blocks for drift."""
+    record = find_install_record(manifest, platform)
+    if record is None:
+        fail(f"未找到 {platform} 的安装记录")
+
+    entries = record.get("entries", [])
+    if agent_name:
+        agent_skills = set(get_agent_skills(agent_name))
+        entries = [
+            entry for entry in entries
+            if (entry.get("kind") == "agent" and entry.get("name") == agent_name)
+            or (entry.get("kind") == "skill" and entry.get("name") in agent_skills)
+            or (entry.get("kind") == "rule" and agent_name in entry.get("installed_for", []))
+            or (entry.get("kind") == "resource" and agent_name in entry.get("installed_for", []))
+        ]
+
+    if not entries:
+        fail(f"未找到 {platform} 的可检查安装条目")
+
+    issues = 0
+    print(f"{platform} 安装漂移检查:")
+    for entry in entries:
+        kind = entry.get("kind", "")
+        name = entry.get("name", "")
+        label = f"{kind}:{name}"
+
+        expected_installed = entry.get("installed_hash", "")
+        actual_installed = current_installed_hash(entry, workspace_root)
+        if actual_installed is None:
+            print(f"  MISSING {label} - 目标文件、目录、managed block 或 resource_files 不存在: {entry.get('path', '')}")
+            issues += 1
+            continue
+        if not expected_installed:
+            print(f"  MISSING_HASH {label} - manifest 缺少 installed_hash")
+            issues += 1
+        elif actual_installed != expected_installed:
+            print(f"  INSTALLED_DRIFT {label} - 已安装内容与 manifest installed_hash 不一致")
+            issues += 1
+
+        expected_source = entry.get("source_hash", "")
+        actual_source = current_source_hash(entry, source_dir, platform)
+        if actual_source is None:
+            print(f"  SOURCE_MISSING {label} - 源资产不存在或不可检查")
+            issues += 1
+        elif expected_source and actual_source != expected_source:
+            print(f"  SOURCE_DRIFT {label} - 源资产已变化，建议重新 install")
+            issues += 1
+        elif not expected_source:
+            print(f"  MISSING_HASH {label} - manifest 缺少 source_hash")
+            issues += 1
+
+        if issues == 0 or (
+            expected_installed and actual_installed == expected_installed
+            and expected_source and actual_source == expected_source
+        ):
+            print(f"  OK {label}")
+
+    if issues:
+        print(f"\n检查完成: 发现 {issues} 个漂移/缺失问题")
+        raise SystemExit(2)
+    print("\n检查完成: 未发现漂移")
 
 
 def list_resources(source_dir: Path) -> None:
@@ -1163,6 +1523,11 @@ def parse_args() -> argparse.Namespace:
     uninstall_parser.add_argument("--skill", action="store_true", help="卸载 skill (交互式)")
     uninstall_parser.add_argument("--dry-run", action="store_true", help="预览模式")
 
+    # check subcommand
+    check_parser = subparsers.add_parser("check", help="检查已安装资产是否漂移")
+    check_parser.add_argument("platform", choices=VALID_PLATFORMS, help="目标平台")
+    check_parser.add_argument("--agent", nargs="?", const="", help="仅检查指定 agent 及其关联资产")
+
     # resource subcommand
     resource_parser = subparsers.add_parser("resource", help="查询或校验公共资源")
     resource_subparsers = resource_parser.add_subparsers(dest="resource_command", help="resource 命令")
@@ -1297,6 +1662,13 @@ def main() -> None:
 
         # Uninstall all
         uninstall_all(args.platform, workspace_root, manifest, args.dry_run)
+
+    elif args.command == "check":
+        agent_name = ""
+        if args.agent is not None:
+            agent_name = args.agent if args.agent else "ptm-tde"
+            agent_name = resolve_agent_name(agent_name)
+        check_installed_drift(args.platform, source_dir, workspace_root, manifest, agent_name)
 
 
 if __name__ == "__main__":

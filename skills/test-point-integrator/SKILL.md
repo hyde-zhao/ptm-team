@@ -357,7 +357,7 @@ integrator 必须消费并透传以下字段：
 
 展示因子候选汇总表和原子操作候选汇总表后，输出确认选项。
 
-**优先使用 AskUserQuestion 工具**：
+**平台交互协议**：Claude Code 环境且 `AskUserQuestion` 可用时，优先使用结构化选择：
 - question: "请确认候选汇总的处理方式："
 - header: "Candidate act"
 - multiSelect: false
@@ -367,7 +367,7 @@ integrator 必须消费并透传以下字段：
   3. label: "Batch modify", description: "提供修改意见，统一调整后确认"
   4. label: "Reject all", description: "丢弃所有候选，不写入最终产物"
 
-若 AskUserQuestion 不可用，回退到 STOP-05 文本标记：
+Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 
 ```markdown
 ## 候选汇总确认

@@ -281,7 +281,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 
 ⛔ **HARD-STOP（STOP-02）**：禁止 Agent 自行判定候选全部确认。必须展示候选表并等待用户回复。
 
-**优先使用 AskUserQuestion 工具**：
+**平台交互协议**：Claude Code 环境且 `AskUserQuestion` 可用时，优先使用结构化选择：
 - question: "请确认新发现的耦合关系："
 - header: "Coupling"
 - multiSelect: false
@@ -290,7 +290,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
   2. label: "Partial", description: "请指出不成立的耦合关系编号（用逗号分隔），其余确认成立"
   3. label: "Reject all", description: "新发现的耦合关系均不成立，跳过回写，仅使用基线矩阵"
 
-若 AskUserQuestion 不可用，回退到 STOP-05 文本标记：
+Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 
 ```
 ( ) ✅ 全部确认成立 — 所有新耦合关系有效，继续生成耦合测试点，并询问是否回写矩阵
@@ -439,7 +439,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
 
 ⛔ **HARD-STOP（STOP-02）**：禁止 Agent 自行决定回写。必须展示确认选项并等待用户回复。
 
-**优先使用 AskUserQuestion 工具**：
+**平台交互协议**：Claude Code 环境且 `AskUserQuestion` 可用时，优先使用结构化选择：
 - question: "是否将已确认的新耦合点回写到耦合矩阵？"
 - header: "Write back"
 - multiSelect: false
@@ -447,7 +447,7 @@ python scripts/excel_coupling_tool.py query "mfq/f-analysis/coupling-graph.json"
   1. label: "Write back", description: "将已确认的新耦合点写入 Excel 耦合矩阵"
   2. label: "Skip", description: "本次仅用于测试点生成，不更新矩阵基线"
 
-若 AskUserQuestion 不可用，回退到 STOP-05 文本标记：
+Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 
 ```
 请选择回写操作：

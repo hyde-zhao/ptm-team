@@ -263,7 +263,7 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
 
 将设计计划表展示给用户。
 
-**优先使用 AskUserQuestion 工具**：
+**平台交互协议**：Claude Code 环境且 `AskUserQuestion` 可用时，优先使用结构化选择：
 - question: "请确认设计计划："
 - header: "Design plan"
 - multiSelect: false
@@ -272,7 +272,7 @@ PPDCS特征: S-State（主）+ P-Parameter（辅）
   2. label: "Modify method", description: "请指出需要调整的 LC 编号及希望改用的设计方法，修改后重新确认"
   3. label: "Merge/split", description: "请描述合并或拆分的逻辑，调整后重新确认"
 
-若 AskUserQuestion 不可用，回退到文本确认：
+Codex 或 `AskUserQuestion` 不可用时，回退到文本确认：
 
 **文本确认选项**：
 1. ✅ 全部确认 — 设计方法合理，标记 `confirmed: true`，进入用例设计

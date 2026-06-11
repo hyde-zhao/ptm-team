@@ -69,6 +69,44 @@ Entry Gate（GATE-1，纯自检）
 1. **必须调用 Skill**：每个阶段的产物必须通过对应的 Skill 生成。禁止 Agent 自行编撰任何 Skill 的输出。
 2. **严格按顺序（可并行例外见下方）**：KYM 阶段必须 feature-parser → kym Skill → scenario-discovery，不得跳过或调换。MFQ 阶段 m-analyzer 完成后 f-analyzer 和 q-analyzer 可并行。PPDCS 阶段不同 LC 的设计 Skill 可并行。
 3. **禁止自行替代**：禁止 Agent 以「我理解了需求」「我可以直接整理」为由绕过 Skill。
+4. **必须记录 Skill 执行证据**：每次调用 Skill 完成后，必须通过 `checkpoint-manager` 的 `--record-skill-call` 写入 `process/execution/SKILL-CALLS.yaml`。没有证据时，不得声明该 Skill 已执行，不得推进后续 Gate。
+
+### Skill 执行证据契约
+
+`process/execution/SKILL-CALLS.yaml` 位于当前 `feature_workspace_root` 下，且与该特性状态隔离。每条记录至少包含：
+
+```yaml
+calls:
+  - call_id: "SKILL-<YYYYMMDDHHMMSS>-<skill-name>"
+    skill_name: "feature-parser"
+    phase: "kym"
+    caller: "ptm-tde"
+    platform: "codex|claude|unknown"
+    input_refs:
+      - ".input/<需求文件>"
+    output_refs:
+      - "kym/feature-input/raw-requirements.md"
+    started_at: "<ISO-8601>"
+    completed_at: "<ISO-8601>"
+    status: "completed|blocked|failed|waived"
+    evidence_summary: "产物路径、用户确认或失败原因摘要"
+```
+
+Gate 检查会读取该文件：GATE-2 要求 `feature-parser`、`kym`、`scenario-discovery` 的 completed 证据；GATE-3 要求 MFQ 阶段 5 个 Skill 的 completed 证据；GATE-4 要求 PPDCS 阶段关键 Skill 的 completed 证据。
+
+记录命令示例：
+
+```bash
+uv run python <checkpoint-manager>/scripts/run_checkpoint.py \
+  --record-skill-call \
+  --project-root "<feature_workspace_root>" \
+  --skill-name "feature-parser" \
+  --phase "kym" \
+  --status completed \
+  --input-ref ".input/<需求文件>" \
+  --output-ref "kym/feature-input/raw-requirements.md" \
+  --evidence-summary "feature-parser completed and wrote structured input artifacts"
+```
 
 ### 违规示例
 
@@ -158,22 +196,27 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 
 ## 运行时工作目录
 
-一个特性对应一个特性项目。ptm-tde 在当前特性项目根目录工作，读取 `input/`，并将运行产物直接写入项目根目录下的阶段级规范目录；不再创建或使用 `.output/`。
+一个特性对应一个隔离的 `feature_workspace_root`。ptm-tde 以 `.input/` 为输入锚点：
+
+- 如果当前目录存在 `.input/`，当前目录就是 `feature_workspace_root`。
+- 如果 `.input/` 位于仓库子目录，`.input/` 的父目录就是本次特性的 `feature_workspace_root`。
+- 如果同一仓库发现多个 `.input/` 且用户未指定目标，必须暂停并要求用户选择；不得用启发式默认选择。
+- 所有运行产物必须写入 `feature_workspace_root` 下的阶段级规范目录，不得默认写到仓库根目录；不再创建或使用 `.output/`。
 
 - **`kym/`** — KYM（Know Your Mission）阶段产物：`feature-input/`、`mission-understanding/`、`scenarios/`。
 - **`mfq/`** — MFQ 分析阶段产物：`m-analysis/`、`f-analysis/`、`q-analysis/`、`integration/`、`factor-usage/`。
 - **`ppdcs/`** — PPDCS 设计与交付阶段产物：`ppdcs/`、`pc/`、`coverage/`、`delivery/`。
 - **`process/plan/`** — 跨阶段边界产物：设计计划（MFQ 阶段 design-planner 写入，PPDCS 阶段读取+验证）。
 - **`process/checkpoints/`** — Gate 检查点结果。
-- **`process/STATE.yaml`** — 当前特性项目运行状态。
-- **`input/`** — 原始输入目录，只读；放置特性需求文件、防火墙 topo 文件、耦合矩阵 Excel、参考资料等。
+- **`process/STATE.yaml`** — 当前特性工作区运行状态；不同 `feature_workspace_root` 的状态相互隔离。
+- **`.input/`** — 原始输入目录，只读；放置特性需求文件、防火墙 topo 文件、耦合矩阵 Excel、参考资料等。
 - **`mfq/factor-usage/`** — 本项目因子库消费记录，只保存公共库 lock、factor bindings、候选提案和解析报告；不得保存公共因子库主库。
 - **`mfq/ptm-atomic-usage/`** — 本项目原子操作消费记录，保存 ptm-atomic CLI lock、bindings 和解析报告。与 factor-usage/ 平行独立维护。（CR-016 新增）
 - **`kym/scenarios/confirmed-scenarios.md`** — 已确认场景、Topology 与真实设备/端口/链路来源基线，供 LC `topology_bindings` 和 PC 物化回链。
 
 ```
 <feature-project-root>/
-├── input/                                    # 原始输入，只读
+├── .input/                                   # 原始输入，只读
 │   ├── <特性需求文件>.md
 │   ├── <防火墙topo>.yaml
 │   ├── <耦合矩阵>.xlsx
@@ -226,7 +269,7 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 ### ⚠️ 路径规则（CRITICAL）
 
 1. 禁止创建或写入 `.output/`。
-2. `input/` 只读，任何分析产物都不能写入 `input/`。
+2. `.input/` 只读，任何分析产物都不能写入 `.input/`。
 3. KYM 分析写入 `kym/`，MFQ 分析写入 `mfq/`（含 `mfq/factor-usage/`），跨阶段计划写入 `process/plan/`，PPDCS 设计与交付写入 `ppdcs/`，检查点写入 `process/checkpoints/`，状态写入 `process/STATE.yaml`。
 4. `ppdcs/ppdcs/` 和 `ppdcs/pc/` 均按每个逻辑用例单文件输出，文件名固定为 `<三级目录>-<四级目录>-<五级目录>-<逻辑用例名>.md`，不创建深层模块目录。
 5. `ppdcs/delivery/` 输出四份交付物：特性测试方案 + 特性测试用例 + 原子操作候选对比表 + 测试因子候选对比表。
@@ -240,7 +283,7 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 ❌ 错误：D:\workspace\myproject\.output\feature-input\raw-requirements.md
 ```
 
-> **简记**：读 `input/`，按阶段写入 `kym/`、`mfq/`、`process/plan/`、`ppdcs/`、`process/checkpoints/`、`process/STATE.yaml`。
+> **简记**：读 `feature_workspace_root/.input/`，按阶段写入同一 `feature_workspace_root` 下的 `kym/`、`mfq/`、`process/plan/`、`ppdcs/`、`process/checkpoints/`、`process/STATE.yaml`。
 
 ## 公共因子库
 
@@ -417,7 +460,7 @@ CAE 中使用因子占位符：
      
      | 目录 | 用途 |
      |------|------|
-     | `input/` | 原始需求文件（只读） |
+     | `.input/` | 原始需求文件（只读） |
      | `kym/feature-input/` | 结构化需求解析 |
      | `kym/mission-understanding/` | KYM 使命声明 |
      | `kym/scenarios/` | 已确认测试场景 |
@@ -436,8 +479,8 @@ CAE 中使用因子占位符：
      ```
    - 已存在 → 读取确认，追加缺失的结构说明
 2. 按 README.md 描述创建目录（已存在则跳过）
-3. 初始化 `process/STATE.yaml`（记录 `current_phase: kym` 和 `current_step: feature-parser`，GATE-1 状态置为 `pending`）
-4. 提示用户将特性需求文件放入 `input/` 目录
+3. 初始化 `process/STATE.yaml`（记录 `current_phase: kym`、`current_step: feature-parser`、`feature_workspace_root` 和 `input_root`，GATE-1 状态置为 `pending`）
+4. 提示用户将特性需求文件放入 `.input/` 目录
 5. 调用 `checkpoint-manager` 执行 GATE-1 Entry Gate 自检，通过后更新 `process/STATE.yaml`，调用 `feature-parser` 开始分析
 
 ## 目录层级规范

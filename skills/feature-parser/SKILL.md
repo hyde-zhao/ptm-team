@@ -32,8 +32,8 @@ status: active
 ## 前置条件
 
 - [ ] CP01 input 自检已通过，或已明确记录阻断项
-- [ ] 用户已提供特性需求文件路径，或 CP01 已从 `input/` / wiki 找到需求文件
-- [ ] `kym/feature-input/` 与 `doc/STATE.yaml` 已初始化
+- [ ] 用户已提供特性需求文件路径，或 CP01 已从 `.input/` / wiki 找到需求文件
+- [ ] `kym/feature-input/` 与 `process/STATE.yaml` 已初始化
 - [ ] `file-to-markdown` Skill 可用（用于非 MD 格式的预转换）
 
 ## 执行流程
@@ -67,7 +67,7 @@ status: active
 1. `resource/coupling-matrix/tgfw-feature-tree.yaml`（开发态仓库）
 2. `~/.ptm-team/resource/coupling-matrix/tgfw-feature-tree.yaml`（已安装）
 3. `$PTM_TEAM_RESOURCE_HOME/coupling-matrix/tgfw-feature-tree.yaml`（团队共享）
-4. `input/` 下的特性树文件（用户手动放置）
+4. `.input/` 下的特性树文件（用户手动放置）
 
 **匹配流程**：
 1. 从步骤 2 提取的「所属模块」字段中获取模块路径（如 `/TGFW-03数通组件/TGFW-03.04 三层组件/TGFW-03.04.06 策略路由`）
@@ -103,7 +103,7 @@ status: active
 
 ### 步骤 5：用户确认
 
-将构建的目录结构展示给用户，使用 `ask_user` 工具发起结构化确认：
+将构建的目录结构展示给用户。若当前平台提供结构化选择工具，使用结构化确认；否则使用 exact text 选项确认：
 
 ```
 ## 目录结构确认
@@ -117,7 +117,7 @@ status: active
     └── <子模块B1>（K 条需求）
 ```
 
-**ask_user 选项**：
+**确认选项**：
 1. ✅ 确认通过 — 目录结构正确，保存并进入场景发现
 2. ✏️ 需要修改 — 请输入需要调整的模块或子模块，调整后重新确认
 3. ➕ 需要补充 — 请输入需要新增的模块或子模块，补充后重新确认
@@ -155,7 +155,7 @@ status: active
 ## Gotchas
 
 - **⛔ 禁止自行发明目录名**：四级/五级目录必须优先从 `tgfw-feature-tree.yaml` 匹配，禁止凭语义直觉自创分类。特性树未命中时才允许模型推理（标记 `model-inference`）。
-- **⚠️ 输出路径必须是 `kym/feature-input/`**：正确绝对路径为 `<项目根>\kym\feature-input\raw-requirements.md`
+- **⚠️ 输出路径必须是 `kym/feature-input/`**：正确绝对路径为 `<feature_workspace_root>\kym\feature-input\raw-requirements.md`
 - Excel 转换后可能出现 `NaN`、`Unnamed` 等伪值，需清洗
 - 合并单元格转换后模块归属可能丢失，需从上下文推断
 - 部分需求文件没有明确的模块分类，需通过功能语义聚合——但仍须先查特性树
@@ -167,4 +167,4 @@ status: active
 - [ ] 目录结构包含三级/四级/五级三个层级
 - [ ] 用户已确认目录结构
 - [ ] `raw-requirements.md` 和 `directory-structure.md` 已写入 `kym/feature-input/`
-- [ ] 更新 `doc/STATE.yaml` 的 `current_step` 为下一步
+- [ ] 更新 `process/STATE.yaml` 的 `current_step` 为下一步

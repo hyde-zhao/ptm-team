@@ -21,8 +21,16 @@ status: active
 ## 适用范围
 
 - 适用阶段：MFQ 扩展分支（已有用例发现了问题单后）
-- 输入：问题单列表 + 已有 `analysis/`, `design/`, `checkpoints/`, `delivery/`, `doc/STATE.yaml` 基线资产
+- 输入：问题单列表 + 已有 `kym/`, `mfq/`, `ppdcs/`, `process/checkpoints/`, `process/STATE.yaml` 基线资产
 - 输出：盲区分析报告 + 补齐建议 + 流程优化建议
+
+## 工作区隔离契约
+
+- 以当前特性的 `.input/` 为输入锚点，`.input` 的父目录是 `feature_workspace_root`。
+- 本 Skill 只读取和写入当前 `feature_workspace_root` 下的资产，不得默认回退到仓库根目录。
+- 多个 `.input/` 同时存在且用户未指定目标时，必须暂停并要求用户选择；不得自动选择第一个目录。
+- 问题单覆盖盲区分析过程产物统一写入 `feature_workspace_root/process/changes/`、`feature_workspace_root/process/issues/` 或受影响阶段目录下的增量文件；不得写入 `.input/`，不得创建 `.output/`。
+- `process/STATE.yaml`、`process/execution/SKILL-CALLS.yaml` 和 Gate 文件均为当前特性私有状态，不得跨目录复用。
 
 ## 前置条件
 
@@ -36,13 +44,13 @@ status: active
 | 来源 | 必收字段 | 用途 |
 |------|----------|------|
 | `delivery/<特性名>特性测试用例.md` | `requirement_ids`, `logic_case_id`, `feature_tags`, `physical_case_id`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status`, `source_artifacts` | 仅用 `requirement_ids / logic_case_id / feature_tags` 三类入口精确命中测试用例总表；`physical_case_id` 只作为命中后的结果校验与回显字段 |
-| `analysis/integration/all-test-points.md` | `TP-ID`, `关联SR`, `scenario_refs`, `action_source_refs`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 判断 MFQ 是否已有对应测试点 |
-| `analysis/integration/logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 判断 LC 是否存在 |
-| `analysis/integration/test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `trace_refs`, `confirmation_gap_refs`, `status` | 判断是否缺触发数据 |
-| `analysis/integration/tool-analysis.md` | `tool_entry_id`, `tool_id`, `tool_kind`, `scenario_refs`, `action_source_refs`, `factor_refs`, `status` | 判断是否已存在工具缺口证据 |
-| `design/ppdcs/*.md` | `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status` | 判断设计过程是否落地 |
-| `design/pc/*.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status` | 判断最终 PC 是否存在 |
-| `analysis/coverage/*.md` | `requirement_gaps`, `test_point_gaps`, `design_artifact_gaps`, `trace_refs`, `fact_status` | 判断缺口是否早已被覆盖报告暴露 |
+| `mfq/integration/all-test-points.md` | `TP-ID`, `关联SR`, `scenario_refs`, `action_source_refs`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 判断 MFQ 是否已有对应测试点 |
+| `mfq/integration/logic-cases.md` | `LC-ID`, `source_tp_ids`, `scenario_refs`, `scenario_chain_refs`, `action_source_refs`, `factor_refs`, `trace_refs`, `confirmation_gap_refs`, `fact_status` | 判断 LC 是否存在 |
+| `mfq/integration/test-data.md` | `TD-ID`, `logic_case_id`, `factor_ref`, `value_set`, `trace_refs`, `confirmation_gap_refs`, `status` | 判断是否缺触发数据 |
+| `mfq/integration/tool-analysis.md` | `tool_entry_id`, `tool_id`, `tool_kind`, `scenario_refs`, `action_source_refs`, `factor_refs`, `status` | 判断是否已存在工具缺口证据 |
+| `ppdcs/ppdcs/*.md` | `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status` | 判断设计过程是否落地 |
+| `ppdcs/pc/*.md` | `physical_case_id`, `logic_case_id`, `requirement_ids`, `feature_tags`, `trace_refs`, `scenario_refs`, `action_source_refs`, `factor_refs`, `confirmation_gap_refs`, `fact_status` | 判断最终 PC 是否存在 |
+| `ppdcs/coverage/*.md` | `requirement_gaps`, `test_point_gaps`, `design_artifact_gaps`, `trace_refs`, `fact_status` | 判断缺口是否早已被覆盖报告暴露 |
 
 > 问题单若没有 `requirement_ids / logic_case_id / feature_tags / scenario_refs / action_source_refs / factor_refs` 等结构化锚点，只能输出 `[待确认]`，不得做模糊回查。`physical_case_id` 不能作为测试用例总表的独立检索入口。
 

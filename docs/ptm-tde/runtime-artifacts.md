@@ -4,9 +4,10 @@
 
 ```text
 <feature-project-root>/
-├── input/
+├── .input/
 ├── kym/
 │   ├── feature-input/
+│   ├── mission-understanding/
 │   └── scenarios/
 ├── mfq/
 │   ├── m-analysis/
@@ -17,6 +18,7 @@
 ├── process/
 │   ├── plan/
 │   ├── checkpoints/
+│   ├── execution/
 │   └── STATE.yaml
 ├── ppdcs/
 │   ├── ppdcs/
@@ -27,7 +29,13 @@
 
 ## 输入
 
-`input/` 放置原始输入，ptm-tde 不修改该目录。
+`.input/` 放置原始输入，ptm-tde 不修改该目录。
+
+`feature_workspace_root` 按 `.input/` 所在位置确定：
+
+- 当前目录存在 `.input/` 时，当前目录就是特性工作区。
+- `.input/` 位于仓库子目录时，`.input/` 的父目录就是特性工作区。
+- 同一仓库发现多个 `.input/` 且未指定目标时，必须要求用户选择，不得自动选第一个。
 
 推荐输入：
 
@@ -35,6 +43,32 @@
 - 防火墙 topo 文件；
 - 耦合矩阵；
 - 外部接口、CLI 或工具方法参考资料。
+
+## Skill 执行证据
+
+ptm-tde 是编排器，不得用 Agent 自行编写的内容冒充 Skill 执行结果。每次调用 Skill 前后必须写入当前特性工作区的执行证据：
+
+```text
+process/execution/
+└── SKILL-CALLS.yaml
+```
+
+最小字段：
+
+| 字段 | 说明 |
+|---|---|
+| `call_id` | 单次 Skill 调用唯一 ID |
+| `skill_name` | 被调用 Skill 名称 |
+| `phase` | `kym` / `mfq` / `ppdcs` / `delivery` |
+| `caller` | 固定为 `ptm-tde` 或明确的 delegated caller |
+| `platform` | `codex` / `claude` / `unknown` |
+| `input_refs` | 本次调用读取的输入路径 |
+| `output_refs` | 本次调用产生或更新的产物路径 |
+| `started_at` / `completed_at` | ISO-8601 时间 |
+| `status` | `completed` / `blocked` / `failed` / `waived` |
+| `evidence_summary` | 产物、用户确认或失败原因摘要 |
+
+GATE-2/3/4 会读取该文件验证阶段关键 Skill 是否有 `completed` 证据；缺失时不得推进下一阶段。
 
 ## 公共因子库消费记录
 

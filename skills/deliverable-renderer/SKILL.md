@@ -74,9 +74,9 @@ status: active
 
 ### 步骤 0：交付确认
 
-使用 `AskUserQuestion` 列出 ptm-tde 默认交付物，用户可全部接受或调整。
+按平台交互协议确认 ptm-tde 默认交付物：Claude Code 且 `AskUserQuestion` 可用时使用结构化选择；Codex 或工具不可用时使用 exact text。
 
-**AskUserQuestion 参数**：
+**Claude Code AskUserQuestion 参数**：
 
 - `question`: "ptm-tde 默认交付以下 4 份文档，是否确认？"
 - `header`: "Delivery"

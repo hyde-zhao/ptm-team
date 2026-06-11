@@ -47,7 +47,7 @@ status: active
 1. **项目背景**：询问用户当前项目的基本情况——项目名称、团队规模、是否有测试历史。
 2. **介入时机**：使用【单选】格式询问当前阶段。
 
-**优先使用 AskUserQuestion 工具**：
+**平台交互协议**：Claude Code 环境且 `AskUserQuestion` 可用时，优先使用结构化选择：
 - question: "请问你目前处于哪个阶段？"
 - header: "Phase"
 - multiSelect: false
@@ -56,7 +56,7 @@ status: active
   2. label: "Mid dev", description: "中期开发阶段 — 代码可用，需求较清晰"
   3. label: "Late test", description: "后期补测阶段 — 需要快速覆盖关键风险区域"
 
-若 AskUserQuestion 不可用，回退到 STOP-05 文本标记：
+Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 
 ```
 【单选】请问你目前处于哪个阶段？
@@ -129,10 +129,10 @@ status: active
 2. **选项格式规范**：根据问题类型使用不同格式，**必须在问题开头标注类型**。
 
    **交互模式选择**：
-   - 选项 ≤ 4 且为纯单选/多选 → 优先使用 `AskUserQuestion` 工具（Claude Code 环境）
+   - 选项 ≤ 4 且为纯单选/多选 → Claude Code 且 `AskUserQuestion` 可用时使用结构化选择
    - 选项 > 4 → 尝试语义拆分（如 5 选项拆为 4+1，每个 ≤4）；无法拆分时回退文本标记
-   - 需开放式输入（`>>>`）→ 保持文本格式；可先通过 AskUserQuestion 做前置分类选择
-   - AskUserQuestion 不可用 → 回退 STOP-05 文本标记
+   - 需开放式输入（`>>>`）→ 保持文本格式；Claude Code 可先通过 `AskUserQuestion` 做前置分类选择
+   - Codex 或 `AskUserQuestion` 不可用 → 回退 STOP-05 文本标记
 
    **选项拆分规则**（选项 > 4 时）：
    - C-Customers 多选（5 选项）：拆为问题 1（4 个核心角色多选）+ 问题 2（是否有其他角色？Yes → Other 输入）
@@ -374,7 +374,7 @@ status: active
    - 粗粒度检查：是否存在过于笼统、不可操作的描述？
 3. **⛔ 用户审阅确认（HARD-STOP）**：展示完整的 mission-statement.md 内容给用户。**必须等待用户明确回复** `approve` 后才能保存。
 
-**优先使用 AskUserQuestion 工具**（Claude Code 环境）：
+**平台交互协议**：Claude Code 环境且 `AskUserQuestion` 可用时，优先使用结构化选择：
 - question: "请审阅 mission-statement 内容并确认："
 - header: "KYM confirm"
 - multiSelect: false
@@ -383,7 +383,7 @@ status: active
   2. label: "Modify", description: "需要修改。输入修改项（格式：修改: <维度>=<修改内容>）"
   3. label: "Reject", description: "驳回，需要重新处理"
 
-若 AskUserQuestion 不可用，使用标准 HARD-STOP 文本协议等待用户回复 `approve`。
+Codex 或 `AskUserQuestion` 不可用时，使用标准 HARD-STOP 文本协议等待用户回复 `approve`、`修改: <具体修改点>` 或 `reject`。
 
 用户拒绝确认时，回到阶段三补充或修正指定维度；拒绝接受时，不确定项记录到 `confirmation_gaps`。**禁止**在用户未回复的情况下自行保存或继续后续阶段。
 

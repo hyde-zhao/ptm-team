@@ -118,7 +118,7 @@ status: active
 
 **HARD-STOP**：步骤 1 结束后，汇总所有 OPEN 项（TSP 维度相关性不确定项），以单次消息展示给用户。
 
-**优先使用 AskUserQuestion 工具**：
+**平台交互协议**：Claude Code 环境且 `AskUserQuestion` 可用时，优先使用结构化选择：
 - question: "请确认 Q 分析相关性评估中的待确认项："
 - header: "Q relevance"
 - multiSelect: false
@@ -128,7 +128,7 @@ status: active
   3. label: "Item by item", description: "逐项指定每个 OPEN 项的相关性"
   4. label: "Defer", description: "暂不处理，先继续后续步骤（OPEN 项暴露为 confirmation_gap_refs）"
 
-若 AskUserQuestion 不可用，回退到 STOP-05 文本标记：
+Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 
 ```
 ## Q 分析相关性评估 — 待确认项

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -64,6 +65,7 @@ INTERNAL_DIR_MAP: dict[str, str] = {
 # Required directories for the new directory structure
 REQUIRED_DIRS: list[str] = [
     "kym/feature-input",
+    "kym/mission-understanding",
     "kym/scenarios",
     "mfq/m-analysis",
     "mfq/f-analysis",
@@ -76,7 +78,21 @@ REQUIRED_DIRS: list[str] = [
     "ppdcs/coverage",
     "ppdcs/delivery",
     "process/checkpoints",
+    "process/execution",
 ]
+
+IGNORED_INPUT_SEARCH_DIRS = {
+    ".agents",
+    ".claude",
+    ".codex",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "node_modules",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +117,88 @@ def find_files(root: Path, markers: tuple[str, ...] | None = None) -> list[Path]
         elif any(marker.lower() in name for marker in markers):
             hits.append(path)
     return sorted(hits)
+
+
+def discover_input_dirs(root: Path) -> list[Path]:
+    """Find `.input` directories below root while skipping generated/vendor trees."""
+    if not root.is_dir():
+        return []
+    hits: list[Path] = []
+    for current, dirnames, _filenames in os.walk(root):
+        dirnames[:] = [
+            name for name in dirnames
+            if name not in IGNORED_INPUT_SEARCH_DIRS
+        ]
+        current_path = Path(current)
+        if current_path.name == ".input":
+            hits.append(current_path)
+            dirnames[:] = []
+    return sorted(path.resolve() for path in hits)
+
+
+def input_dir_from_requirement(requirement: str) -> Path | None:
+    """Return the containing `.input` directory when a requirement path proves it."""
+    if not requirement:
+        return None
+    req_path = Path(requirement).expanduser()
+    try:
+        resolved = req_path.resolve()
+    except OSError:
+        resolved = req_path.absolute()
+    for parent in (resolved, *resolved.parents):
+        if parent.name == ".input":
+            return parent
+    return None
+
+
+def resolve_feature_workspace(args: argparse.Namespace) -> tuple[Path, Path]:
+    """Resolve feature workspace root and input root from CLI arguments.
+
+    `.input` is the canonical input directory. Its parent is always the
+    feature_workspace_root; all runtime output must be written there.
+    """
+    requested_root = Path(args.project_root).expanduser().resolve()
+    explicit_input = getattr(args, "input_dir", "")
+
+    if explicit_input:
+        input_root = Path(explicit_input).expanduser()
+        if not input_root.is_absolute():
+            input_root = requested_root / input_root
+        input_root = input_root.resolve()
+        if input_root.name != ".input":
+            print(f"--input-dir 必须指向 .input 目录: {input_root}", file=sys.stderr)
+            raise SystemExit(2)
+        return input_root.parent, input_root
+
+    requirement_input = input_dir_from_requirement(getattr(args, "requirement", ""))
+    if requirement_input is not None:
+        return requirement_input.parent, requirement_input
+
+    if requested_root.name == ".input":
+        return requested_root.parent, requested_root
+
+    direct_input = requested_root / ".input"
+    if direct_input.is_dir():
+        return requested_root, direct_input
+
+    nested_inputs = discover_input_dirs(requested_root)
+    if len(nested_inputs) == 1:
+        input_root = nested_inputs[0]
+        return input_root.parent, input_root
+    if len(nested_inputs) > 1:
+        joined = "\n".join(f"  - {path}" for path in nested_inputs)
+        print(
+            "发现多个 .input 目录，请使用 --project-root 指定特性目录或 "
+            "--input-dir 指定目标输入目录:\n" + joined,
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    legacy_input = requested_root / "input"
+    if legacy_input.is_dir():
+        return requested_root, legacy_input
+
+    return requested_root, direct_input
 
 
 def read_title(path: Path) -> str:
@@ -377,11 +475,13 @@ def write_state(
     gate: str,
     gate_status: str,
     current_step: str = "",
+    input_root: Path | None = None,
 ) -> None:
     """Write / update process/STATE.yaml with current phase, step, gate."""
     process_dir = project_root / "process"
     process_dir.mkdir(parents=True, exist_ok=True)
     state_path = process_dir / "STATE.yaml"
+    resolved_input_root = input_root or project_root / ".input"
     phase_map = {
         "GATE-1": "kym",
         "GATE-2": "mfq",
@@ -396,6 +496,8 @@ def write_state(
         f'current_gate: "{gate}"\n'
         f'feature_name: "{feature_name}"\n'
         'runtime_root: "."\n'
+        f'feature_workspace_root: "{project_root}"\n'
+        f'input_root: "{resolved_input_root}"\n'
         f'gate_status: "{gate_status}"\n'
         f'updated_at: "{dt.datetime.now(dt.timezone.utc).isoformat()}"\n'
     )
@@ -417,6 +519,292 @@ def ensure_dirs(project_root: Path) -> list[str]:
     return errors
 
 
+def nonempty_file(path: Path) -> bool:
+    """Return True when path is an existing non-empty file."""
+    return path.is_file() and path.stat().st_size > 0
+
+
+def read_text(path: Path) -> str:
+    """Read text safely for lightweight marker checks."""
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
+def find_nonempty_files(root: Path, suffixes: tuple[str, ...] = (".md", ".yaml", ".yml", ".json")) -> list[Path]:
+    """Return non-empty product files under a directory."""
+    if not root.is_dir():
+        return []
+    return sorted(
+        path for path in root.rglob("*")
+        if path.is_file() and path.suffix.lower() in suffixes and path.stat().st_size > 0
+    )
+
+
+def first_existing(root: Path, relative_paths: list[str]) -> Path | None:
+    """Return the first existing non-empty file from candidate relative paths."""
+    for rel in relative_paths:
+        path = root / rel
+        if nonempty_file(path):
+            return path
+    return None
+
+
+def contains_any(text: str, markers: tuple[str, ...]) -> bool:
+    return any(marker in text for marker in markers)
+
+
+def contains_all(text: str, markers: tuple[str, ...]) -> bool:
+    return all(marker in text for marker in markers)
+
+
+def add_file_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    path: Path | None,
+    status_if_missing: str = "BLOCKING",
+) -> bool:
+    ok = path is not None and nonempty_file(path)
+    checks.append((
+        len(checks) + 1,
+        label,
+        "PASS" if ok else status_if_missing,
+        str(path) if ok else "缺失或为空",
+    ))
+    return ok
+
+
+def add_marker_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    path: Path,
+    markers: tuple[str, ...],
+    mode: str = "any",
+    status_if_missing: str = "BLOCKING",
+) -> bool:
+    text = read_text(path)
+    ok = contains_all(text, markers) if mode == "all" else contains_any(text, markers)
+    checks.append((
+        len(checks) + 1,
+        label,
+        "PASS" if ok else status_if_missing,
+        str(path) if ok else f"缺少关键字段/标记: {', '.join(markers)}",
+    ))
+    return ok
+
+
+def add_required_fields_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    path: Path | None,
+    required_fields: dict[str, tuple[str, ...]],
+    status_if_missing: str = "BLOCKING",
+) -> bool:
+    """Check that a text artifact contains every required logical field.
+
+    Each logical field can define multiple marker aliases; at least one alias
+    must be present.
+    """
+    if path is None or not nonempty_file(path):
+        checks.append((
+            len(checks) + 1,
+            label,
+            status_if_missing,
+            "缺失或为空",
+        ))
+        return False
+
+    text = read_text(path)
+    missing = [
+        field for field, markers in required_fields.items()
+        if not contains_any(text, markers)
+    ]
+    ok = not missing
+    checks.append((
+        len(checks) + 1,
+        label,
+        "PASS" if ok else status_if_missing,
+        str(path) if ok else f"缺少字段: {', '.join(missing)}",
+    ))
+    return ok
+
+
+def markdown_table_has_min_columns(text: str, min_columns: int) -> bool:
+    """Return True if any markdown table row has at least min_columns cells."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|") or not stripped.endswith("|"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if not cells or all(set(cell) <= {"-", ":"} for cell in cells):
+            continue
+        if len(cells) >= min_columns:
+            return True
+    return False
+
+
+def add_table_columns_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    files: list[Path],
+    min_columns: int,
+    status_if_missing: str = "BLOCKING",
+) -> bool:
+    """Check that at least one artifact contains a Markdown table with enough columns."""
+    if not files:
+        checks.append((
+            len(checks) + 1,
+            label,
+            status_if_missing,
+            "无可检查文件",
+        ))
+        return False
+    passed = [path for path in files if markdown_table_has_min_columns(read_text(path), min_columns)]
+    ok = bool(passed)
+    checks.append((
+        len(checks) + 1,
+        label,
+        "PASS" if ok else status_if_missing,
+        ", ".join(str(path) for path in passed[:5]) if ok else f"未发现 >= {min_columns} 列 Markdown 表格",
+    ))
+    return ok
+
+
+def result_file_passed(path: Path) -> bool:
+    """Check whether a prior Gate result explicitly records PASS."""
+    return nonempty_file(path) and bool(re.search(r"结论[：:]\s*`?PASS`?", read_text(path)))
+
+
+def yaml_scalar(value: str) -> str:
+    """Render a scalar using JSON quoting, which is valid YAML."""
+    import json
+
+    return json.dumps(value or "", ensure_ascii=False)
+
+
+def parse_yaml_scalar(value: str) -> str:
+    """Parse the limited scalar form written by yaml_scalar."""
+    import json
+
+    value = value.strip()
+    if not value:
+        return ""
+    try:
+        parsed = json.loads(value)
+        return str(parsed)
+    except json.JSONDecodeError:
+        return value.strip('"').strip("'")
+
+
+def parse_skill_calls(path: Path) -> list[dict[str, object]]:
+    """Parse the append-only SKILL-CALLS.yaml subset written by this script."""
+    records: list[dict[str, object]] = []
+    current: dict[str, object] | None = None
+    current_list_key = ""
+    for raw in read_text(path).splitlines():
+        stripped = raw.strip()
+        if not stripped or stripped == "calls:":
+            continue
+        if stripped.startswith("- call_id:"):
+            if current:
+                records.append(current)
+            current = {"call_id": parse_yaml_scalar(stripped.split(":", 1)[1])}
+            current_list_key = ""
+            continue
+        if current is None:
+            continue
+        if stripped in ("input_refs:", "output_refs:"):
+            current_list_key = stripped[:-1]
+            current.setdefault(current_list_key, [])
+            continue
+        if stripped.startswith("- ") and current_list_key:
+            values = current.setdefault(current_list_key, [])
+            if isinstance(values, list):
+                values.append(parse_yaml_scalar(stripped[2:]))
+            continue
+        if ":" in stripped:
+            key, value = stripped.split(":", 1)
+            current[key.strip()] = parse_yaml_scalar(value)
+            current_list_key = ""
+    if current:
+        records.append(current)
+    return records
+
+
+def render_skill_calls(records: list[dict[str, object]]) -> str:
+    """Render SKILL-CALLS.yaml in a stable append-only schema."""
+    lines = ["calls:"]
+    for record in records:
+        lines.append(f"  - call_id: {yaml_scalar(str(record.get('call_id', '')))}")
+        for key in ("skill_name", "phase", "caller", "platform", "started_at", "completed_at", "status", "evidence_summary"):
+            lines.append(f"    {key}: {yaml_scalar(str(record.get(key, '')))}")
+        for key in ("input_refs", "output_refs"):
+            lines.append(f"    {key}:")
+            values = record.get(key, [])
+            if isinstance(values, list) and values:
+                for value in values:
+                    lines.append(f"      - {yaml_scalar(str(value))}")
+            else:
+                lines.append('      - ""')
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_skill_call(args: argparse.Namespace) -> int:
+    """Append one structured Skill execution record."""
+    project_root, _input_root = resolve_feature_workspace(args)
+    execution_dir = project_root / "process" / "execution"
+    execution_dir.mkdir(parents=True, exist_ok=True)
+    evidence_path = execution_dir / "SKILL-CALLS.yaml"
+    records = parse_skill_calls(evidence_path)
+    now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
+    call_id = args.call_id or f"SKILL-{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d%H%M%S')}-{args.skill_name}"
+    record: dict[str, object] = {
+        "call_id": call_id,
+        "skill_name": args.skill_name,
+        "phase": args.phase,
+        "caller": args.caller,
+        "platform": args.platform,
+        "started_at": args.started_at or now,
+        "completed_at": args.completed_at or now,
+        "status": args.status,
+        "input_refs": args.input_ref or [],
+        "output_refs": args.output_ref or [],
+        "evidence_summary": args.evidence_summary,
+    }
+    records.append(record)
+    evidence_path.write_text(render_skill_calls(records), encoding="utf-8")
+    print(evidence_path)
+    return 0
+
+
+def add_skill_evidence_check(
+    checks: list[tuple[int, str, str, str]],
+    project_root: Path,
+    label: str,
+    required_skills: tuple[str, ...],
+    status_if_missing: str = "BLOCKING",
+) -> bool:
+    """Check process/execution/SKILL-CALLS.yaml for required skill evidence."""
+    evidence_path = project_root / "process" / "execution" / "SKILL-CALLS.yaml"
+    records = parse_skill_calls(evidence_path)
+    completed = {
+        str(record.get("skill_name", ""))
+        for record in records
+        if str(record.get("status", "")).lower() == "completed"
+        and record.get("output_refs")
+    }
+    missing = [skill for skill in required_skills if skill not in completed]
+    ok = bool(records) and not missing
+    checks.append((
+        len(checks) + 1,
+        label,
+        "PASS" if ok else status_if_missing,
+        str(evidence_path) if ok else f"缺少 completed Skill 执行证据或 output_refs: {', '.join(missing) or 'SKILL-CALLS.yaml'}",
+    ))
+    return ok
+
+
 def write_skeleton_result(
     checkpoints_dir: Path,
     gate: str,
@@ -426,8 +814,9 @@ def write_skeleton_result(
     pending_items: list[tuple[int, str]] | None = None,
     suffix: str = "",
     extra_sections: str = "",
+    check_depth: str = "machine-baseline",
 ) -> Path:
-    """Write a Gate check result Markdown file with check_depth: skeleton header."""
+    """Write a Gate check result Markdown file."""
     path = gate_output_path(checkpoints_dir, gate, suffix)
     name = GATE_NAMES.get(gate, gate)
     rows = "\n".join(
@@ -437,12 +826,12 @@ def write_skeleton_result(
     pending_rows = ""
     if pending_items:
         pending_rows = "\n".join(
-            f"| {idx} | {item} | PENDING | 待 CR-011/012/013 激活 |"
+            f"| {idx} | {item} | MANUAL | 需人工 Gate 确认或风险接受 |"
             for idx, item in pending_items
         )
     content = (
         f"---\n"
-        f"check_depth: skeleton\n"
+        f"check_depth: {check_depth}\n"
         f"gate: {gate}\n"
         f"---\n"
         f"# {gate} {name}\n\n"
@@ -458,14 +847,60 @@ def write_skeleton_result(
         content += extra_sections
     if pending_rows:
         content += (
-            f"## 详细检查（待 CR-011/012/013 激活）\n\n"
+            f"## 人工确认项\n\n"
             f"以下检查项来自 `docs/ptm-tde/gate-spec.md` §{gate} Checklist，"
-            f"当前版本（CR-010）仅做骨架检查。"
-            f"完成路径迁移和 Skill 改造后，由对应 CR 扩展为完整逐项检查。\n\n"
+            f"当前脚本仅做机器可验证的基线检查；语义质量和人工确认项仍需人工 Gate 处理。\n\n"
             f"| # | 检查项 | 状态 | 说明 |\n"
             f"|---|--------|------|------|\n"
             f"{pending_rows}\n"
         )
+    path.write_text(content, encoding="utf-8")
+    if pending_items and suffix == "auto":
+        write_manual_gate_draft(checkpoints_dir, gate, feature_name, overall, pending_items, path)
+    return path
+
+
+def write_manual_gate_draft(
+    checkpoints_dir: Path,
+    gate: str,
+    feature_name: str,
+    auto_status: str,
+    manual_items: list[tuple[int, str]],
+    auto_path: Path,
+) -> Path:
+    """Write the independent manual review draft required by Gate spec."""
+    path = gate_output_path(checkpoints_dir, gate, "manual")
+    name = GATE_NAMES.get(gate, gate)
+    rows = "\n".join(
+        f"| {idx} | {item} | OPEN | 请人工确认、修改或接受风险 |"
+        for idx, item in manual_items
+    )
+    content = (
+        f"---\n"
+        f"gate: {gate}\n"
+        f"review_type: manual\n"
+        f"auto_result: {auto_status}\n"
+        f"---\n"
+        f"# {gate} {name} Manual Review\n\n"
+        f"- 特性名：`{feature_name}`\n"
+        f"- 自动检查结果：`{auto_status}`\n"
+        f"- 自动检查文件：`{auto_path}`\n"
+        f"- 创建时间：`{dt.datetime.now(dt.timezone.utc).isoformat()}`\n\n"
+        f"## 人工确认清单\n\n"
+        f"| # | 确认项 | 状态 | 处理意见 |\n"
+        f"|---|---|---|---|\n"
+        f"{rows}\n\n"
+        f"## 回复协议\n\n"
+        f"请使用以下 exact text 之一回复：\n\n"
+        f"- `approve`：接受本 Gate 的自动检查结果和人工确认项。\n"
+        f"- `修改: <具体修改点>`：要求按修改点回到对应阶段修正。\n"
+        f"- `reject`：拒绝进入下一阶段。\n\n"
+        f"## 人工审查结果\n\n"
+        f"- reviewer: \n"
+        f"- reviewed_at: \n"
+        f"- decision: OPEN\n"
+        f"- notes: \n"
+    )
     path.write_text(content, encoding="utf-8")
     return path
 
@@ -476,8 +911,7 @@ def write_skeleton_result(
 
 def run_gate_1(args: argparse.Namespace) -> int:
     """GATE-1 Entry Gate: validate feature project input readiness."""
-    project_root = Path(args.project_root).resolve()
-    input_root = project_root / "input"
+    project_root, input_root = resolve_feature_workspace(args)
     checkpoints_dir = project_root / "process" / "checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
@@ -508,7 +942,7 @@ def run_gate_1(args: argparse.Namespace) -> int:
         1, "需求文件存在",
         *status_line(
             bool(requirement_hits or args.wiki_index), requirement_evidence,
-            "本地 input/ 和显式路径均未找到需求文件；请提供需求文件或 wiki 需求/接口文档。",
+            "本地 .input/ 和显式路径均未找到需求文件；请提供需求文件或 wiki 需求/接口文档。",
         ),
     ))
     checks.append((
@@ -532,7 +966,7 @@ def run_gate_1(args: argparse.Namespace) -> int:
         4, "防火墙 topo 可用或 wiki 兜底",
         *status_line(
             bool(topo_all or args.wiki_index), topo_evidence,
-            "本地 input/ 和 resource/network-topology/ 均未找到 topo，wiki 也未提供；请补充防火墙 topo 文件或 wiki 文档。",
+            "本地 .input/ 和 resource/network-topology/ 均未找到 topo，wiki 也未提供；请补充防火墙 topo 文件或 wiki 文档。",
         ),
     ))
 
@@ -543,7 +977,7 @@ def run_gate_1(args: argparse.Namespace) -> int:
         *status_line(
             bool(coupling_all or args.wiki_index),
             coupling_evidence,
-            "本地 input/ 和 resource/coupling-matrix/ 均未找到耦合矩阵或特性树，wiki 也未提供。两者至少一个存在即通过；缺失方将在后续步骤中由模型推理补充。",
+            "本地 .input/ 和 resource/coupling-matrix/ 均未找到耦合矩阵或特性树，wiki 也未提供。两者至少一个存在即通过；缺失方将在后续步骤中由模型推理补充。",
         ),
     ))
     checks.append((
@@ -610,18 +1044,18 @@ def run_gate_1(args: argparse.Namespace) -> int:
         coupling_content_evidence,
     ))
 
-    overall = "PASS" if all(status in ("PASS", "WARN") for _, status, _, _ in checks) else "BLOCKED"
+    overall = "PASS" if all(status in ("PASS", "WARN") for _, _, status, _ in checks) else "BLOCKED"
     result_path = write_skeleton_result(
         checkpoints_dir, "GATE-1", overall, feature_name, checks,
     )
-    write_state(project_root, feature_name, "GATE-1", overall, current_step="feature-parser")
+    write_state(project_root, feature_name, "GATE-1", overall, current_step="feature-parser", input_root=input_root)
     print(result_path)
     return 0 if overall == "PASS" else 2
 
 
 def run_gate_2(args: argparse.Namespace) -> int:
-    """GATE-2 KYM Exit Gate: skeleton check for KYM phase completion."""
-    project_root = Path(args.project_root).resolve()
+    """GATE-2 KYM Exit Gate: machine-baseline check for KYM phase completion."""
+    project_root, input_root = resolve_feature_workspace(args)
     checkpoints_dir = project_root / "process" / "checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
@@ -644,39 +1078,39 @@ def run_gate_2(args: argparse.Namespace) -> int:
             f"目录存在" if ok else f"目录不存在: {dirpath}",
         ))
 
-    # Skeleton: basic directory existence for KYM phase deliverables
-    required_dirs_map = {
-        "kym/feature-input": project_root / "kym" / "feature-input",
-        "kym/scenarios": project_root / "kym" / "scenarios",
-        "process/checkpoints": project_root / "process" / "checkpoints",
-    }
-    for label, dirpath in required_dirs_map.items():
-        ok = dirpath.is_dir()
-        checks.append((
-            len(checks) + 1, f"产物目录: {label}",
-            "PASS" if ok else "MISSING",
-            f"目录存在" if ok else f"目录不存在（阶段尚未执行或产物未生成）",
-        ))
+    directory_structure = first_existing(project_root, ["kym/feature-input/directory-structure.md"])
+    scenarios_md = first_existing(project_root, ["kym/scenarios/confirmed-scenarios.md"])
+    add_file_check(checks, "目录结构可读", directory_structure)
+    add_file_check(checks, "确认场景产物存在", scenarios_md)
+    if scenarios_md is not None:
+        add_required_fields_check(
+            checks,
+            "GATE-2 字段级: 场景结构可消费",
+            scenarios_md,
+            {
+                "input_document_classification": ("input_document_classification", "document_classification", "输入文档类型"),
+                "normal_path": ("normal_path", "正常路径"),
+                "abnormal_path": ("abnormal_path", "异常路径"),
+                "action_source_refs": ("action_source_ref", "action_source_refs", "ptm-atomic", "op_id"),
+                "confirmation_gaps": ("confirmation_gaps", "待澄清", "resolved", "accepted_as_risk"),
+                "minimal_logic_chain": ("minimal_logic_chain", "最小逻辑链"),
+            },
+        )
+        add_marker_check(
+            checks,
+            "Topology Catalog",
+            scenarios_md,
+            ("topology_ref", "topology_refs", "topology", "拓扑"),
+            status_if_missing="WARN",
+        )
+    add_skill_evidence_check(
+        checks,
+        project_root,
+        "KYM Skill 调用证据完整",
+        ("feature-parser", "kym", "scenario-discovery"),
+    )
 
-    # Pending detailed checks (14 items from gate-spec.md GATE-2 Checklist)
-    pending_items = [
-        (1, "输入文档类型识别"),
-        (2, "功能种子再发现"),
-        (3, "Seed-to-Scenario Mapping"),
-        (4, "范围收敛"),
-        (5, "Topology Catalog"),
-        (6, "ptm-atomic 唯一口径"),
-        (7, "场景链完整"),
-        (8, "正常路径可追溯"),
-        (9, "选择组完整"),
-        (10, "异常路径可追溯"),
-        (11, "Knowledge Reference 三态"),
-        (12, "Tool Gap"),
-        (13, "Confirmation Gaps"),
-        (14, "输出质量检查"),
-    ]
-
-    # N1-N4: KYM mission understanding checks (skeleton)
+    # N1-N4: KYM mission understanding checks
     mission_md = project_root / "kym" / "mission-understanding" / "mission-statement.md"
     n1_ok = mission_md.is_file() and mission_md.stat().st_size > 0
     checks.append((
@@ -685,28 +1119,47 @@ def run_gate_2(args: argparse.Namespace) -> int:
         str(mission_md) if n1_ok else f"缺失: {mission_md}",
     ))
 
-    # N2-N4: skeleton check only — detailed analysis deferred to main agent
-    for n_id, n_label in [("N2", "启发式探索已执行"), ("N3", "范围边界已界定"), ("N4", "待澄清问题已收集")]:
-        checks.append((
-            len(checks) + 1, f"{n_id}: {n_label}",
-            "PENDING" if n1_ok else "SKIPPED",
-            "需主 Agent 解析 mission-statement.md 后判定" if n1_ok else "N1 未通过，跳过",
-        ))
+    mission_text = read_text(mission_md) if n1_ok else ""
+    dimension_markers = (
+        "Customers", "Information", "Developers", "Equipment",
+        "Schedule", "Test Items", "Deliverables", "Risks",
+        "客户", "信息", "开发", "设备", "排期", "测试项", "交付", "风险",
+    )
+    dimensions_seen = sum(1 for marker in dimension_markers if marker in mission_text)
+    checks.append((
+        len(checks) + 1, "N2: 启发式探索已执行",
+        "PASS" if dimensions_seen >= 2 else "BLOCKING",
+        f"识别到 {dimensions_seen} 个 CIDTESTD 维度标记" if n1_ok else "N1 未通过，跳过",
+    ))
+    checks.append((
+        len(checks) + 1, "N3: 范围边界已界定",
+        "PASS" if contains_any(mission_text, ("scope", "dont_test", "测试范围", "不测试", "排除")) else "BLOCKING",
+        str(mission_md) if n1_ok else "N1 未通过，跳过",
+    ))
+    checks.append((
+        len(checks) + 1, "N4: 待澄清问题已收集",
+        "PASS" if contains_any(mission_text, ("confirmation_gaps", "待澄清", "已解决", "resolved", "accepted_as_risk")) else "WARN",
+        "未发现待澄清问题记录；若确无缺口可人工确认 N/A" if n1_ok else "N1 未通过，跳过",
+    ))
 
-    overall = "PASS" if entry_ok else "BLOCKED"
+    manual_items = [
+        (1, "KYM 场景、目录结构、Topology、Operation Path 和使命声明仍需人工确认"),
+    ]
+
+    overall = "PASS" if all(status not in ("BLOCKING", "MISSING") for _, _, status, _ in checks) else "BLOCKED"
     # GATE-2 is auto + manual: output -auto.md first
     result_path = write_skeleton_result(
         checkpoints_dir, "GATE-2", overall, feature_name, checks,
-        pending_items=pending_items, suffix="auto",
+        pending_items=manual_items, suffix="auto",
     )
-    write_state(project_root, feature_name, "GATE-2", overall, current_step="scenario-discovery")
+    write_state(project_root, feature_name, "GATE-2", overall, current_step="scenario-discovery", input_root=input_root)
     print(result_path)
     return 0 if overall == "PASS" else 2
 
 
 def run_gate_3(args: argparse.Namespace) -> int:
-    """GATE-3 MFQ Exit Gate: skeleton check for MFQ phase completion."""
-    project_root = Path(args.project_root).resolve()
+    """GATE-3 MFQ Exit Gate: machine-baseline check for MFQ phase completion."""
+    project_root, input_root = resolve_feature_workspace(args)
     checkpoints_dir = project_root / "process" / "checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
@@ -722,62 +1175,132 @@ def run_gate_3(args: argparse.Namespace) -> int:
         "process/plan": project_root / "process" / "plan",
     }
     checks: list[tuple[int, str, str, str]] = []
-    entry_ok = True
     for label, dirpath in mfq_dirs.items():
         ok = dirpath.is_dir()
-        if not ok:
-            entry_ok = False
         checks.append((
             len(checks) + 1, f"Entry Criteria: {label}",
             "PASS" if ok else "BLOCKING",
             f"目录存在" if ok else f"目录不存在: {dirpath}",
         ))
 
-    # Upstream/downstream Warnings (non-blocking)
+    m_test_points = first_existing(project_root, ["mfq/m-analysis/test-points.md"])
+    f_test_points = first_existing(project_root, ["mfq/f-analysis/coupling-test-points.md"])
+    q_test_points = first_existing(project_root, ["mfq/q-analysis/quality-test-points.md"])
+    logic_cases = first_existing(project_root, ["mfq/integration/logic-cases.md"])
+    all_test_points = first_existing(project_root, ["mfq/integration/all-test-points.md"])
+    test_data = first_existing(project_root, ["mfq/integration/test-data.md"])
+    design_plan = first_existing(project_root, ["process/plan/design-plan.md", "mfq/integration/design-plan.md"])
+    design_reasoning = first_existing(project_root, ["process/plan/design-planner-reasoning.md"])
+    factor_lock = first_existing(project_root, ["mfq/factor-usage/factor-library-lock.yaml"])
+    factor_report = first_existing(project_root, ["mfq/m-analysis/factor-resolution-report.md"])
+    atomic_candidates = first_existing(project_root, ["mfq/m-analysis/candidate-ptm-atomic.yaml"])
+
+    add_file_check(checks, "M1: M 分析输出完整", m_test_points)
+    add_file_check(checks, "M2: F 分析输出完整", f_test_points)
+    add_file_check(checks, "M3: Q 分析输出完整", q_test_points)
+    add_file_check(checks, "M4: 全量测试点整合存在", all_test_points)
+    add_file_check(checks, "M4: 逻辑用例整合存在", logic_cases)
+    add_file_check(checks, "M4: 测试数据整合存在", test_data, status_if_missing="WARN")
+    add_file_check(checks, "M6: 设计计划存在", design_plan)
+    add_file_check(checks, "M6: 设计推理存在", design_reasoning)
+    add_file_check(checks, "M7: 公共因子库 lock 有效", factor_lock)
+    add_file_check(checks, "M8: 因子库扫描报告存在", factor_report)
+    add_file_check(checks, "M9: 原子操作候选匹配存在", atomic_candidates, status_if_missing="WARN")
+
+    add_required_fields_check(
+        checks,
+        "M1: M 分析 CAE/trace 字段完整",
+        m_test_points,
+        {
+            "C": ("C（Condition）", "Condition", "| C |", "前置"),
+            "A": ("A（Action）", "Action", "| A |", "动作"),
+            "E": ("E（Effect）", "Effect", "| E |", "预期"),
+            "trace": ("trace_refs", "scenario_refs", "source_refs"),
+        },
+    )
+    add_required_fields_check(
+        checks,
+        "M2: F 分析 CAE/耦合字段完整",
+        f_test_points,
+        {
+            "C": ("C（Condition）", "Condition", "| C |", "前置"),
+            "A": ("A（Action）", "Action", "| A |", "动作"),
+            "E": ("E（Effect）", "Effect", "| E |", "预期"),
+            "coupling": ("coupling", "耦合", "coupling_refs"),
+        },
+    )
+    add_required_fields_check(
+        checks,
+        "M3: Q 分析 CAE/质量字段完整",
+        q_test_points,
+        {
+            "C": ("C（Condition）", "Condition", "| C |", "前置"),
+            "A": ("A（Action）", "Action", "| A |", "动作"),
+            "E": ("E（Effect）", "Effect", "| E |", "预期"),
+            "quality": ("quality_dimension", "质量", "HTSM"),
+        },
+    )
+    add_required_fields_check(
+        checks,
+        "M4/M5: LC trace/binding 字段完整",
+        logic_cases,
+        {
+            "LC-ID": ("LC-ID", "logic_case_id", "LC-"),
+            "source_tp_ids": ("source_tp_ids", "source_tp_id", "TP-"),
+            "factor_bindings": ("factor_bindings", "factor_refs", "因子"),
+            "topology_bindings": ("topology_bindings", "topology_role_refs", "组网绑定", "拓扑"),
+        },
+    )
+    add_required_fields_check(
+        checks,
+        "M6: 设计计划 PPDCS 字段完整",
+        design_plan,
+        {
+            "logic_case": ("logic_case_id", "LC-ID", "LC-"),
+            "ppdcs": ("PPDCS", "P-Process", "P-Parameter", "D-Data", "C-Combination", "S-State"),
+            "method": ("recommended_method", "method", "设计方法"),
+        },
+    )
+    if logic_cases is not None:
+        add_marker_check(checks, "M4: LC factor_bindings 保留", logic_cases, ("factor_bindings", "factor_refs", "因子"), status_if_missing="WARN")
+        add_marker_check(checks, "M5: LC topology_bindings 保留", logic_cases, ("topology_bindings", "topology_role_refs", "组网绑定", "拓扑"), status_if_missing="WARN")
+    if factor_report is not None:
+        add_marker_check(checks, "M8: N_scanned 已记录", factor_report, ("N_scanned", "扫描库数", "index.yaml"), status_if_missing="BLOCKING")
+    if atomic_candidates is not None:
+        add_marker_check(checks, "M9: match_attempt 已记录", atomic_candidates, ("match_attempt", "L1", "score"), status_if_missing="WARN")
+    add_skill_evidence_check(
+        checks,
+        project_root,
+        "MFQ Skill 调用证据完整",
+        ("m-analyzer", "f-analyzer", "q-analyzer", "test-point-integrator", "design-planner"),
+    )
+
     warnings = (
         "## 上下游 Warning（非阻断）\n\n"
         "| # | 检查项 | 状态 | 说明 |\n"
         "|---|--------|------|------|\n"
-        "| W1 | KYM 场景下游可消费 | WARNING | 场景产物可被 MFQ 正确消费（骨架检查不验证） |\n"
-        "| W2 | PPDCS 可消费 plan | WARNING | 设计计划可被 PPDCS 阶段正确读取（骨架检查不验证，PPDCS Exit Gate 二次检查） |\n"
+        "| W1 | KYM 场景下游可消费 | WARNING | 机器基线仅验证 MFQ 产物存在和关键字段，语义消费质量需人工确认 |\n"
+        "| W2 | PPDCS 可消费 plan | WARNING | 设计计划语义正确性需在 GATE-3 人工确认和 GATE-4 二次检查中确认 |\n"
     )
 
-    # Pending detailed checks (M1-M9 from gate-spec.md GATE-3 Checklist)
-    pending_items = [
-        (1, "M1: M 分析输出完整"),
-        (2, "M2: F 分析输出完整"),
-        (3, "M3: Q 分析输出完整"),
-        (4, "M4: 测试点整合完整"),
-        (5, "M5: LC topology_bindings 一致"),
-        (6, "M6: 设计计划存在"),
-        (7, "M7: 公共因子库 lock 有效"),
-        (8, "M8: 因子库扫描完整性 (N_scanned == index)"),
-        (9, "M9: 原子操作匹配完整性 (candidate-ptm-atomic.yaml)"),
+    manual_items = [
+        (1, "M/F/Q 分析质量、LC 整合一致性、设计计划和公共因子消费仍需人工确认"),
     ]
 
-    # Entry Criteria: factor-library-lock.yaml existence check
-    factor_lock = project_root / "mfq" / "factor-usage" / "factor-library-lock.yaml"
-    factor_lock_ok = factor_lock.is_file()
-    checks.append((
-        len(checks) + 1, "Entry Criteria: factor-library-lock.yaml",
-        "PASS" if factor_lock_ok else "WARN",
-        str(factor_lock) if factor_lock_ok else f"缺失: {factor_lock}（因子消费未锁定，后续阶段可补）",
-    ))
-
-    overall = "PASS" if entry_ok else "BLOCKED"
+    overall = "PASS" if all(status not in ("BLOCKING", "MISSING") for _, _, status, _ in checks) else "BLOCKED"
     result_path = write_skeleton_result(
         checkpoints_dir, "GATE-3", overall, feature_name, checks,
-        pending_items=pending_items, suffix="auto",
+        pending_items=manual_items, suffix="auto",
         extra_sections=warnings,
     )
-    write_state(project_root, feature_name, "GATE-3", overall, current_step="test-point-integrator")
+    write_state(project_root, feature_name, "GATE-3", overall, current_step="test-point-integrator", input_root=input_root)
     print(result_path)
     return 0 if overall == "PASS" else 2
 
 
 def run_gate_4(args: argparse.Namespace) -> int:
-    """GATE-4 PPDCS Exit Gate: skeleton check for PPDCS phase completion."""
-    project_root = Path(args.project_root).resolve()
+    """GATE-4 PPDCS Exit Gate: machine-baseline check for PPDCS phase completion."""
+    project_root, input_root = resolve_feature_workspace(args)
     checkpoints_dir = project_root / "process" / "checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
@@ -788,52 +1311,86 @@ def run_gate_4(args: argparse.Namespace) -> int:
         "ppdcs/ppdcs": project_root / "ppdcs" / "ppdcs",
         "ppdcs/pc": project_root / "ppdcs" / "pc",
         "ppdcs/coverage": project_root / "ppdcs" / "coverage",
+        "ppdcs/delivery": project_root / "ppdcs" / "delivery",
     }
     checks: list[tuple[int, str, str, str]] = []
-    entry_ok = True
     for label, dirpath in ppdcs_dirs.items():
         ok = dirpath.is_dir()
-        if not ok:
-            entry_ok = False
         checks.append((
             len(checks) + 1, f"Entry Criteria: {label}",
             "PASS" if ok else "BLOCKING",
             f"目录存在" if ok else f"目录不存在: {dirpath}",
         ))
 
-    # Skeleton: basic directory check for delivery
-    delivery_dir = project_root / "ppdcs" / "delivery"
-    ok = delivery_dir.is_dir()
-    checks.append((
-        len(checks) + 1, "产物目录: ppdcs/delivery",
-        "PASS" if ok else "MISSING",
-        f"目录存在" if ok else f"目录不存在（阶段尚未执行或产物未生成）",
-    ))
+    design_files = find_nonempty_files(project_root / "ppdcs" / "ppdcs", (".md",))
+    pc_files = find_nonempty_files(project_root / "ppdcs" / "pc", (".md",))
+    coverage_summary = first_existing(project_root, ["ppdcs/coverage/coverage-summary.md"])
+    requirement_coverage = first_existing(project_root, ["ppdcs/coverage/requirement-coverage.md"])
+    test_point_coverage = first_existing(project_root, ["ppdcs/coverage/test-point-coverage.md"])
+    delivery_files = find_nonempty_files(project_root / "ppdcs" / "delivery", (".md",))
 
-    # Pending detailed checks
-    pending_items = [
-        (1, "PPDCS 设计完整"),
-        (2, "PC 生成完整"),
-        (3, "PC 物化回链"),
-        (4, "覆盖率验证"),
-        (5, "拓扑绑定状态保持"),
-        (6, "交付物预检"),
-        (7, "plan 消费完整性"),
+    checks.append((
+        len(checks) + 1, "P1: PPDCS 设计过程完整",
+        "PASS" if design_files else "BLOCKING",
+        ", ".join(str(path) for path in design_files[:5]) if design_files else "ppdcs/ppdcs/ 下无非空 Markdown 设计过程文件",
+    ))
+    checks.append((
+        len(checks) + 1, "P2: PC 文件完整",
+        "PASS" if pc_files else "BLOCKING",
+        ", ".join(str(path) for path in pc_files[:5]) if pc_files else "ppdcs/pc/ 下无非空 Markdown PC 文件",
+    ))
+    add_file_check(checks, "P4: 覆盖率摘要存在", coverage_summary)
+    add_file_check(checks, "P4: 需求覆盖报告存在", requirement_coverage, status_if_missing="WARN")
+    add_file_check(checks, "P4: 测试点覆盖报告存在", test_point_coverage, status_if_missing="WARN")
+    if pc_files:
+        combined_pc = "\n".join(read_text(path) for path in pc_files)
+        add_table_columns_check(checks, "P2: PC 16 列格式检查", pc_files, 16)
+        checks.append((
+            len(checks) + 1, "P3: PC 拓扑绑定字段保留",
+            "PASS" if contains_any(combined_pc, ("topology_bindings", "topology_role", "组网", "拓扑")) else "WARN",
+            "PC 文件中发现拓扑绑定字段" if contains_any(combined_pc, ("topology_bindings", "topology_role", "组网", "拓扑")) else "PC 文件缺少 topology_bindings/topology_role 标记",
+        ))
+        checks.append((
+            len(checks) + 1, "P7: fact_status 字段保留",
+            "PASS" if contains_any(combined_pc, ("fact_status", "needs-confirmation", "confirmed")) else "WARN",
+            "PC 文件中发现事实状态字段" if contains_any(combined_pc, ("fact_status", "needs-confirmation", "confirmed")) else "PC 文件缺少 fact_status 标记",
+        ))
+    checks.append((
+        len(checks) + 1, "P6: 交付物预检",
+        "PASS" if len(delivery_files) >= 2 else "BLOCKING",
+        ", ".join(str(path) for path in delivery_files) if delivery_files else "ppdcs/delivery/ 下无交付 Markdown",
+    ))
+    if delivery_files:
+        combined_delivery = "\n".join(read_text(path) for path in delivery_files)
+        checks.append((
+            len(checks) + 1, "P6/P7: 交付 trace 字段完整",
+            "PASS" if contains_all(combined_delivery, ("logic_case_id", "physical_case_id")) and contains_any(combined_delivery, ("trace_refs", "scenario_refs", "topology_bindings", "fact_status")) else "BLOCKING",
+            "交付物包含 logic/physical case 与 trace 字段" if contains_all(combined_delivery, ("logic_case_id", "physical_case_id")) and contains_any(combined_delivery, ("trace_refs", "scenario_refs", "topology_bindings", "fact_status")) else "交付物缺少 logic_case_id/physical_case_id/trace 字段",
+        ))
+    add_skill_evidence_check(
+        checks,
+        project_root,
+        "PPDCS Skill 调用证据完整",
+        ("design-ppdcs-analyzer", "coverage-verifier", "deliverable-renderer"),
+    )
+
+    manual_items = [
+        (1, "PPDCS 设计方法、物理用例质量、覆盖率结果和拓扑绑定仍需人工确认"),
     ]
 
-    overall = "PASS" if entry_ok else "BLOCKED"
+    overall = "PASS" if all(status not in ("BLOCKING", "MISSING") for _, _, status, _ in checks) else "BLOCKED"
     result_path = write_skeleton_result(
         checkpoints_dir, "GATE-4", overall, feature_name, checks,
-        pending_items=pending_items, suffix="auto",
+        pending_items=manual_items, suffix="auto",
     )
-    write_state(project_root, feature_name, "GATE-4", overall, current_step="design-ppdcs")
+    write_state(project_root, feature_name, "GATE-4", overall, current_step="design-ppdcs", input_root=input_root)
     print(result_path)
     return 0 if overall == "PASS" else 2
 
 
 def run_gate_5(args: argparse.Namespace) -> int:
-    """GATE-5 Exit Gate: skeleton check for final delivery readiness."""
-    project_root = Path(args.project_root).resolve()
+    """GATE-5 Exit Gate: machine-baseline check for final delivery readiness."""
+    project_root, input_root = resolve_feature_workspace(args)
     checkpoints_dir = project_root / "process" / "checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
 
@@ -841,46 +1398,71 @@ def run_gate_5(args: argparse.Namespace) -> int:
 
     # Entry Criteria: GATE-4 result exists, delivery dir exists
     checks: list[tuple[int, str, str, str]] = []
-    entry_ok = True
     gate4_result = project_root / "process" / "checkpoints" / "GATE-4-PPDCS-Exit-auto.md"
-    if not gate4_result.exists():
-        entry_ok = False
-        checks.append((
-            1, "GATE-4 已通过",
-            "BLOCKING",
-            f"GATE-4 结果文件不存在: {gate4_result}",
-        ))
-    else:
-        checks.append((
-            1, "GATE-4 已通过",
-            "PASS",
-            f"GATE-4 结果文件存在: {gate4_result}",
-        ))
+    gate4_ok = result_file_passed(gate4_result)
+    checks.append((
+        1, "GATE-4 已通过",
+        "PASS" if gate4_ok else "BLOCKING",
+        f"GATE-4 结果为 PASS: {gate4_result}" if gate4_ok else f"GATE-4 未通过或结果文件不存在: {gate4_result}",
+    ))
 
     delivery_dir = project_root / "ppdcs" / "delivery"
     ok = delivery_dir.is_dir()
-    if not ok:
-        entry_ok = False
     checks.append((
         2, "交付物目录存在",
         "PASS" if ok else "BLOCKING",
         f"目录存在" if ok else f"目录不存在: {delivery_dir}",
     ))
 
-    # Pending detailed checks
-    pending_items = [
-        (1, "交付物完整"),
-        (2, "交付字段保留"),
-        (3, "公共库记录"),
-        (4, "不可提升状态"),
+    delivery_files = find_nonempty_files(delivery_dir, (".md",))
+    plan_files = [path for path in delivery_files if "测试方案" in path.name]
+    case_files = [path for path in delivery_files if "测试用例" in path.name]
+    checks.append((
+        len(checks) + 1, "交付物完整: 测试方案",
+        "PASS" if plan_files else "BLOCKING",
+        ", ".join(str(path) for path in plan_files) if plan_files else "缺少 <特性名>特性测试方案.md",
+    ))
+    checks.append((
+        len(checks) + 1, "交付物完整: 测试用例",
+        "PASS" if case_files else "BLOCKING",
+        ", ".join(str(path) for path in case_files) if case_files else "缺少 <特性名>特性测试用例.md",
+    ))
+    candidate_files = [
+        path for path in delivery_files
+        if "候选" in path.name or "candidate" in path.name.lower()
+    ]
+    checks.append((
+        len(checks) + 1, "候选对比表处理",
+        "PASS" if candidate_files else "WARN",
+        ", ".join(str(path) for path in candidate_files) if candidate_files else "未发现候选对比表；若无候选应在交付物中说明",
+    ))
+    combined_delivery = "\n".join(read_text(path) for path in delivery_files)
+    checks.append((
+        len(checks) + 1, "交付字段保留",
+        "PASS" if contains_any(combined_delivery, ("topology_bindings", "topology_role", "fact_status", "source")) else "BLOCKING",
+        "交付物保留 topology/fact/source 字段" if contains_any(combined_delivery, ("topology_bindings", "topology_role", "fact_status", "source")) else "交付物缺少 topology_bindings/topology_role/source/fact_status 标记",
+    ))
+    checks.append((
+        len(checks) + 1, "公共库记录",
+        "PASS" if contains_any(combined_delivery, ("library_id", "factor-library", "因子库", "checksum", "version")) else "WARN",
+        "交付物包含公共库记录" if contains_any(combined_delivery, ("library_id", "factor-library", "因子库", "checksum", "version")) else "未发现公共库记录；若未使用公共库需人工确认 N/A",
+    ))
+    checks.append((
+        len(checks) + 1, "不可提升状态",
+        "PASS" if "needs-confirmation" in combined_delivery or "待确认" in combined_delivery or "fact_status" in combined_delivery else "WARN",
+        "发现 fact_status / needs-confirmation 状态保留证据" if combined_delivery else "交付物为空或缺少状态字段",
+    ))
+
+    manual_items = [
+        (1, "最终交付质量、候选对比表 N/A 和风险接受仍需人工确认"),
     ]
 
-    overall = "PASS" if entry_ok else "BLOCKED"
+    overall = "PASS" if all(status not in ("BLOCKING", "MISSING") for _, _, status, _ in checks) else "BLOCKED"
     result_path = write_skeleton_result(
         checkpoints_dir, "GATE-5", overall, feature_name, checks,
-        pending_items=pending_items,
+        pending_items=manual_items,
     )
-    write_state(project_root, feature_name, "GATE-5", overall, current_step="delivery")
+    write_state(project_root, feature_name, "GATE-5", overall, current_step="delivery", input_root=input_root)
     print(result_path)
     return 0 if overall == "PASS" else 2
 
@@ -906,7 +1488,7 @@ def run_internal_check(cp: str, target: str, args: argparse.Namespace) -> int:
     a lightweight summary to stdout.  Detailed check logic is deferred
     to CR-012 (MFQ) and CR-013 (PPDCS).
     """
-    project_root = Path(args.project_root).resolve()
+    project_root, _input_root = resolve_feature_workspace(args)
     phase = "MFQ" if target.startswith("MFQ-INTERNAL-") else "PPDCS"
     print(f"[{cp}] {phase} 阶段内滚动自检: {target}")
 
@@ -1002,10 +1584,27 @@ def main() -> int:
         default=None,
         help="CP 兼容模式：自动路由到对应 Gate 或阶段内自检",
     )
+    mode_group.add_argument(
+        "--record-skill-call",
+        action="store_true",
+        help="记录一次 Skill 执行证据到 process/execution/SKILL-CALLS.yaml",
+    )
     parser.add_argument("--project-root", default=".")
+    parser.add_argument("--input-dir", default="", help="显式指定目标 .input 目录；其父目录作为特性工作区")
     parser.add_argument("--feature-name", default="")
     parser.add_argument("--requirement", default="")
     parser.add_argument("--wiki-index", default="")
+    parser.add_argument("--skill-name", default="", help="--record-skill-call: Skill 名称")
+    parser.add_argument("--phase", default="", help="--record-skill-call: kym/mfq/ppdcs/delivery 等阶段")
+    parser.add_argument("--status", default="completed", choices=["completed", "blocked", "failed", "waived"], help="--record-skill-call: 执行状态")
+    parser.add_argument("--input-ref", action="append", default=[], help="--record-skill-call: 输入引用，可重复")
+    parser.add_argument("--output-ref", action="append", default=[], help="--record-skill-call: 输出引用，可重复")
+    parser.add_argument("--evidence-summary", default="", help="--record-skill-call: 证据摘要")
+    parser.add_argument("--platform", default="unknown", choices=["codex", "claude", "unknown"], help="--record-skill-call: 平台")
+    parser.add_argument("--caller", default="ptm-tde", help="--record-skill-call: 调用方")
+    parser.add_argument("--call-id", default="", help="--record-skill-call: 可选自定义调用 ID")
+    parser.add_argument("--started-at", default="", help="--record-skill-call: 可选开始时间 ISO-8601")
+    parser.add_argument("--completed-at", default="", help="--record-skill-call: 可选完成时间 ISO-8601")
     args = parser.parse_args()
 
     # Routing priority: --gate > --cp > positional checkpoint_id
@@ -1013,6 +1612,17 @@ def main() -> int:
         return dispatch_gate(args.gate, args)
     if args.cp:
         return dispatch_cp(args.cp, args)
+    if args.record_skill_call:
+        if not args.skill_name:
+            print("--record-skill-call 需要 --skill-name", file=sys.stderr)
+            return 2
+        if not args.phase:
+            print("--record-skill-call 需要 --phase", file=sys.stderr)
+            return 2
+        if args.status == "completed" and not args.output_ref:
+            print("status=completed 需要至少一个 --output-ref", file=sys.stderr)
+            return 2
+        return write_skill_call(args)
     # Backward-compat: positional CP01
     if args.checkpoint_id:
         print(f"[legacy] 位置参数 {args.checkpoint_id} -> 路由到 GATE-1 Entry Gate")
