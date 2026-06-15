@@ -1,0 +1,57 @@
+schema_version: "1.0"
+workflow_id: "ptm-tde"
+workflow_type: "prompt-skill-workflow"
+project_kind: "workflow-product"
+entrypoints: ["../agents/ptm-tde.md"]
+artifacts:
+  agents: ["../agents/ptm-tde.md"]
+  skills:
+    # KYM 阶段 — Know Your Mission
+    - "../skills/feature-parser/SKILL.md"
+    - "../skills/kym/SKILL.md"
+    - "../skills/scenario-discovery/SKILL.md"
+    # MFQ 阶段 — M/F/Q 三维分析
+    - "../skills/m-analyzer/SKILL.md"
+    - "../skills/f-analyzer/SKILL.md"
+    - "../skills/q-analyzer/SKILL.md"
+    - "../skills/test-point-integrator/SKILL.md"
+    - "../skills/design-planner/SKILL.md"
+    # PPDCS 阶段 — 五种用例设计方法
+    - "../skills/design-ppdcs-analyzer/SKILL.md"
+    - "../skills/process-design/SKILL.md"
+    - "../skills/parameter-design/SKILL.md"
+    - "../skills/data-design/SKILL.md"
+    - "../skills/combination-design/SKILL.md"
+    - "../skills/state-design/SKILL.md"
+    - "../skills/coverage-verifier/SKILL.md"
+    - "../skills/deliverable-renderer/SKILL.md"
+    # 辅助 / 基础设施
+    - "../skills/checkpoint-manager/SKILL.md"
+    - "../skills/case-retriever/SKILL.md"
+    - "../skills/tde-feedback/SKILL.md"
+    - "../skills/bug-gap-analyzer/SKILL.md"
+    - "../skills/change-impact-analyzer/SKILL.md"
+    - "../skills/auto-factory-env/SKILL.md"
+    - "../skills/ptm-atomic-builder-restapi/SKILL.md"
+    - "../skills/ngfw-install/SKILL.md"
+    - "../skills/traffic-skill/SKILL.md"
+  rules: ["../CLAUDE.md", "../AGENTS.md"]
+  resources: ["../resource/factor-libraries/", "../resource/coupling-matrix/"]
+states:
+  - "intake"
+  - "kym"
+  - "mfq"
+  - "ppdcs"
+  - "verify"
+  - "done"
+checkpoints:
+  - "GATE-1"   # Entry Gate：纯自检
+  - "GATE-2"   # KYM Exit Gate：自检 + 人工确认
+  - "GATE-3"   # MFQ Exit Gate：自检 + 人工确认
+  - "GATE-4"   # PPDCS Exit Gate：自检 + 人工确认
+  - "GATE-5"   # Exit Gate：纯自检
+non_authorized_actions:
+  - "publish"
+  - "live"
+  - "external-write"
+  - "credential-use"

@@ -1,0 +1,7 @@
+feedback_repo:
+  local_repo: "../ptm-team-feedback"
+  remote_url: "git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team-feedback.git"
+  branch: "main"
+  dest: "tde-feedback"
+  inbox_dest: "process/field-feedback/inbox/gitlab-materials"
+  remote: "origin"

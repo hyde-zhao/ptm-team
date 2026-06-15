@@ -170,6 +170,13 @@ case_steps:
 | `expected_result` | 是 | 当前步骤的预期结果；未知保留 `[待确认]` |
 | `trace_refs` | 否 | 当前步骤回链的 TP / TD / scenario chain 引用 |
 
+`atomic_op.op_id` 回链硬约束：
+
+- 每个 `case_steps[].atomic_op.op_id` 必须逐字匹配当前 LC / PC `action_source_refs` 中的某一项。
+- 不得把相近语义、IPv4/IPv6 变体、历史示例或通用 fallback 操作写入 `case_steps`，除非该 `op_id` 已在 `action_source_refs` 中出现。
+- 若上游缺少所需 `op_id`，必须把 PC 标记为 `needs-confirmation`，并写入 `pc_step_contract_gap`；不得自行创造未回链操作。
+- 典型反例：IPv6 PC 的 `action_source_refs` 只有 `tg_send_ipv6_traffic / fw_query_policy_route6_hit_count` 时，`case_steps` 不能写 `tg_send_ipv4_traffic / fw_query_policy_route_hit_count`。
+
 16 列表 `测试步骤*` 渲染规则：
 
 ```text

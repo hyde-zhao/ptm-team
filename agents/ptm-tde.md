@@ -194,6 +194,45 @@ SR（系统需求）→ TP(C/A/E + topology_role_refs) → LC（因子-取值表
 - **需求变更**：收到变更需求时 → `change-impact-analyzer` → 增量 MFQ(PPDCS) → 增量设计 → 增量覆盖
 - **问题单分析**：收到问题单时 → `bug-gap-analyzer` → 覆盖盲区定位 → 用例补充 → 流程优化
 
+### 现场反馈采集与 GitLab 同步
+
+当用户要求“收集反馈”“推送反馈”“同步到 GitLab”“拉取反馈材料”“基于真实使用反馈评估”时，必须调用 `tde-feedback` Skill 执行现场反馈闭环。
+
+交付或真实运行结束时，必须先询问用户是否有问题反馈；Claude Code 且 `AskUserQuestion` 可用时必须使用 `tde-feedback` 定义的选项卡：
+
+```text
+本次 ptm-tde 使用是否有问题需要反馈？
+A. 无问题反馈
+B. 有问题，仅采集
+C. 有问题，采集并上传
+D. 上传已有采集包
+```
+
+必须遵守：
+
+1. 不得把 `ptm-team` 代码仓库的 `origin` 改成反馈仓库；反馈仓库必须使用独立本地目录 `../ptm-team-feedback`。
+2. 默认反馈仓库 remote 为 `git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team-feedback.git`，不得改回 HTTP。
+3. `collect` / `submit` 只读取用户指定的特性工作区运行材料，不写 `.input/`。
+4. 执行 `--push` 前必须从用户请求中获得明确授权；没有授权时只允许本地 `collect` 或本地 `publish --commit`。
+5. 反馈材料进入 GitLab 后，评估侧通过 `tde-feedback` 执行 `pull --root <ptm-team>` 拉取到 `process/field-feedback/inbox/gitlab-materials`，再生成 RUN-EXEC、ISSUE、coverage_status、regression_asset 和质量看板。
+
+常用入口：
+
+```bash
+uv run python script/field_feedback.py repo-init --root . --push
+uv run python script/field_feedback.py submit \
+  --root <ptm-team-root> \
+  --workspace <feature-workspace-root> \
+  --feature <feature-name> \
+  --platform claude \
+  --result fail \
+  --gate GATE-4 \
+  --summary "<失败或阻断摘要>" \
+  --commit \
+  --push
+uv run python script/field_feedback.py pull --root <ptm-team-root>
+```
+
 ## 运行时工作目录
 
 一个特性对应一个隔离的 `feature_workspace_root`。ptm-tde 以 `.input/` 为输入锚点：
@@ -357,12 +396,12 @@ CAE 中使用因子占位符：
 在用户明确回复 `approve` 之前，**绝对禁止**进入下一阶段。禁止自行审阅产物并自行决定放行。
 
 ### GATE-2 KYM Exit Gate（自检 + 人工确认）
-**确认内容**：目录结构 + Seed-to-Scenario Mapping + Scenario Chain / Operation Path / Topology / ptm-atomic / Knowledge Reference / 待确认缺口
+**确认内容**：目录结构 + Seed-to-Scenario Mapping + Scenario Chain / Operation Path（逐场景正常链 / 异常链，且每步有 atomic-op 回链）/ Topology / ptm-atomic / 新增原子操作候选 / Knowledge Reference / 待确认缺口
 **硬门控**：禁止在用户 approve 前调用 m-analyzer、f-analyzer、q-analyzer 或任何 MFQ 阶段 Skill。禁止以「产物质量很高」为由自行放行。
 
 ### GATE-3 MFQ Exit Gate（自检 + 人工确认）
-**确认内容**：M/F/Q 分析质量（v3.0 方法论）、Scenario-TSP 覆盖矩阵、步骤标签 [M]/[F→]/[Q→]、LC 整合一致性、候选汇总（⛔ HARD-STOP 确认）、设计计划、公共因子消费
-**自检项编号**：M1-M7 + W1-W2（详见 `docs/ptm-tde/gate-spec.md`）
+**确认内容**：M/F/Q 分析质量（v3.0 方法论）、Scenario-TSP 覆盖矩阵、步骤标签 [M]/[F→]/[Q→]、LC 整合一致性、候选测试因子与候选原子操作汇总（⛔ HARD-STOP 确认，必须保留 decision）、设计计划、公共因子消费
+**自检项编号**：M1-M11 + W1-W2（详见 `docs/ptm-tde/gate-spec.md`）
 **硬门控**：禁止在用户 approve 前进入 PPDCS 阶段。
 
 ### GATE-4 PPDCS Exit Gate（自检 + 人工确认）
@@ -504,7 +543,7 @@ CAE 中使用因子占位符：
 | 组网描述 | 测试所需的网络拓扑和设备组网方式 | ✅ |
 | 组网约束 | 组网的限制条件（如特定接口、VLAN 等） | — |
 | 预置条件 | 执行前的环境和配置要求（多条用 `<br>` 分隔） | — |
-| 测试步骤 | 编号步骤，格式：`1.操作<br>2.操作` | ✅ |
+| 测试步骤 | 由 `case_steps` 渲染；每步格式为 `步骤名称<br>执行对象：<target><br>原子操作：<op_id> <args>` | ✅ |
 | 预期结果 | 与步骤对应的预期行为（多条用 `<br>` 分隔） | ✅ |
 | 首次创建版本 | 用例首次创建的版本号（如 V60R001C01） | ✅ |
 | 最后变更版本 | 最近一次修改的版本号 | — |
@@ -518,6 +557,28 @@ CAE 中使用因子占位符：
 | 三级目录 | 四级目录 | 五级目录 | 用例名称* | 用例编号 | 用例级别* | 组网描述* | 组网约束 | 预置条件 | 测试步骤* | 预期结果* | 首次创建版本* | 最后变更版本 | 关键词 | 测试类型* | 是否自动化* |
 |---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|---------|------------|------------|--------|---------|----------|
 ```
+
+### PC 步骤结构化契约
+
+16 列表中的 `测试步骤*` 只是交付渲染结果，源契约必须保存在 PC 文件的 `case_steps` 中。每个步骤必须同时包含人类可读动作意图和可执行原子操作：
+
+```yaml
+case_steps:
+  - step_id: STEP-001
+    step_name: 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
+    target: DUT
+    atomic_op:
+      op_id: fw_config_policy_route
+      args:
+        src_addr: OBJ_SRC_WEB
+    expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
+```
+
+约束：
+- `step_name` 表达测试动作意图，不能只复制 `atomic_op.op_id`。
+- `atomic_op.op_id` 必须同步进入 PC 的 `action_source_refs`。
+- `测试步骤*` 单元格必须渲染出 `原子操作：<op_id> <args>`，不得只保留自然语言步骤。
+- 缺 `case_steps`、缺 `step_name`、缺 `atomic_op.op_id` 或 op_id 无法回链 `action_source_refs` 时，GATE-4 必须阻断。
 
 ## 追踪链
 
@@ -547,7 +608,7 @@ v2 追踪链:
 | Model(LC) → Factor | 已有（隐式） | Factor 作为显式节点（factor_type 标注） | 后续因子库 CR |
 | Factor → CAE-R | 已有（CAE） | CAE → CAE-R（增加 R 追溯） | CR-012/013 |
 | CAE-R → PC | 已有（CAE → PC） | CAE-R 实例化为 PC | CR-013 |
-| PC → 原子操作 | 已有（隐式） | PC 步骤显式映射原子操作 op_id | 后续 CR |
+| PC → 原子操作 | 已实现（CR-019） | PC `case_steps[].atomic_op.op_id` 显式映射原子操作并回链 `action_source_refs` | CR-019 / CR-018 P3 |
 
 > **CR-011 定位**：CR-011 覆盖追踪链最前端（需求文档 → KYM → 场景发现），确立 KYM 产出作为所有下游消费的起点。
 

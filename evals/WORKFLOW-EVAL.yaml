@@ -1,0 +1,418 @@
+schema_version: "1.0"
+suite_id: "ptm-tde-suite"
+sut:
+  type: "prompt-skill-workflow"
+  manifest: "WORKFLOW-MANIFEST.yaml"
+prompt_bundle: "PROMPT-BUNDLE.yaml"
+case_registry: "CASE-REGISTRY.yaml"
+trace_policy:
+  secret_masking: true
+  retained_fields:
+    - "case_id"
+    - "grader_id"
+    - "status"
+    - "artifact_hash"
+    - "prompt_bundle_hash"
+  forbidden_fields:
+    - "api_key"
+    - "password"
+    - "token"
+    - "secret"
+    - "cookie"
+graders:
+  # --- Eval contract integrity ---
+  - id: "eval-config-non-empty"
+    type: "eval_config_non_empty"
+
+  - id: "manifest-bundle-consistency"
+    type: "manifest_bundle_consistency"
+
+  # --- 结构完整性 ---
+  - id: "agent-required-fields"
+    type: "required_fields"
+    target: "../agents/ptm-tde.md"
+    required_fields:
+      - "name"
+      - "description"
+      - "tools"
+      - "color"
+
+  - id: "skill-required-fields"
+    type: "required_fields"
+    target_globs:
+      - "../skills/*/SKILL.md"
+    required_fields:
+      - "name"
+      - "description"
+
+  - id: "prompt-bundle-required-fields"
+    type: "required_fields"
+    target: "PROMPT-BUNDLE.yaml"
+    required_fields:
+      - "schema_version"
+      - "bundle_id"
+      - "version"
+      - "components"
+      - "compatibility"
+      - "rollback"
+
+  # --- 路径存在性 ---
+  - id: "artifact-paths-exist"
+    type: "path_exists"
+    paths:
+      - "../agents/ptm-tde.md"
+      - "../CLAUDE.md"
+      - "../AGENTS.md"
+      - "../.ptm-field-feedback.yaml"
+      - "../script/field_feedback.py"
+      - "../script/install.py"
+      - "../script/ptm_team/install.py"
+      - "../resource/factor-libraries/"
+      - "../resource/coupling-matrix/"
+      # KYM 阶段
+      - "../skills/feature-parser/SKILL.md"
+      - "../skills/kym/SKILL.md"
+      - "../skills/scenario-discovery/SKILL.md"
+      # MFQ 阶段
+      - "../skills/m-analyzer/SKILL.md"
+      - "../skills/f-analyzer/SKILL.md"
+      - "../skills/q-analyzer/SKILL.md"
+      - "../skills/test-point-integrator/SKILL.md"
+      - "../skills/design-planner/SKILL.md"
+      # PPDCS 阶段
+      - "../skills/design-ppdcs-analyzer/SKILL.md"
+      - "../skills/process-design/SKILL.md"
+      - "../skills/parameter-design/SKILL.md"
+      - "../skills/data-design/SKILL.md"
+      - "../skills/combination-design/SKILL.md"
+      - "../skills/state-design/SKILL.md"
+      - "../skills/coverage-verifier/SKILL.md"
+      - "../skills/deliverable-renderer/SKILL.md"
+      # 辅助
+      - "../skills/checkpoint-manager/SKILL.md"
+      - "../skills/case-retriever/SKILL.md"
+      - "../skills/tde-feedback/SKILL.md"
+      - "../skills/bug-gap-analyzer/SKILL.md"
+      - "../skills/change-impact-analyzer/SKILL.md"
+      - "../skills/auto-factory-env/SKILL.md"
+      - "../skills/ptm-atomic-builder-restapi/SKILL.md"
+      - "../skills/ngfw-install/SKILL.md"
+      - "../skills/traffic-skill/SKILL.md"
+
+  # --- Hash 完整性 ---
+  - id: "prompt-bundle-hashes"
+    type: "prompt_bundle_hashes"
+
+  # --- Case Registry 引用完整性 ---
+  - id: "case-registry-links"
+    type: "case_registry_links"
+
+  # --- 安全检查 ---
+  - id: "no-live-or-secret-actions"
+    type: "forbidden_patterns"
+    target_globs:
+      - "../agents/*.md"
+      - "../skills/*/SKILL.md"
+    patterns:
+      - "api[_-]?key"
+      - "password"
+      - "token\\s*[:=]"
+      - "secret"
+      - "cookie"
+      - "publish\\s+--live"
+      - "curl\\s+.*prod"
+
+  # --- 权限边界 ---
+  - id: "agent-tool-boundary"
+    type: "forbidden_patterns"
+    target_globs:
+      - "../agents/ptm-tde.md"
+    patterns:
+      - "tools:.*AskUserQuestion"
+      - "tools:.*WebSearch"
+      - "tools:.*WebFetch"
+      - "tools:.*NotebookEdit"
+    description: "ptm-tde 不应具备直接用户交互或网络访问工具，应通过 Skill 间接完成"
+
+  # --- 特定领域 grader ---
+  - id: "phase-gate-completeness"
+    type: "content_schema"
+    target: "../agents/ptm-tde.md"
+    required_patterns:
+      - "三阶段框架"
+      - "Entry Gate"
+      - "KYM Phase"
+      - "MFQ Phase"
+      - "PPDCS Phase"
+      - "Exit Gate"
+
+  - id: "gate-contract-checkpoint-manager"
+    type: "gate_contract"
+    target: "../skills/checkpoint-manager/SKILL.md"
+    gate_ids:
+      - "GATE-1"
+      - "GATE-2"
+      - "GATE-3"
+      - "GATE-4"
+      - "GATE-5"
+    manual_gate_ids:
+      - "GATE-2"
+      - "GATE-3"
+      - "GATE-4"
+    required_terms:
+      - "Entry Criteria"
+      - "Checklist"
+      - "Exit Criteria"
+      - "Deliverables"
+    description: "检查 checkpoint-manager 对每个 Gate 都声明入口、检查项、退出条件和交付证据，并对人工 Gate 保留 HARD-STOP"
+
+  - id: "phase-skill-chain-ptm-tde"
+    type: "phase_skill_chain"
+    target: "../agents/ptm-tde.md"
+    required_patterns:
+      - "feature-parser\\s*.*kym\\s*.*scenario-discovery"
+      - "m-analyzer\\s*.*f-analyzer\\s*.*q-analyzer\\s*.*test-point-integrator\\s*.*design-planner"
+      - "design-ppdcs-analyzer\\s*.*coverage-verifier\\s*.*deliverable-renderer"
+      - "禁止跳过任何 Skill"
+      - "GATE-2.*MFQ"
+      - "GATE-3.*PPDCS"
+    description: "验证 KYM/MFQ/PPDCS Skill 调用链和 Gate 入口关系，防止流程跳过"
+
+  - id: "hard-stop-confirmation-ptm-tde"
+    type: "hard_stop_confirmation"
+    target: "../agents/ptm-tde.md"
+    required_patterns:
+      - "每个阶段完成后，必须经过对应 Gate 的人工确认才能进入下一阶段"
+      - "approve"
+      - "修改: <决策ID>=<修改点>"
+      - "reject"
+      - "禁止自行放行"
+    description: "验证 GATE-2/3/4 的人工确认协议，防止 Agent 自批通过"
+
+  - id: "artifact-trace-schema-core"
+    type: "artifact_trace_schema"
+    target_globs:
+      - "../agents/ptm-tde.md"
+      - "../skills/checkpoint-manager/SKILL.md"
+      - "../skills/deliverable-renderer/SKILL.md"
+      - "../skills/test-point-integrator/SKILL.md"
+    match_scope: "combined"
+    required_patterns:
+      - "normal_path"
+      - "abnormal_path"
+      - "minimal_logic_chain"
+      - "action_source_refs"
+      - "factor_bindings"
+      - "topology_bindings"
+      - "case_steps"
+      - "atomic_op"
+      - "fact_status"
+    description: "验证跨 KYM→MFQ→PPDCS→Delivery 的关键追踪字段不会在规范层丢失"
+
+  - id: "candidate-decision-integrity"
+    type: "candidate_decision_integrity"
+    target: "../skills/test-point-integrator/SKILL.md"
+    required_patterns:
+      - "decision=confirmed/rejected/modified"
+      - "confirmed / rejected / modified"
+      - "pending.*todo.*TBD|pending"
+      - "GATE-3 必须阻断"
+      - "禁止 Agent 自行判定候选因子/原子操作"
+    description: "验证候选测试因子和候选原子操作必须带用户确认状态，未确认不得进入最终产物"
+
+  - id: "field-feedback-config-contract"
+    type: "content_schema"
+    target: "../.ptm-field-feedback.yaml"
+    required_patterns:
+      - "local_repo"
+      - "ptm-team-feedback"
+      - "remote_url"
+      - "git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team-feedback.git"
+      - "branch"
+      - "main"
+      - "dest"
+      - "tde-feedback"
+      - "inbox_dest"
+      - "process/field-feedback/inbox/gitlab-materials"
+    description: "验证默认现场反馈仓库配置可供 publish/pull 使用"
+
+  - id: "field-feedback-agent-protocol"
+    type: "content_schema"
+    target: "../agents/ptm-tde.md"
+    required_patterns:
+      - "现场反馈采集与 GitLab 同步"
+      - "tde-feedback"
+      - "AskUserQuestion"
+      - "无问题反馈"
+      - "有问题，仅采集"
+      - "有问题，采集并上传"
+      - "上传已有采集包"
+      - "本次 ptm-tde 使用是否有问题需要反馈"
+      - "repo-init"
+      - "submit"
+      - "pull --root"
+      - "ptm-team-feedback"
+      - "不得把 `ptm-team` 代码仓库的 `origin` 改成反馈仓库"
+    description: "验证 Agent 能通过提示词触发反馈采集、推送和评估侧拉取"
+
+  - id: "tde-feedback-skill-contract"
+    type: "content_schema"
+    target: "../skills/tde-feedback/SKILL.md"
+    required_sections:
+      - "目标"
+      - "必问入口"
+      - "默认配置"
+      - "权限边界"
+      - "命令选择"
+      - "完成报告"
+      - "Gotchas"
+      - "验收标准"
+    required_patterns:
+      - "本次 ptm-tde 使用是否有问题需要反馈"
+      - "AskUserQuestion"
+      - "multiSelect: false"
+      - "无问题反馈"
+      - "有问题，仅采集"
+      - "有问题，采集并上传"
+      - "上传已有采集包"
+      - "collect"
+      - "submit"
+      - "publish"
+      - "pull"
+      - "git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team-feedback.git"
+      - "--push"
+      - "不得修改 `.input/`"
+      - "不得修改 ptm-team 代码仓库的 `origin`"
+    description: "验证 tde-feedback Skill 固化询问反馈、采集、上传、拉取和权限边界"
+
+  - id: "tde-feedback-install-mapping"
+    type: "content_schema"
+    target_globs:
+      - "../script/install.py"
+      - "../script/ptm_team/install.py"
+    required_patterns:
+      - "PMT_TDE_SKILLS"
+      - "tde-feedback"
+      - "case-retriever"
+      - "bug-gap-analyzer"
+    description: "验证 ptm-team 两个安装入口都会随 ptm-tde 安装 tde-feedback Skill"
+
+  # --- 内容深度：输出模板完整性 ---
+  - id: "content-schema-renderer-template"
+    type: "content_schema"
+    target: "../skills/deliverable-renderer/SKILL.md"
+    required_sections:
+      - "目标"
+      - "适用范围"
+      - "前置条件"
+      - "执行流程"
+      - "输出文件"
+      - "渲染规则"
+      - "Gotchas"
+      - "验收标准"
+    required_patterns:
+      - "16 列"
+      - "测试步骤\\*"
+      - "case_steps"
+      - "统一 PC 汇总表"
+    table_header_text: "文件"
+    table_min_columns: 3
+    description: "验证 deliverable-renderer 包含完整交付渲染规范：PC 16 列表头模板、步骤渲染规则、交付验收标准"
+
+  - id: "deliverable-exact-pc-schema"
+    type: "deliverable_exact_schema"
+    target: "../skills/deliverable-renderer/SKILL.md"
+    expected_columns:
+      - "三级目录"
+      - "四级目录"
+      - "五级目录"
+      - "用例名称*"
+      - "用例编号"
+      - "用例级别*"
+      - "组网描述*"
+      - "组网约束"
+      - "预置条件"
+      - "测试步骤*"
+      - "预期结果*"
+      - "首次创建版本*"
+      - "最后变更版本"
+      - "关键词"
+      - "测试类型*"
+      - "是否自动化*"
+    required_patterns:
+      - "汇总表表头只出现一次"
+      - "所有数据行必须恰好 16 列"
+      - "测试步骤\\*.*case_steps"
+      - "原子操作：<op_id>"
+      - "atomic_op.op_id.*action_source_refs"
+    description: "验证测试用例交付表头必须精确等于标准 16 列，并保留步骤和原子操作回链"
+
+  # --- 内容深度：状态机形式化声明 ---
+  - id: "state-machine-ptm-tde"
+    type: "state_machine"
+    target: "../agents/ptm-tde.md"
+    expected_states:
+      - "KYM"
+      - "MFQ"
+      - "PPDCS"
+    expected_transitions:
+      - "KYM.*MFQ"
+      - "MFQ.*PPDCS"
+      - "GATE-[12].*KYM"
+      - "GATE-[23].*MFQ"
+      - "GATE-[34].*PPDCS"
+    required_gate_patterns:
+      - "GATE-[1-5]"
+      - "HARD[-_]?STOP"
+      - "⛔"
+    min_hard_stop_gates: 3
+    description: "验证 ptm-tde Agent 定义了三阶段状态、逐阶段 Gate 转换和 HARD-STOP 门控声明"
+
+  # --- 内容深度：表格列对齐 ---
+  - id: "table-structure-all-skills"
+    type: "table_structure"
+    target_globs:
+      - "../skills/*/SKILL.md"
+      - "../agents/ptm-tde.md"
+    description: "自动检测所有 SKILL.md 和 Agent 文件中的 Markdown 表格，验证列对齐一致性"
+
+  - id: "checkpoint-warning-table-schema"
+    type: "table_schema"
+    target: "../skills/checkpoint-manager/SKILL.md"
+    expected_columns:
+      - "#"
+      - "检查项"
+      - "说明"
+      - "级别"
+    description: "验证 checkpoint-manager 上下游 Warning 表固定为 4 列，防止列错位回归"
+
+  # --- Negative fixtures: grader sensitivity ---
+  - id: "negative-artifact-trace-missing-fields"
+    type: "artifact_trace_schema"
+    target: "fixtures/ptm-tde-negative/missing-trace-fields.md"
+    required_patterns:
+      - "normal_path"
+      - "abnormal_path"
+      - "minimal_logic_chain"
+      - "action_source_refs"
+      - "factor_bindings"
+      - "topology_bindings"
+      - "case_steps"
+      - "atomic_op"
+      - "fact_status"
+    description: "负向 fixture：缺关键追踪字段时必须 FAIL"
+
+  - id: "negative-candidate-decision-missing"
+    type: "candidate_decision_integrity"
+    target: "fixtures/ptm-tde-negative/missing-candidate-decision.md"
+    required_patterns:
+      - "decision=confirmed/rejected/modified"
+      - "confirmed / rejected / modified"
+      - "GATE-3 必须阻断"
+    description: "负向 fixture：候选项缺 decision 状态时必须 FAIL"
+
+  - id: "negative-pc-table-column-mismatch"
+    type: "table_structure"
+    target_globs:
+      - "fixtures/ptm-tde-negative/pc-15-columns.md"
+    description: "负向 fixture：PC 表数据行列数不匹配时必须 FAIL"

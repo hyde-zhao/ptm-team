@@ -254,7 +254,7 @@ integrator 必须消费并透传以下字段：
 
 ### 步骤 4.5：候选汇总与用户确认
 
-⛔ **HARD-STOP（STOP-02）**：禁止 Agent 自行判定候选因子/原子操作为"全部确认"。必须展示候选汇总表，等待用户选择确认选项。候选表必须使用 `( )` 单选标记区分选项。
+⛔ **HARD-STOP（STOP-02）**：禁止 Agent 自行判定候选因子/原子操作为"全部确认"。必须展示候选汇总表，等待用户选择确认选项。候选表必须使用 `( )` 单选标记区分选项。GATE-3 会检查候选汇总文件是否保留用户确认结果；存在候选源但缺 `decision=confirmed/rejected/modified` 或等价确认结果时，GATE-3 必须阻断。
 
 #### 4.5.1 三源候选归集
 
@@ -389,11 +389,20 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 | 用户选择 | 执行动作 |
 |---------|---------|
 | ✅ 全部确认 | 所有候选 `decision=confirmed`，写入 `mfq/candidates/factor-candidates.md` 和 `mfq/candidates/ptm-atomic-candidates.md` |
-| ✏️ 逐项确认 | 逐项标记 `confirmed` / `rejected` / `modified`（含修改后内容），确认项写入最终产物，拒绝项保留决定记录 |
+| ✏️ 逐项确认 | 逐项标记 `decision=confirmed / rejected / modified`（含修改后内容、用户确认时间或确认来源），确认项写入最终产物，拒绝项保留决定记录 |
 | 📝 批量修改 | 收集用户修改意见，批量调整后展示更新汇总表，再次等待确认 |
 | ❌ 全部拒绝 | 所有候选 `decision=rejected`，不写入最终产物，在汇总表中保留决定记录 |
 
 写入前必须校验目标父目录 `mfq/candidates/` 存在且为目录（非普通文件）。若父目录不存在，输出错误信息并提示用户，禁止 Agent 手动 mkdir。
+
+候选汇总文件最低字段要求：
+
+| 文件 | 必须字段 |
+|---|---|
+| `mfq/candidates/factor-candidates.md` | `candidate_id / factor_name / source / decision / decision_basis` |
+| `mfq/candidates/ptm-atomic-candidates.md` | `candidate_id / op_name 或 candidate_op_name / match_attempt / decision / decision_basis` |
+
+`decision` 只允许 `confirmed / rejected / modified` 或明确的中文等价状态；空白、`pending`、`todo`、`TBD` 不得通过 GATE-3。
 
 ### 步骤 5：测试数据归集（Story-04 新增）
 
@@ -574,7 +583,7 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 - 裸端口不是 LC 因子值；发现后应转成 topology gap，而不是放入因子-取值表
 - 覆盖矩阵（`scenario-tsp-coverage.md`）不存在时，步骤 1 报错终止（fail-fast），不静默跳过
 - 候选归集步骤只做归集和去重，不附加"建议确认"、"推荐通过"等自行判定语句；候选状态保留上游标注
-- 候选汇总步骤（步骤 4.5）受 STOP-02 硬停止约束：禁止 Agent 自行判定全部确认或跳过用户确认交互；必须展示汇总表并等待用户选择后执行
+- 候选汇总步骤（步骤 4.5）受 STOP-02 硬停止约束：禁止 Agent 自行判定全部确认或跳过用户确认交互；必须展示汇总表并等待用户选择后执行，且输出文件必须保留 `decision` 结果供 GATE-3 检查
 - 候选汇总确认后写入 `mfq/candidates/` 前必须校验父目录存在且为目录（STOP-04）；禁止 Agent 手动 mkdir
 
 ## 验收标准

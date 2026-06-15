@@ -81,8 +81,9 @@ PMT_TDE_SKILLS = [
     "state-design",
     "coverage-verifier",
     "deliverable-renderer",
-    # Post-delivery skill
+    # Post-delivery skills
     "case-retriever",
+    "tde-feedback",
     # Extension skills
     "change-impact-analyzer",
     "bug-gap-analyzer",
@@ -667,6 +668,26 @@ def upsert_install_record(manifest: dict, record: dict) -> None:
     manifest["installs"] = installs
 
 
+def manifest_entry_key(entry: dict) -> tuple[str, str, str, str]:
+    """Stable identity for replacing repeated installs of the same asset."""
+    return (
+        str(entry.get("kind", "")),
+        str(entry.get("name", "")),
+        str(entry.get("path", "")),
+        str(entry.get("managed_block_id", "")),
+    )
+
+
+def replace_manifest_entries(record: dict, new_entries: list[dict]) -> None:
+    """Replace existing entries touched by this install, preserving unrelated assets."""
+    new_keys = {manifest_entry_key(entry) for entry in new_entries}
+    record["entries"] = [
+        entry for entry in record.get("entries", [])
+        if manifest_entry_key(entry) not in new_keys
+    ]
+    record["entries"].extend(new_entries)
+
+
 def ensure_directory(path: Path) -> None:
     """Ensure directory exists, creating parent directories if needed."""
     path.mkdir(parents=True, exist_ok=True)
@@ -830,6 +851,30 @@ def install_agent(
     )
     if resources:
         print(f"\n安装 {agent_name} 关联的 {len(resources)} 个公共 resources:")
+
+        links_src = source_dir / "resource" / "component-resource-links.yaml"
+        links_dest_root = resource_home()
+        links_dest = links_dest_root / "component-resource-links.yaml"
+        if dry_run:
+            print(f"  [DryRun] 复制 component-resource-links: {links_src} -> {links_dest}")
+        elif links_src.is_file():
+            ensure_directory(links_dest_root)
+            shutil.copy2(links_src, links_dest)
+            print("  ✓ 复制 component-resource-links")
+        if links_src.is_file():
+            links_hash = sha256_file_set(source_dir / "resource", ["component-resource-links.yaml"])
+            entries.append(ManifestEntry(
+                kind="resource",
+                name="component-resource-links",
+                path=str(links_dest_root),
+                remove_path=str(links_dest_root),
+                resource_type="resource-root",
+                source_hash=links_hash,
+                installed_hash=links_hash if dry_run else sha256_file_set(links_dest_root, ["component-resource-links.yaml"]),
+                installed_for=[agent_name],
+                source_files=["component-resource-links.yaml"],
+                resource_files=["component-resource-links.yaml"],
+            ))
 
         # Group resources by type
         by_type: dict[str, list[dict[str, str]]] = {}
@@ -1614,7 +1659,7 @@ def main() -> None:
                     "workspace_root": str(workspace_root),
                     "entries": [],
                 }
-                record["entries"].extend([manifest_entry_to_dict(e) for e in entries])
+                replace_manifest_entries(record, [manifest_entry_to_dict(e) for e in entries])
                 upsert_install_record(manifest, record)
                 save_manifest(manifest_path, manifest)
             return
@@ -1636,7 +1681,7 @@ def main() -> None:
                     "workspace_root": str(workspace_root),
                     "entries": [],
                 }
-                record["entries"].extend([manifest_entry_to_dict(e) for e in entries])
+                replace_manifest_entries(record, [manifest_entry_to_dict(e) for e in entries])
                 upsert_install_record(manifest, record)
                 save_manifest(manifest_path, manifest)
             return

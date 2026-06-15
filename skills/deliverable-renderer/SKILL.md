@@ -132,12 +132,13 @@ status: active
 
 **汇总规则**：
 
-1. 遍历 `ppdcs/pc/*.md`，逐文件提取每个 PC 行（16 列完整行，含三级/四级/五级目录列）
+1. 遍历 `ppdcs/pc/*.md`，优先从 PC 的结构化字段（`physical_case_id / logic_case_id / case_steps / action_source_refs / topology_bindings / fact_status`）装配 PC 行；不得把已有 Markdown 表格行作为唯一事实源直接拼接
 2. 按 `三级目录 → 四级目录 → 五级目录 → 用例编号` 排序
 3. 同一 LC 的 PC 行连续排列，中间不插入分页或重复表头
 4. PC 行中 `fact_status=needs-confirmation` 的，在用例名称末尾追加 ` ⚠️待确认`
 5. `测试步骤*` 列必须由 PC `case_steps` 渲染；每一步同时展示步骤名称和原子操作
-6. 汇总表表头只出现一次，放在全文最前
+6. 所有 Markdown 表格单元格中的 `|` 必须转义为 `\|`；多行内容必须使用 `<br>`，不得在表格行中写裸换行
+7. 汇总表表头只出现一次，放在全文最前；表头必须等于标准 16 列，所有数据行必须恰好 16 列
 
 **PC 步骤渲染规则**：
 
@@ -172,6 +173,7 @@ Markdown 表格单元格中使用 `<br>` 换行：
 - `step_name` 表达测试动作意图，不能只复制 `atomic_op.op_id`；
 - `atomic_op.op_id` 必须进入 `action_source_refs`；
 - 缺 `step_name`、缺 `atomic_op` 或 `atomic_op` 无法回链时，在交付物中显式输出 `pc_step_contract_gap`，不得静默省略；
+- 若存在 `pc_step_contract_gap`，GATE-4 不得通过；必须回到 PC 生成阶段补齐步骤契约或显式变更范围；
 - 最终 16 列表不新增“步骤名称”列，避免破坏既有交付格式。
 
 #### 3b. 各 LC 详情（全文后部）
@@ -332,11 +334,14 @@ Markdown 表格单元格中使用 `<br>` 换行：
 - `fact_status=needs-confirmation` 的 LC / PC 条目必须原样进入交付物
 - `DUT.port1`、`TG.port1` 和 link 实例是 topology materialization，不是 factor materialization
 - `测试步骤*` 必须体现“步骤名称 + 原子操作”双层表达；只保留原子操作会损失人工可读性，只保留自然语言会损失自动化可执行性
+- 不能把 `ppdcs/pc/*.md` 中已有的 Markdown 表格行直接复制到最终汇总表；renderer 必须从结构化 PC 字段重新生成 16 列行，否则未转义的 `|`、缺失空列或新增临时列会导致列错位
+- `case_steps[].atomic_op.op_id` 与 `action_source_refs` 是交付前硬契约；执行层不再负责从自然语言步骤中反向猜测原子操作
 
 ## 验收标准
 
 - [ ] 输出四份交付物：测试方案 + 测试用例 + 原子操作候选对比表 + 测试因子候选对比表
 - [ ] 测试用例文档全文仅一张 16 列 PC 汇总表（来自所有 `ppdcs/pc/*.md` 的 PC 行合并）
+- [ ] 汇总表表头等于标准 16 列，所有数据行恰好 16 列；单元格内 `|` 已转义，多行内容使用 `<br>`
 - [ ] 汇总表覆盖 `ppdcs/pc/` 下所有 PC 文件的全部 PC 行
 - [ ] 汇总表 `测试步骤*` 列由 `case_steps` 渲染，每一步同时包含步骤名称和 `原子操作：<op_id> <args...>`
 - [ ] 各 LC 详情不重复渲染 PC 表（改为 PC 编号引用行）

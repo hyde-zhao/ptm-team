@@ -81,8 +81,9 @@ PMT_TDE_SKILLS = [
     "state-design",
     "coverage-verifier",
     "deliverable-renderer",
-    # Post-delivery skill
+    # Post-delivery skills
     "case-retriever",
+    "tde-feedback",
     # Extension skills
     "change-impact-analyzer",
     "bug-gap-analyzer",

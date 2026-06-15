@@ -25,6 +25,105 @@ from pathlib import Path
 REQ_SUFFIXES = {".md", ".markdown", ".docx", ".xlsx", ".xls", ".pdf", ".txt"}
 TOPO_MARKERS = ("topo", "topology", "组网", "拓扑")
 COUPLING_MARKERS = ("coupling", "matrix", "耦合", "矩阵")
+STANDARD_PC_COLUMNS: tuple[str, ...] = (
+    "三级目录",
+    "四级目录",
+    "五级目录",
+    "用例名称*",
+    "用例编号",
+    "用例级别*",
+    "组网描述*",
+    "组网约束",
+    "预置条件",
+    "测试步骤*",
+    "预期结果*",
+    "首次创建版本*",
+    "最后变更版本",
+    "关键词",
+    "测试类型*",
+    "是否自动化*",
+)
+TEST_STEPS_COLUMN = STANDARD_PC_COLUMNS.index("测试步骤*")
+REF_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.:-]*")
+NORMAL_PATH_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "step_id": ("step_id", "step-id", "步骤编号", "步骤ID", "步骤"),
+    "sub_step_ids": ("sub_step_ids", "sub-step-ids", "子步骤编号", "子步骤"),
+    "operation": ("operation", "操作", "动作"),
+    "necessity": ("necessity", "必要性", "是否必要"),
+    "action_source_refs": (
+        "action_source_refs",
+        "action_source_ref",
+        "atomic_op",
+        "atomic_op.op_id",
+        "op_id",
+        "原子操作",
+    ),
+    "description": ("description", "描述", "说明"),
+}
+NORMAL_PATH_NECESSITY_VALUES = ("必要", "可选", "至少选择一项")
+ABNORMAL_PATH_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "abnormal_item": ("abnormal_item", "abnormal-item", "异常项", "异常操作"),
+    "related_normal_steps": ("related_normal_steps", "related-normal-steps", "关联正常步骤", "关联步骤"),
+    "input_or_state": ("input_or_state", "input-or-state", "异常输入", "输入状态", "输入/状态"),
+    "action_source_refs": (
+        "action_source_refs",
+        "action_source_ref",
+        "atomic_op",
+        "atomic_op.op_id",
+        "op_id",
+        "原子操作",
+    ),
+    "expected_handling": ("expected_handling", "expected-handling", "预期处理", "预期行为"),
+}
+ABNORMAL_PATH_NA_MARKERS = ("N/A", "n/a", "not applicable", "不适用", "无异常路径", "无需异常路径")
+ABNORMAL_PATH_NA_REASON_MARKERS = ("reason", "理由", "原因", "说明", "because", "由于", "因为")
+STEP_ATOMIC_REF_KEYS = ("action_source_ref", "action_source_refs", "atomic_op", "op_id", "原子操作")
+NEW_ATOMIC_CANDIDATE_MARKERS = (
+    "new_atomic",
+    "candidate_atomic",
+    "candidate-ptm-atomic",
+    "candidate_ptm_atomic",
+    "new-candidate",
+    "新增原子操作",
+    "候选原子操作",
+    "Tool Abstraction Draft",
+    "tool_abstraction_draft",
+)
+CANDIDATE_ITEM_MARKERS = (
+    "candidate_id",
+    "candidate:",
+    "new-candidate",
+    "候选ID",
+    "候选因子",
+    "候选原子操作",
+    "候选列表汇总",
+)
+CANDIDATE_CONFIRMATION_MARKERS = (
+    "decision",
+    "confirmed",
+    "rejected",
+    "modified",
+    "用户确认",
+    "确认结果",
+    "已确认",
+    "已拒绝",
+    "已修改",
+    "全部确认",
+    "逐项确认",
+)
+SCENARIO_BLOCK_MARKERS = (
+    "scenario_id",
+    "scenario_goal",
+    "review_status",
+    "normal_path",
+    "abnormal_path",
+    "minimal_logic_chain",
+    "场景编号",
+    "场景目标",
+    "正常路径",
+    "异常路径",
+    "最小逻辑链",
+)
 
 # CP -> Gate routing map (see docs/ptm-tde/gate-spec.md CP/Gate mapping table)
 CP_TO_GATE: dict[str, str] = {
@@ -157,25 +256,24 @@ def resolve_feature_workspace(args: argparse.Namespace) -> tuple[Path, Path]:
     `.input` is the canonical input directory. Its parent is always the
     feature_workspace_root; all runtime output must be written there.
     """
-    requested_root = Path(args.project_root).expanduser().resolve()
+    raw_requested_root = Path(args.project_root).expanduser()
+    requested_root = raw_requested_root.resolve()
     explicit_input = getattr(args, "input_dir", "")
 
     if explicit_input:
-        input_root = Path(explicit_input).expanduser()
-        if not input_root.is_absolute():
-            input_root = requested_root / input_root
-        input_root = input_root.resolve()
-        if input_root.name != ".input":
-            print(f"--input-dir 必须指向 .input 目录: {input_root}", file=sys.stderr)
+        raw_input_root = Path(explicit_input).expanduser()
+        input_root_candidate = raw_input_root if raw_input_root.is_absolute() else requested_root / raw_input_root
+        if input_root_candidate.name != ".input":
+            print(f"--input-dir 必须指向 .input 目录: {input_root_candidate}", file=sys.stderr)
             raise SystemExit(2)
-        return input_root.parent, input_root
+        return input_root_candidate.parent.resolve(), input_root_candidate.resolve()
 
     requirement_input = input_dir_from_requirement(getattr(args, "requirement", ""))
     if requirement_input is not None:
         return requirement_input.parent, requirement_input
 
-    if requested_root.name == ".input":
-        return requested_root.parent, requested_root
+    if raw_requested_root.name == ".input":
+        return raw_requested_root.parent.resolve(), requested_root
 
     direct_input = requested_root / ".input"
     if direct_input.is_dir():
@@ -482,14 +580,27 @@ def write_state(
     process_dir.mkdir(parents=True, exist_ok=True)
     state_path = process_dir / "STATE.yaml"
     resolved_input_root = input_root or project_root / ".input"
-    phase_map = {
+    # Gate checks are machine baselines. Human gates (GATE-2/3/4) must not
+    # advance current_phase just because the auto check passed.
+    phase_after_auto_pass = {
         "GATE-1": "kym",
-        "GATE-2": "mfq",
-        "GATE-3": "ppdcs",
-        "GATE-4": "exit",
+        "GATE-2": "kym",
+        "GATE-3": "mfq",
+        "GATE-4": "ppdcs",
         "GATE-5": "completed",
     }
-    current_phase = phase_map.get(gate, "kym")
+    phase_when_blocked = {
+        "GATE-1": "kym",
+        "GATE-2": "kym",
+        "GATE-3": "mfq",
+        "GATE-4": "ppdcs",
+        "GATE-5": "delivery",
+    }
+    current_phase = (
+        phase_after_auto_pass.get(gate, "kym")
+        if gate_status == "PASS"
+        else phase_when_blocked.get(gate, "kym")
+    )
     content = (
         f'current_phase: "{current_phase}"\n'
         f'current_step: "{current_step}"\n'
@@ -630,28 +741,609 @@ def add_required_fields_check(
     return ok
 
 
-def markdown_table_has_min_columns(text: str, min_columns: int) -> bool:
-    """Return True if any markdown table row has at least min_columns cells."""
-    for line in text.splitlines():
+def contains_any_ci(text: str, markers: tuple[str, ...]) -> bool:
+    folded = text.casefold()
+    return any(marker.casefold() in folded for marker in markers)
+
+
+def missing_logical_fields(text: str, required_fields: dict[str, tuple[str, ...]]) -> list[str]:
+    return [
+        field for field, markers in required_fields.items()
+        if not contains_any_ci(text, markers)
+    ]
+
+
+def extract_confirmed_scenario_blocks(text: str) -> list[tuple[str, str]]:
+    """Split confirmed-scenarios text into scenario-sized blocks.
+
+    The artifact is markdown-first, but generated variants may be YAML-like.
+    Prefer explicit scenario_id lines, then scenario headings, and finally a
+    single document block only when scenario-like fields are present.
+    """
+    id_matches = list(re.finditer(
+        r"(?im)^\s*(?:-\s*)?(?:scenario_id|scenario-id|场景编号)\s*[:：]\s*(.+?)\s*$",
+        text,
+    ))
+    if id_matches:
+        blocks: list[tuple[str, str]] = []
+        for index, match in enumerate(id_matches):
+            end = id_matches[index + 1].start() if index + 1 < len(id_matches) else len(text)
+            label = match.group(1).strip().strip("`'\"") or f"scenario-{index + 1}"
+            blocks.append((label, text[match.start():end]))
+        return blocks
+
+    heading_matches = [
+        match for match in re.finditer(r"(?im)^#{2,6}\s+(.+?)\s*$", text)
+        if re.search(
+            r"(SCN[-_\w]*|Scenario\s*\d+|场景\s*[A-Za-z0-9一二三四五六七八九十]+|\bS\d+\b)",
+            match.group(1),
+            re.I,
+        )
+    ]
+    if heading_matches:
+        blocks = []
+        for index, match in enumerate(heading_matches):
+            end = heading_matches[index + 1].start() if index + 1 < len(heading_matches) else len(text)
+            label = match.group(1).strip() or f"scenario-{index + 1}"
+            blocks.append((label, text[match.start():end]))
+        return blocks
+
+    if contains_any_ci(text, SCENARIO_BLOCK_MARKERS):
+        return [("document", text)]
+    return []
+
+
+def abnormal_path_has_explicit_na_reason(block: str) -> bool:
+    return (
+        contains_any_ci(block, ABNORMAL_PATH_NA_MARKERS)
+        and contains_any_ci(block, ABNORMAL_PATH_NA_REASON_MARKERS)
+    )
+
+
+def extract_yaml_like_section(block: str, key_aliases: tuple[str, ...]) -> str:
+    """Extract a markdown/YAML section body by key alias."""
+    lines = block.splitlines()
+    for index, line in enumerate(lines):
         stripped = line.strip()
-        if not stripped.startswith("|") or not stripped.endswith("|"):
+        if not stripped:
             continue
-        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-        if not cells or all(set(cell) <= {"-", ":"} for cell in cells):
+        is_heading = stripped.startswith("#")
+        matched = False
+        for alias in key_aliases:
+            alias_re = re.escape(alias)
+            if re.match(rf"(?i)^\s*{alias_re}\s*[:：]\s*(.*)$", line):
+                matched = True
+                break
+            if is_heading and alias.casefold() in stripped.casefold():
+                matched = True
+                break
+        if not matched:
             continue
-        if len(cells) >= min_columns:
-            return True
-    return False
+
+        base_indent = len(line) - len(line.lstrip())
+        section_lines = [line]
+        for current in lines[index + 1:]:
+            current_stripped = current.strip()
+            if not current_stripped:
+                section_lines.append(current)
+                continue
+            current_indent = len(current) - len(current.lstrip())
+            if current_stripped.startswith("#") and is_heading:
+                break
+            if (
+                current_indent <= base_indent
+                and re.match(r"[\w.-]+\s*[:：]\s*", current_stripped)
+                and not current_stripped.startswith("-")
+            ):
+                break
+            section_lines.append(current)
+        return "\n".join(section_lines)
+    return ""
 
 
-def add_table_columns_check(
+def split_yaml_list_items(section: str) -> list[str]:
+    """Split a YAML-like list section into list item blocks."""
+    lines = section.splitlines()
+    item_starts = [
+        index for index, line in enumerate(lines)
+        if re.match(r"^\s*-\s+\S", line)
+    ]
+    if not item_starts:
+        return []
+
+    items: list[str] = []
+    for position, start in enumerate(item_starts):
+        end = item_starts[position + 1] if position + 1 < len(item_starts) else len(lines)
+        items.append("\n".join(lines[start:end]))
+    return items
+
+
+def extract_step_atomic_refs(item: str) -> set[str]:
+    refs: set[str] = set()
+    for key in ("action_source_ref", "action_source_refs", "op_id", "atomic_op"):
+        refs.update(extract_key_values(item, key))
+    return {
+        ref for ref in refs
+        if ref not in {"action_source_ref", "action_source_refs", "op_id", "atomic_op"}
+    }
+
+
+def extract_explicit_key_values(text: str, key: str) -> set[str]:
+    """Extract values from explicit YAML-like key lines or two-column field tables."""
+    values: set[str] = set()
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("|"):
+            continue
+        if not re.search(rf"\b{re.escape(key)}\b\s*[:：]", stripped):
+            continue
+        base_indent = len(line) - len(line.lstrip())
+        after_key = stripped.split(":", 1)[1] if ":" in stripped else stripped.split("：", 1)[1]
+        values.update(REF_TOKEN_RE.findall(after_key))
+
+        cursor = index + 1
+        while cursor < len(lines):
+            current = lines[cursor]
+            current_stripped = current.strip()
+            if not current_stripped:
+                cursor += 1
+                continue
+            if current_stripped.startswith("|"):
+                break
+            indent = len(current) - len(current.lstrip())
+            if indent <= base_indent and re.match(r"[A-Za-z_][\w-]*\s*[:：]", current_stripped):
+                break
+            if current_stripped.startswith("-") or indent > base_indent:
+                values.update(REF_TOKEN_RE.findall(current_stripped))
+                cursor += 1
+                continue
+            break
+    return {
+        value for value in values
+        if value not in {"action_source_refs", "action_source_ref", "op_id", "atomic_op"}
+    }
+
+
+def extract_explicit_field_table_values(text: str, key: str) -> set[str]:
+    values: set[str] = set()
+    for _line_no, header, rows in iter_markdown_tables(text):
+        normalized_header = [normalize_table_cell(cell) for cell in header]
+        if len(normalized_header) < 2:
+            continue
+        if normalized_header[0] not in {"字段", "field", "key"}:
+            continue
+        if normalized_header[1] not in {"值", "value"}:
+            continue
+        for _row_no, cells in rows:
+            if len(cells) < 2:
+                continue
+            if normalize_table_cell(cells[0]).casefold() == key.casefold():
+                values.update(extract_atomic_refs_from_cell(cells[1]))
+    return values
+
+
+def extract_explicit_scenario_refs(text: str) -> set[str]:
+    refs = extract_explicit_key_values(text, "action_source_refs")
+    refs.update(extract_explicit_key_values(text, "action_source_ref"))
+    refs.update(extract_explicit_field_table_values(text, "action_source_refs"))
+    refs.update(extract_explicit_field_table_values(text, "action_source_ref"))
+    return refs
+
+
+def extract_atomic_refs_from_cell(cell: str) -> set[str]:
+    normalized = re.sub(r"<br\s*/?>", " ", cell, flags=re.I)
+    refs = {
+        token.strip("`\"'")
+        for token in REF_TOKEN_RE.findall(normalized)
+        if token not in {
+            "action_source_refs",
+            "action_source_ref",
+            "atomic_op",
+            "op_id",
+            "source_type",
+        }
+    }
+    return refs
+
+
+def validate_markdown_path_table_refs(
+    scenario_label: str,
+    path_name: str,
+    section: str,
+    scenario_action_refs: set[str],
+) -> list[str] | None:
+    tables = iter_markdown_tables(section)
+    path_tables: list[tuple[list[str], list[tuple[int, list[str]]], int]] = []
+    for _line_no, header, rows in tables:
+        normalized_header = [normalize_table_cell(cell).casefold() for cell in header]
+        action_indexes = [
+            index for index, cell in enumerate(normalized_header)
+            if (
+                "action_source" in cell
+                or "atomic_op" in cell
+                or "op_id" in cell
+                or "原子操作" in cell
+            )
+        ]
+        if action_indexes:
+            path_tables.append((header, rows, action_indexes[0]))
+
+    if not path_tables:
+        return None
+
+    errors: list[str] = []
+    for header, rows, action_index in path_tables:
+        normalized_header = [normalize_table_cell(cell) for cell in header]
+        label_index = 0
+        for candidate in ("step_id", "步骤", "abnormal_item", "异常项", "#"):
+            if candidate in normalized_header:
+                label_index = normalized_header.index(candidate)
+                break
+        if not rows:
+            errors.append(f"{scenario_label}: {path_name} Markdown 表格无数据行")
+            continue
+        for _line_no, cells in rows:
+            label = cells[label_index].strip() if label_index < len(cells) else "item"
+            action_cell = cells[action_index] if action_index < len(cells) else ""
+            refs = extract_atomic_refs_from_cell(action_cell)
+            if not refs:
+                errors.append(f"{scenario_label}: {path_name}.{label} 缺少原子操作引用")
+            elif scenario_action_refs:
+                missing = sorted(ref for ref in refs if ref not in scenario_action_refs)
+                if missing:
+                    errors.append(
+                        f"{scenario_label}: {path_name}.{label} 原子操作未回链 action_source_refs: "
+                        + ", ".join(missing)
+                    )
+    return errors
+
+
+def validate_path_step_atomic_refs(
+    scenario_label: str,
+    path_name: str,
+    section: str,
+    scenario_action_refs: set[str],
+) -> list[str]:
+    errors: list[str] = []
+    if not section:
+        return errors
+
+    markdown_errors = validate_markdown_path_table_refs(
+        scenario_label,
+        path_name,
+        section,
+        scenario_action_refs,
+    )
+    if markdown_errors is not None:
+        return markdown_errors
+
+    items = split_yaml_list_items(section)
+    if not items:
+        refs = extract_step_atomic_refs(section)
+        if not refs:
+            errors.append(f"{scenario_label}: {path_name} 未发现步骤级原子操作引用")
+        return errors
+
+    for index, item in enumerate(items, start=1):
+        label = "item"
+        step_id_match = re.search(r"\b(?:step_id|abnormal_item)\s*[:：]\s*([^\s,\]]+)", item)
+        if step_id_match:
+            label = step_id_match.group(1).strip("`'\"")
+        refs = extract_step_atomic_refs(item)
+        if not refs:
+            errors.append(f"{scenario_label}: {path_name}.{label} 缺少原子操作引用")
+        elif scenario_action_refs:
+            missing = sorted(ref for ref in refs if ref not in scenario_action_refs)
+            if missing:
+                errors.append(
+                    f"{scenario_label}: {path_name}.{label} 原子操作未回链 action_source_refs: "
+                    + ", ".join(missing)
+                )
+    return errors
+
+
+def validate_confirmed_scenarios_contract(text: str) -> list[str]:
+    """Validate the per-scenario scenario-chain contract for GATE-2."""
+    blocks = extract_confirmed_scenario_blocks(text)
+    if not blocks:
+        return ["未发现可解析的场景块: 缺少 scenario_id/场景编号 或场景标题"]
+
+    errors: list[str] = []
+    for index, (label, block) in enumerate(blocks, start=1):
+        scenario_label = label or f"scenario-{index}"
+        scenario_action_refs = extract_explicit_scenario_refs(block)
+        if not contains_any_ci(block, ("normal_path", "正常路径")):
+            errors.append(f"{scenario_label}: 缺少 normal_path/正常路径")
+        else:
+            normal_section = extract_yaml_like_section(block, ("normal_path", "正常路径"))
+            missing_normal = missing_logical_fields(normal_section, NORMAL_PATH_REQUIRED_FIELDS)
+            if missing_normal:
+                errors.append(
+                    f"{scenario_label}: normal_path 缺少字段 {', '.join(missing_normal)}"
+                )
+            if not contains_any(block, NORMAL_PATH_NECESSITY_VALUES):
+                errors.append(
+                    f"{scenario_label}: normal_path.necessity 缺少合法取值 "
+                    "必要/可选/至少选择一项"
+                )
+            errors.extend(validate_path_step_atomic_refs(
+                scenario_label,
+                "normal_path",
+                normal_section,
+                scenario_action_refs,
+            ))
+
+        if not contains_any_ci(block, ("abnormal_path", "异常路径")):
+            errors.append(f"{scenario_label}: 缺少 abnormal_path/异常路径")
+        elif not abnormal_path_has_explicit_na_reason(block):
+            abnormal_section = extract_yaml_like_section(block, ("abnormal_path", "异常路径"))
+            missing_abnormal = missing_logical_fields(abnormal_section, ABNORMAL_PATH_REQUIRED_FIELDS)
+            if missing_abnormal:
+                errors.append(
+                    f"{scenario_label}: abnormal_path 缺少字段 {', '.join(missing_abnormal)}"
+                )
+            errors.extend(validate_path_step_atomic_refs(
+                scenario_label,
+                "abnormal_path",
+                abnormal_section,
+                scenario_action_refs,
+            ))
+
+        if not contains_any_ci(block, ("minimal_logic_chain", "最小逻辑链")):
+            errors.append(f"{scenario_label}: 缺少 minimal_logic_chain/最小逻辑链")
+        if not contains_any_ci(block, ("atomic_operations", "ptm-atomic", "op_id", "原子操作")):
+            errors.append(f"{scenario_label}: 缺少 atomic_operations/op_id")
+        if not scenario_action_refs:
+            errors.append(f"{scenario_label}: 缺少场景级 action_source_refs")
+    return errors
+
+
+def add_confirmed_scenarios_contract_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    path: Path | None,
+    status_if_missing: str = "BLOCKING",
+) -> bool:
+    if path is None or not nonempty_file(path):
+        checks.append((
+            len(checks) + 1,
+            label,
+            status_if_missing,
+            "缺失或为空",
+        ))
+        return False
+
+    errors = validate_confirmed_scenarios_contract(read_text(path))
+    ok = not errors
+    checks.append((
+        len(checks) + 1,
+        label,
+        "PASS" if ok else status_if_missing,
+        str(path) if ok else "；".join(errors[:6]),
+    ))
+    return ok
+
+
+def collect_marker_lines(path: Path | None, markers: tuple[str, ...], limit: int = 12) -> list[str]:
+    if path is None or not nonempty_file(path):
+        return []
+    hits: list[str] = []
+    for line in read_text(path).splitlines():
+        if contains_any_ci(line, markers):
+            stripped = line.strip()
+            if stripped:
+                hits.append(stripped)
+        if len(hits) >= limit:
+            break
+    return hits
+
+
+def render_new_atomic_confirmation_section(path: Path | None) -> tuple[str, list[tuple[int, str]]]:
+    hits = collect_marker_lines(path, NEW_ATOMIC_CANDIDATE_MARKERS)
+    if not hits:
+        return "", []
+
+    rows = "\n".join(
+        f"| {idx} | `{path}` | `{line}` | 需用户确认是否新增 / 合并 / 拒绝 |"
+        for idx, line in enumerate(hits, start=1)
+    )
+    section = (
+        "## GATE-2 新增原子操作候选确认\n\n"
+        "检测到场景阶段提出新增或候选原子操作。发起 GATE-2 人工确认时必须显式展示，"
+        "用户需确认每项是新增、改为复用已有 ptm-atomic、转 Tool Draft，还是拒绝。\n\n"
+        "| # | 来源 | 候选线索 | 人工处理要求 |\n"
+        "|---|---|---|---|\n"
+        f"{rows}\n\n"
+    )
+    manual_items = [
+        (
+            2,
+            f"新增/候选原子操作需显式确认（共发现 {len(hits)} 条线索，来源 `{path}`）：逐项确认新增、复用、转 Tool Draft 或拒绝",
+        )
+    ]
+    return section, manual_items
+
+
+def candidate_source_has_items(path: Path | None) -> bool:
+    if path is None or not nonempty_file(path):
+        return False
+    text = read_text(path)
+    stripped = re.sub(r"\s+", "", text)
+    if not stripped or stripped in {"[]", "{}", "null", "None"}:
+        return False
+    return contains_any_ci(text, CANDIDATE_ITEM_MARKERS)
+
+
+def candidate_confirmation_is_recorded(path: Path | None) -> bool:
+    if path is None or not nonempty_file(path):
+        return False
+    text = read_text(path)
+    return contains_any_ci(text, CANDIDATE_CONFIRMATION_MARKERS)
+
+
+def add_candidate_confirmation_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    candidate_sources: list[Path | None],
+    summary_candidates: list[Path | None],
+    status_if_missing: str = "BLOCKING",
+) -> bool:
+    active_sources = [path for path in candidate_sources if candidate_source_has_items(path)]
+    summaries = [path for path in summary_candidates if path is not None and nonempty_file(path)]
+    if not active_sources:
+        checks.append((
+            len(checks) + 1,
+            label,
+            "PASS",
+            "未发现候选来源；人工 Gate 可确认 N/A",
+        ))
+        return True
+
+    confirmed_summaries = [path for path in summaries if candidate_confirmation_is_recorded(path)]
+    ok = bool(confirmed_summaries)
+    checks.append((
+        len(checks) + 1,
+        label,
+        "PASS" if ok else status_if_missing,
+        (
+            "候选来源: " + ", ".join(str(path) for path in active_sources)
+            + "；确认汇总: " + ", ".join(str(path) for path in confirmed_summaries)
+        ) if ok else (
+            "发现候选来源但缺少带 decision/确认结果的候选汇总: "
+            + ", ".join(str(path) for path in active_sources)
+        ),
+    ))
+    return ok
+
+
+def render_candidate_confirmation_section(
+    title: str,
+    candidate_sources: list[Path | None],
+    summary_candidates: list[Path | None],
+) -> str:
+    active_sources = [path for path in candidate_sources if candidate_source_has_items(path)]
+    summaries = [path for path in summary_candidates if path is not None and nonempty_file(path)]
+    if not active_sources and not summaries:
+        return ""
+    rows = []
+    for path in active_sources:
+        rows.append(f"| candidate-source | `{path}` | 需在候选汇总中逐项给出 decision |")
+    for path in summaries:
+        status = "已记录确认结果" if candidate_confirmation_is_recorded(path) else "缺少 decision/确认结果"
+        rows.append(f"| confirmation-summary | `{path}` | {status} |")
+    return (
+        f"## {title}\n\n"
+        "| 类型 | 路径 | 状态 |\n"
+        "|---|---|---|\n"
+        + "\n".join(rows)
+        + "\n\n"
+    )
+
+
+def split_markdown_row(line: str) -> list[str]:
+    """Split a Markdown table row on unescaped pipes."""
+    stripped = line.strip()
+    if not stripped.startswith("|") or not stripped.endswith("|"):
+        return []
+
+    body = stripped[1:-1]
+    cells: list[str] = []
+    current: list[str] = []
+    escaped = False
+    for char in body:
+        if char == "|" and not escaped:
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+        escaped = char == "\\" and not escaped
+        if char != "\\":
+            escaped = False
+    cells.append("".join(current).strip())
+    return cells
+
+
+def is_separator_cells(cells: list[str]) -> bool:
+    return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells)
+
+
+def normalize_table_cell(cell: str) -> str:
+    return re.sub(r"\s+", "", cell.strip().strip("`"))
+
+
+def is_standard_pc_header(cells: list[str]) -> bool:
+    return tuple(normalize_table_cell(cell) for cell in cells) == STANDARD_PC_COLUMNS
+
+
+def iter_markdown_tables(text: str) -> list[tuple[int, list[str], list[tuple[int, list[str]]]]]:
+    """Return Markdown tables as (header line no, header cells, data rows)."""
+    lines = text.splitlines()
+    tables: list[tuple[int, list[str], list[tuple[int, list[str]]]]] = []
+    index = 0
+    while index < len(lines) - 1:
+        header = split_markdown_row(lines[index])
+        separator = split_markdown_row(lines[index + 1])
+        if header and len(header) == len(separator) and is_separator_cells(separator):
+            rows: list[tuple[int, list[str]]] = []
+            cursor = index + 2
+            while cursor < len(lines):
+                cells = split_markdown_row(lines[cursor])
+                if not cells:
+                    break
+                if not is_separator_cells(cells):
+                    rows.append((cursor + 1, cells))
+                cursor += 1
+            tables.append((index + 1, header, rows))
+            index = cursor
+        else:
+            index += 1
+    return tables
+
+
+def validate_standard_pc_tables(
+    text: str,
+    *,
+    require_step_atomic: bool,
+    require_single_table: bool = False,
+) -> list[str]:
+    """Validate exact 16-column PC tables and optional step atomic-op rendering."""
+    standard_tables = [
+        table for table in iter_markdown_tables(text)
+        if is_standard_pc_header(table[1])
+    ]
+    errors: list[str] = []
+    if not standard_tables:
+        return ["未发现标准 16 列 PC 表头"]
+    if require_single_table and len(standard_tables) != 1:
+        errors.append(f"标准 PC 汇总表数量应为 1，实际为 {len(standard_tables)}")
+
+    for header_line, _header, rows in standard_tables:
+        if not rows:
+            errors.append(f"第 {header_line} 行标准 PC 表没有数据行")
+            continue
+        for line_no, cells in rows:
+            if len(cells) != len(STANDARD_PC_COLUMNS):
+                errors.append(
+                    f"第 {line_no} 行列数为 {len(cells)}，应为 {len(STANDARD_PC_COLUMNS)}"
+                )
+                continue
+            steps = cells[TEST_STEPS_COLUMN]
+            if require_step_atomic and "原子操作：" not in steps and "原子操作:" not in steps:
+                errors.append(f"第 {line_no} 行测试步骤缺少 原子操作：<op_id>")
+    return errors
+
+
+def add_pc_table_contract_check(
     checks: list[tuple[int, str, str, str]],
     label: str,
     files: list[Path],
-    min_columns: int,
+    *,
+    require_step_atomic: bool,
+    require_single_table: bool = False,
     status_if_missing: str = "BLOCKING",
 ) -> bool:
-    """Check that at least one artifact contains a Markdown table with enough columns."""
+    """Check every artifact for exact PC table shape and step rendering."""
     if not files:
         checks.append((
             len(checks) + 1,
@@ -660,13 +1352,117 @@ def add_table_columns_check(
             "无可检查文件",
         ))
         return False
-    passed = [path for path in files if markdown_table_has_min_columns(read_text(path), min_columns)]
-    ok = bool(passed)
+    failures: list[str] = []
+    for path in files:
+        errors = validate_standard_pc_tables(
+            read_text(path),
+            require_step_atomic=require_step_atomic,
+            require_single_table=require_single_table,
+        )
+        if errors:
+            failures.append(f"{path}: {'; '.join(errors[:3])}")
+    ok = not failures
     checks.append((
         len(checks) + 1,
         label,
         "PASS" if ok else status_if_missing,
-        ", ".join(str(path) for path in passed[:5]) if ok else f"未发现 >= {min_columns} 列 Markdown 表格",
+        f"已检查 {len(files)} 个文件" if ok else "；".join(failures[:5]),
+    ))
+    return ok
+
+
+def extract_key_values(text: str, key: str) -> set[str]:
+    """Extract simple YAML/Markdown scalar or list values following a key."""
+    values: set[str] = set()
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if not re.search(rf"\b{re.escape(key)}\b", line):
+            continue
+
+        base_indent = len(line) - len(line.lstrip())
+        after_key = line.split(key, 1)[1]
+        if ":" in after_key:
+            after_key = after_key.split(":", 1)[1]
+        values.update(REF_TOKEN_RE.findall(after_key))
+
+        cursor = index + 1
+        while cursor < len(lines):
+            current = lines[cursor]
+            stripped = current.strip()
+            if not stripped:
+                cursor += 1
+                continue
+            indent = len(current) - len(current.lstrip())
+            if indent <= base_indent and re.match(r"[A-Za-z_][\w-]*\s*:", stripped):
+                break
+            if stripped.startswith("-") or indent > base_indent:
+                values.update(REF_TOKEN_RE.findall(stripped))
+                cursor += 1
+                continue
+            break
+    return values
+
+
+def extract_op_ids(text: str) -> list[str]:
+    return [
+        match.group(1).strip("`\"'")
+        for match in re.finditer(r"\bop_id\s*:\s*[`\"']?([A-Za-z][A-Za-z0-9_.:-]*)", text)
+    ]
+
+
+def validate_pc_step_contract(text: str) -> list[str]:
+    errors: list[str] = []
+    if "case_steps" not in text:
+        errors.append("缺少 case_steps 结构化步骤清单")
+    step_names = re.findall(r"\bstep_name\s*:", text)
+    if not step_names:
+        errors.append("缺少 case_steps[].step_name")
+    if "atomic_op" not in text:
+        errors.append("缺少 case_steps[].atomic_op")
+
+    op_ids = extract_op_ids(text)
+    if not op_ids:
+        errors.append("缺少 case_steps[].atomic_op.op_id")
+    elif step_names and len(step_names) != len(op_ids):
+        errors.append(f"step_name 数量({len(step_names)})与 op_id 数量({len(op_ids)})不一致")
+
+    action_refs = extract_key_values(text, "action_source_refs")
+    if not action_refs:
+        errors.append("缺少 action_source_refs")
+    else:
+        missing_refs = [op_id for op_id in op_ids if op_id not in action_refs]
+        if missing_refs:
+            errors.append(
+                "atomic_op.op_id 未回链 action_source_refs: " + ", ".join(sorted(set(missing_refs)))
+            )
+    return errors
+
+
+def add_pc_step_contract_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    files: list[Path],
+    status_if_missing: str = "BLOCKING",
+) -> bool:
+    if not files:
+        checks.append((
+            len(checks) + 1,
+            label,
+            status_if_missing,
+            "无可检查文件",
+        ))
+        return False
+    failures: list[str] = []
+    for path in files:
+        errors = validate_pc_step_contract(read_text(path))
+        if errors:
+            failures.append(f"{path}: {'; '.join(errors[:4])}")
+    ok = not failures
+    checks.append((
+        len(checks) + 1,
+        label,
+        "PASS" if ok else status_if_missing,
+        f"已检查 {len(files)} 个文件" if ok else "；".join(failures[:5]),
     ))
     return ok
 
@@ -1096,6 +1892,11 @@ def run_gate_2(args: argparse.Namespace) -> int:
                 "minimal_logic_chain": ("minimal_logic_chain", "最小逻辑链"),
             },
         )
+        add_confirmed_scenarios_contract_check(
+            checks,
+            "GATE-2 字段级: confirmed-scenarios 正常/异常链完整",
+            scenarios_md,
+        )
         add_marker_check(
             checks,
             "Topology Catalog",
@@ -1142,15 +1943,20 @@ def run_gate_2(args: argparse.Namespace) -> int:
         "未发现待澄清问题记录；若确无缺口可人工确认 N/A" if n1_ok else "N1 未通过，跳过",
     ))
 
+    extra_sections = ""
     manual_items = [
-        (1, "KYM 场景、目录结构、Topology、Operation Path 和使命声明仍需人工确认"),
+        (1, "KYM 场景、目录结构、Topology、Operation Path（含正常/异常链逐步骤原子操作）和使命声明仍需人工确认"),
     ]
+    new_atomic_section, new_atomic_manual_items = render_new_atomic_confirmation_section(scenarios_md)
+    extra_sections += new_atomic_section
+    manual_items.extend(new_atomic_manual_items)
 
     overall = "PASS" if all(status not in ("BLOCKING", "MISSING") for _, _, status, _ in checks) else "BLOCKED"
     # GATE-2 is auto + manual: output -auto.md first
     result_path = write_skeleton_result(
         checkpoints_dir, "GATE-2", overall, feature_name, checks,
         pending_items=manual_items, suffix="auto",
+        extra_sections=extra_sections,
     )
     write_state(project_root, feature_name, "GATE-2", overall, current_step="scenario-discovery", input_root=input_root)
     print(result_path)
@@ -1193,7 +1999,16 @@ def run_gate_3(args: argparse.Namespace) -> int:
     design_reasoning = first_existing(project_root, ["process/plan/design-planner-reasoning.md"])
     factor_lock = first_existing(project_root, ["mfq/factor-usage/factor-library-lock.yaml"])
     factor_report = first_existing(project_root, ["mfq/m-analysis/factor-resolution-report.md"])
+    factor_candidates = first_existing(project_root, ["mfq/m-analysis/candidate-factor-proposals.yaml"])
     atomic_candidates = first_existing(project_root, ["mfq/m-analysis/candidate-ptm-atomic.yaml"])
+    factor_candidate_summary = first_existing(project_root, [
+        "mfq/candidates/factor-candidates.md",
+        "mfq/candidates/test-factor-candidates.md",
+    ])
+    atomic_candidate_summary = first_existing(project_root, [
+        "mfq/candidates/ptm-atomic-candidates.md",
+        "mfq/candidates/atomic-op-candidates.md",
+    ])
 
     add_file_check(checks, "M1: M 分析输出完整", m_test_points)
     add_file_check(checks, "M2: F 分析输出完整", f_test_points)
@@ -1206,6 +2021,18 @@ def run_gate_3(args: argparse.Namespace) -> int:
     add_file_check(checks, "M7: 公共因子库 lock 有效", factor_lock)
     add_file_check(checks, "M8: 因子库扫描报告存在", factor_report)
     add_file_check(checks, "M9: 原子操作候选匹配存在", atomic_candidates, status_if_missing="WARN")
+    add_candidate_confirmation_check(
+        checks,
+        "M10: 候选测试因子显式确认状态",
+        [factor_candidates, f_test_points, q_test_points],
+        [factor_candidate_summary],
+    )
+    add_candidate_confirmation_check(
+        checks,
+        "M11: 候选原子操作显式确认状态",
+        [atomic_candidates],
+        [atomic_candidate_summary],
+    )
 
     add_required_fields_check(
         checks,
@@ -1223,9 +2050,9 @@ def run_gate_3(args: argparse.Namespace) -> int:
         "M2: F 分析 CAE/耦合字段完整",
         f_test_points,
         {
-            "C": ("C（Condition）", "Condition", "| C |", "前置"),
-            "A": ("A（Action）", "Action", "| A |", "动作"),
-            "E": ("E（Effect）", "Effect", "| E |", "预期"),
+            "C": ("C（Condition）", "Condition", "| C |", "C 条件", "前置"),
+            "A": ("A（Action）", "Action", "| A |", "A 动作", "动作"),
+            "E": ("E（Effect）", "Effect", "| E |", "E 预期", "预期"),
             "coupling": ("coupling", "耦合", "coupling_refs"),
         },
     )
@@ -1234,9 +2061,9 @@ def run_gate_3(args: argparse.Namespace) -> int:
         "M3: Q 分析 CAE/质量字段完整",
         q_test_points,
         {
-            "C": ("C（Condition）", "Condition", "| C |", "前置"),
-            "A": ("A（Action）", "Action", "| A |", "动作"),
-            "E": ("E（Effect）", "Effect", "| E |", "预期"),
+            "C": ("C（Condition）", "Condition", "| C |", "C 条件", "前置"),
+            "A": ("A（Action）", "Action", "| A |", "A 动作", "动作"),
+            "E": ("E（Effect）", "Effect", "| E |", "E 预期", "预期"),
             "quality": ("quality_dimension", "质量", "HTSM"),
         },
     )
@@ -1282,16 +2109,29 @@ def run_gate_3(args: argparse.Namespace) -> int:
         "| W1 | KYM 场景下游可消费 | WARNING | 机器基线仅验证 MFQ 产物存在和关键字段，语义消费质量需人工确认 |\n"
         "| W2 | PPDCS 可消费 plan | WARNING | 设计计划语义正确性需在 GATE-3 人工确认和 GATE-4 二次检查中确认 |\n"
     )
+    candidate_confirmation_sections = (
+        render_candidate_confirmation_section(
+            "GATE-3 候选测试因子确认摘要",
+            [factor_candidates, f_test_points, q_test_points],
+            [factor_candidate_summary],
+        )
+        + render_candidate_confirmation_section(
+            "GATE-3 候选原子操作确认摘要",
+            [atomic_candidates],
+            [atomic_candidate_summary],
+        )
+    )
 
     manual_items = [
         (1, "M/F/Q 分析质量、LC 整合一致性、设计计划和公共因子消费仍需人工确认"),
+        (2, "候选测试因子和候选原子操作必须显式展示并由用户确认；存在候选时不得由 Agent 自行判定全部确认或跳过"),
     ]
 
     overall = "PASS" if all(status not in ("BLOCKING", "MISSING") for _, _, status, _ in checks) else "BLOCKED"
     result_path = write_skeleton_result(
         checkpoints_dir, "GATE-3", overall, feature_name, checks,
         pending_items=manual_items, suffix="auto",
-        extra_sections=warnings,
+        extra_sections=warnings + candidate_confirmation_sections,
     )
     write_state(project_root, feature_name, "GATE-3", overall, current_step="test-point-integrator", input_root=input_root)
     print(result_path)
@@ -1344,7 +2184,17 @@ def run_gate_4(args: argparse.Namespace) -> int:
     add_file_check(checks, "P4: 测试点覆盖报告存在", test_point_coverage, status_if_missing="WARN")
     if pc_files:
         combined_pc = "\n".join(read_text(path) for path in pc_files)
-        add_table_columns_check(checks, "P2: PC 16 列格式检查", pc_files, 16)
+        add_pc_table_contract_check(
+            checks,
+            "P2: PC 16 列严格格式检查",
+            pc_files,
+            require_step_atomic=True,
+        )
+        add_pc_step_contract_check(
+            checks,
+            "P2: PC case_steps 原子操作回链检查",
+            pc_files,
+        )
         checks.append((
             len(checks) + 1, "P3: PC 拓扑绑定字段保留",
             "PASS" if contains_any(combined_pc, ("topology_bindings", "topology_role", "组网", "拓扑")) else "WARN",
@@ -1362,10 +2212,21 @@ def run_gate_4(args: argparse.Namespace) -> int:
     ))
     if delivery_files:
         combined_delivery = "\n".join(read_text(path) for path in delivery_files)
+        case_delivery_files = [
+            path for path in delivery_files
+            if "测试用例" in path.name or "case" in path.name.lower()
+        ]
+        add_pc_table_contract_check(
+            checks,
+            "P6: 交付测试用例 16 列汇总表检查",
+            case_delivery_files,
+            require_step_atomic=True,
+            require_single_table=True,
+        )
         checks.append((
             len(checks) + 1, "P6/P7: 交付 trace 字段完整",
-            "PASS" if contains_all(combined_delivery, ("logic_case_id", "physical_case_id")) and contains_any(combined_delivery, ("trace_refs", "scenario_refs", "topology_bindings", "fact_status")) else "BLOCKING",
-            "交付物包含 logic/physical case 与 trace 字段" if contains_all(combined_delivery, ("logic_case_id", "physical_case_id")) and contains_any(combined_delivery, ("trace_refs", "scenario_refs", "topology_bindings", "fact_status")) else "交付物缺少 logic_case_id/physical_case_id/trace 字段",
+            "PASS" if contains_all(combined_delivery, ("logic_case_id", "physical_case_id", "case_steps", "action_source_refs")) and contains_any(combined_delivery, ("trace_refs", "scenario_refs", "topology_bindings", "fact_status")) else "BLOCKING",
+            "交付物包含 logic/physical case、case_steps、action_source_refs 与 trace 字段" if contains_all(combined_delivery, ("logic_case_id", "physical_case_id", "case_steps", "action_source_refs")) and contains_any(combined_delivery, ("trace_refs", "scenario_refs", "topology_bindings", "fact_status")) else "交付物缺少 logic_case_id/physical_case_id/case_steps/action_source_refs/trace 字段",
         ))
     add_skill_evidence_check(
         checks,
@@ -1462,7 +2323,7 @@ def run_gate_5(args: argparse.Namespace) -> int:
         checkpoints_dir, "GATE-5", overall, feature_name, checks,
         pending_items=manual_items,
     )
-    write_state(project_root, feature_name, "GATE-5", overall, current_step="delivery", input_root=input_root)
+    write_state(project_root, feature_name, "GATE-5", overall, current_step="completed", input_root=input_root)
     print(result_path)
     return 0 if overall == "PASS" else 2
 

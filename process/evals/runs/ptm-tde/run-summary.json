@@ -1,0 +1,565 @@
+{
+  "run_id": "eval-20260615T093826Z",
+  "created_at": "2026-06-15T09:38:26+00:00",
+  "eval_path": "evals/WORKFLOW-EVAL.yaml",
+  "suite_id": "ptm-tde-suite",
+  "status": "PASS",
+  "issues": [],
+  "grader_results": [
+    {
+      "id": "eval-config-non-empty",
+      "type": "eval_config_non_empty",
+      "status": "PASS",
+      "evidence": [
+        "28 grader configuration block(s) have required non-empty parameters"
+      ]
+    },
+    {
+      "id": "manifest-bundle-consistency",
+      "type": "manifest_bundle_consistency",
+      "status": "PASS",
+      "evidence": [
+        "28 bundle component path(s) are declared in workflow manifest"
+      ]
+    },
+    {
+      "id": "agent-required-fields",
+      "type": "required_fields",
+      "status": "PASS",
+      "evidence": [
+        "../agents/ptm-tde.md contains required fields: color, description, name, tools"
+      ]
+    },
+    {
+      "id": "skill-required-fields",
+      "type": "required_fields",
+      "status": "PASS",
+      "evidence": [
+        "../skills/auto-factory-env/SKILL.md contains required fields: description, name",
+        "../skills/bug-gap-analyzer/SKILL.md contains required fields: description, name",
+        "../skills/case-retriever/SKILL.md contains required fields: description, name",
+        "../skills/change-impact-analyzer/SKILL.md contains required fields: description, name",
+        "../skills/checkpoint-manager/SKILL.md contains required fields: description, name",
+        "... and 20 more files OK"
+      ]
+    },
+    {
+      "id": "prompt-bundle-required-fields",
+      "type": "required_fields",
+      "status": "PASS",
+      "evidence": [
+        "PROMPT-BUNDLE.yaml contains required fields: bundle_id, compatibility, components, rollback, schema_version, version"
+      ]
+    },
+    {
+      "id": "artifact-paths-exist",
+      "type": "path_exists",
+      "status": "PASS",
+      "evidence": [
+        "all paths exist: ../agents/ptm-tde.md, ../CLAUDE.md, ../AGENTS.md, ../.ptm-field-feedback.yaml, ../script/field_feedback.py, ../script/install.py, ../script/ptm_team/install.py, ../resource/factor-libraries/, ../resource/coupling-matrix/, ../skills/feature-parser/SKILL.md, ../skills/kym/SKILL.md, ../skills/scenario-discovery/SKILL.md, ../skills/m-analyzer/SKILL.md, ../skills/f-analyzer/SKILL.md, ../skills/q-analyzer/SKILL.md, ../skills/test-point-integrator/SKILL.md, ../skills/design-planner/SKILL.md, ../skills/design-ppdcs-analyzer/SKILL.md, ../skills/process-design/SKILL.md, ../skills/parameter-design/SKILL.md, ../skills/data-design/SKILL.md, ../skills/combination-design/SKILL.md, ../skills/state-design/SKILL.md, ../skills/coverage-verifier/SKILL.md, ../skills/deliverable-renderer/SKILL.md, ../skills/checkpoint-manager/SKILL.md, ../skills/case-retriever/SKILL.md, ../skills/tde-feedback/SKILL.md, ../skills/bug-gap-analyzer/SKILL.md, ../skills/change-impact-analyzer/SKILL.md, ../skills/auto-factory-env/SKILL.md, ../skills/ptm-atomic-builder-restapi/SKILL.md, ../skills/ngfw-install/SKILL.md, ../skills/traffic-skill/SKILL.md"
+      ]
+    },
+    {
+      "id": "prompt-bundle-hashes",
+      "type": "prompt_bundle_hashes",
+      "status": "PASS",
+      "evidence": [
+        "../agents/ptm-tde.md sha256 OK",
+        "../CLAUDE.md sha256 OK",
+        "../AGENTS.md sha256 OK",
+        "../skills/feature-parser/SKILL.md sha256 OK",
+        "../skills/kym/SKILL.md sha256 OK",
+        "../skills/scenario-discovery/SKILL.md sha256 OK",
+        "../skills/m-analyzer/SKILL.md sha256 OK",
+        "../skills/f-analyzer/SKILL.md sha256 OK",
+        "../skills/q-analyzer/SKILL.md sha256 OK",
+        "../skills/test-point-integrator/SKILL.md sha256 OK",
+        "../skills/design-planner/SKILL.md sha256 OK",
+        "../skills/design-ppdcs-analyzer/SKILL.md sha256 OK",
+        "../skills/process-design/SKILL.md sha256 OK",
+        "../skills/parameter-design/SKILL.md sha256 OK",
+        "../skills/data-design/SKILL.md sha256 OK",
+        "../skills/combination-design/SKILL.md sha256 OK",
+        "../skills/state-design/SKILL.md sha256 OK",
+        "../skills/coverage-verifier/SKILL.md sha256 OK",
+        "../skills/deliverable-renderer/SKILL.md sha256 OK",
+        "../skills/checkpoint-manager/SKILL.md sha256 OK",
+        "../skills/case-retriever/SKILL.md sha256 OK",
+        "../skills/tde-feedback/SKILL.md sha256 OK",
+        "../skills/bug-gap-analyzer/SKILL.md sha256 OK",
+        "../skills/change-impact-analyzer/SKILL.md sha256 OK",
+        "../skills/auto-factory-env/SKILL.md sha256 OK",
+        "../skills/ptm-atomic-builder-restapi/SKILL.md sha256 OK",
+        "../skills/ngfw-install/SKILL.md sha256 OK",
+        "../skills/traffic-skill/SKILL.md sha256 OK"
+      ]
+    },
+    {
+      "id": "case-registry-links",
+      "type": "case_registry_links",
+      "status": "PASS",
+      "evidence": [
+        "27 case(s) reference existing graders"
+      ]
+    },
+    {
+      "id": "no-live-or-secret-actions",
+      "type": "forbidden_patterns",
+      "status": "PASS",
+      "evidence": [
+        "no forbidden patterns matched in ../agents/*.md, ../skills/*/SKILL.md"
+      ]
+    },
+    {
+      "id": "agent-tool-boundary",
+      "type": "forbidden_patterns",
+      "status": "PASS",
+      "evidence": [
+        "no forbidden patterns matched in ../agents/ptm-tde.md"
+      ]
+    },
+    {
+      "id": "phase-gate-completeness",
+      "type": "content_schema",
+      "status": "PASS",
+      "evidence": [
+        "../agents/ptm-tde.md: all sections, patterns, and table rules OK"
+      ]
+    },
+    {
+      "id": "gate-contract-checkpoint-manager",
+      "type": "gate_contract",
+      "status": "PASS",
+      "evidence": [
+        "../skills/checkpoint-manager/SKILL.md declares 5 gate contract(s)"
+      ]
+    },
+    {
+      "id": "phase-skill-chain-ptm-tde",
+      "type": "phase_skill_chain",
+      "status": "PASS",
+      "evidence": [
+        "../agents/ptm-tde.md: 6 phase skill chain pattern(s) matched"
+      ]
+    },
+    {
+      "id": "hard-stop-confirmation-ptm-tde",
+      "type": "hard_stop_confirmation",
+      "status": "PASS",
+      "evidence": [
+        "../agents/ptm-tde.md: 5 hard-stop confirmation pattern(s) matched"
+      ]
+    },
+    {
+      "id": "artifact-trace-schema-core",
+      "type": "artifact_trace_schema",
+      "status": "PASS",
+      "evidence": [
+        "4 file(s) collectively preserve artifact trace schema: ../agents/ptm-tde.md, ../skills/checkpoint-manager/SKILL.md, ../skills/deliverable-renderer/SKILL.md, ../skills/test-point-integrator/SKILL.md"
+      ]
+    },
+    {
+      "id": "candidate-decision-integrity",
+      "type": "candidate_decision_integrity",
+      "status": "PASS",
+      "evidence": [
+        "../skills/test-point-integrator/SKILL.md: 5 candidate decision pattern(s) matched"
+      ]
+    },
+    {
+      "id": "field-feedback-config-contract",
+      "type": "content_schema",
+      "status": "PASS",
+      "evidence": [
+        "../.ptm-field-feedback.yaml: all sections, patterns, and table rules OK"
+      ]
+    },
+    {
+      "id": "field-feedback-agent-protocol",
+      "type": "content_schema",
+      "status": "PASS",
+      "evidence": [
+        "../agents/ptm-tde.md: all sections, patterns, and table rules OK"
+      ]
+    },
+    {
+      "id": "tde-feedback-skill-contract",
+      "type": "content_schema",
+      "status": "PASS",
+      "evidence": [
+        "../skills/tde-feedback/SKILL.md: all sections, patterns, and table rules OK"
+      ]
+    },
+    {
+      "id": "tde-feedback-install-mapping",
+      "type": "content_schema",
+      "status": "PASS",
+      "evidence": [
+        "../script/install.py: all sections, patterns, and table rules OK",
+        "../script/ptm_team/install.py: all sections, patterns, and table rules OK"
+      ]
+    },
+    {
+      "id": "content-schema-renderer-template",
+      "type": "content_schema",
+      "status": "PASS",
+      "evidence": [
+        "../skills/deliverable-renderer/SKILL.md: all sections, patterns, and table rules OK"
+      ]
+    },
+    {
+      "id": "deliverable-exact-pc-schema",
+      "type": "deliverable_exact_schema",
+      "status": "PASS",
+      "evidence": [
+        "../skills/deliverable-renderer/SKILL.md: exact deliverable schema contract OK"
+      ]
+    },
+    {
+      "id": "state-machine-ptm-tde",
+      "type": "state_machine",
+      "status": "PASS",
+      "evidence": [
+        "state 'KYM' found",
+        "state 'MFQ' found",
+        "state 'PPDCS' found",
+        "transition pattern 'KYM.*MFQ' matched",
+        "transition pattern 'MFQ.*PPDCS' matched",
+        "transition pattern 'GATE-[12].*KYM' matched",
+        "transition pattern 'GATE-[23].*MFQ' matched",
+        "transition pattern 'GATE-[34].*PPDCS' matched",
+        "7 distinct gate identifiers: GATE-1, GATE-2, GATE-3, GATE-4, GATE-5, HARD-STOP, ⛔",
+        "8 HARD-STOP gate declarations (min 3)"
+      ]
+    },
+    {
+      "id": "table-structure-all-skills",
+      "type": "table_structure",
+      "status": "PASS",
+      "evidence": [
+        "../agents/ptm-tde.md: 10 table(s) OK (88 data rows)",
+        "../skills/bug-gap-analyzer/SKILL.md: 4 table(s) OK (33 data rows)",
+        "../skills/case-retriever/SKILL.md: 2 table(s) OK (4 data rows)",
+        "../skills/change-impact-analyzer/SKILL.md: 3 table(s) OK (18 data rows)",
+        "../skills/checkpoint-manager/SKILL.md: 27 table(s) OK (147 data rows)",
+        "... and 18 more files OK"
+      ]
+    },
+    {
+      "id": "checkpoint-warning-table-schema",
+      "type": "table_schema",
+      "status": "PASS",
+      "evidence": [
+        "../skills/checkpoint-manager/SKILL.md table schema OK: # | 检查项 | 说明 | 级别"
+      ]
+    },
+    {
+      "id": "negative-artifact-trace-missing-fields",
+      "type": "artifact_trace_schema",
+      "status": "FAIL",
+      "evidence": [
+        "fixtures/ptm-tde-negative/missing-trace-fields.md: missing artifact trace schema pattern: normal_path; missing artifact trace schema pattern: abnormal_path; missing artifact trace schema pattern: minimal_logic_chain; missing artifact trace schema pattern: action_source_refs; missing artifact trace schema pattern: factor_bindings; missing artifact trace schema pattern: topology_bindings; missing artifact trace schema pattern: case_steps; missing artifact trace schema pattern: atomic_op; missing artifact trace schema pattern: fact_status"
+      ]
+    },
+    {
+      "id": "negative-candidate-decision-missing",
+      "type": "candidate_decision_integrity",
+      "status": "FAIL",
+      "evidence": [
+        "fixtures/ptm-tde-negative/missing-candidate-decision.md: missing candidate decision pattern: decision=confirmed/rejected/modified; missing candidate decision pattern: confirmed / rejected / modified; missing candidate decision pattern: GATE-3 必须阻断"
+      ]
+    },
+    {
+      "id": "negative-pc-table-column-mismatch",
+      "type": "table_structure",
+      "status": "FAIL",
+      "evidence": [
+        "fixtures/ptm-tde-negative/pc-15-columns.md table #1 row 3: 15 columns (expected 16)"
+      ]
+    }
+  ],
+  "case_results": [
+    {
+      "id": "CASE-001",
+      "category": "smoke",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "agent-required-fields",
+        "artifact-paths-exist"
+      ]
+    },
+    {
+      "id": "CASE-002",
+      "category": "positive",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "artifact-paths-exist"
+      ]
+    },
+    {
+      "id": "CASE-003",
+      "category": "positive",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "phase-gate-completeness"
+      ]
+    },
+    {
+      "id": "CASE-004",
+      "category": "positive",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "skill-required-fields"
+      ]
+    },
+    {
+      "id": "CASE-005",
+      "category": "regression",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "prompt-bundle-required-fields",
+        "prompt-bundle-hashes",
+        "manifest-bundle-consistency"
+      ]
+    },
+    {
+      "id": "CASE-006",
+      "category": "security",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "no-live-or-secret-actions"
+      ]
+    },
+    {
+      "id": "CASE-007",
+      "category": "security",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "no-live-or-secret-actions"
+      ]
+    },
+    {
+      "id": "CASE-008",
+      "category": "permission",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "agent-tool-boundary"
+      ]
+    },
+    {
+      "id": "CASE-009",
+      "category": "failure-recovery",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "gate-contract-checkpoint-manager"
+      ]
+    },
+    {
+      "id": "CASE-010",
+      "category": "style",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "case-registry-links"
+      ]
+    },
+    {
+      "id": "CASE-011",
+      "category": "content-depth",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "content-schema-renderer-template"
+      ]
+    },
+    {
+      "id": "CASE-012",
+      "category": "content-depth",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "state-machine-ptm-tde"
+      ]
+    },
+    {
+      "id": "CASE-013",
+      "category": "content-depth",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "table-structure-all-skills"
+      ]
+    },
+    {
+      "id": "CASE-014",
+      "category": "eval-contract",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "eval-config-non-empty"
+      ]
+    },
+    {
+      "id": "CASE-015",
+      "category": "workflow-skip",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "phase-skill-chain-ptm-tde"
+      ]
+    },
+    {
+      "id": "CASE-016",
+      "category": "workflow-skip",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "hard-stop-confirmation-ptm-tde"
+      ]
+    },
+    {
+      "id": "CASE-017",
+      "category": "content-retention",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "artifact-trace-schema-core"
+      ]
+    },
+    {
+      "id": "CASE-018",
+      "category": "content-retention",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "candidate-decision-integrity"
+      ]
+    },
+    {
+      "id": "CASE-019",
+      "category": "table-schema",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "deliverable-exact-pc-schema"
+      ]
+    },
+    {
+      "id": "CASE-020",
+      "category": "table-schema",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "checkpoint-warning-table-schema"
+      ]
+    },
+    {
+      "id": "CASE-021",
+      "category": "negative",
+      "status": "FAIL",
+      "expected_result": "FAIL",
+      "expected_match": true,
+      "graders": [
+        "negative-artifact-trace-missing-fields"
+      ]
+    },
+    {
+      "id": "CASE-022",
+      "category": "negative",
+      "status": "FAIL",
+      "expected_result": "FAIL",
+      "expected_match": true,
+      "graders": [
+        "negative-candidate-decision-missing"
+      ]
+    },
+    {
+      "id": "CASE-023",
+      "category": "negative",
+      "status": "FAIL",
+      "expected_result": "FAIL",
+      "expected_match": true,
+      "graders": [
+        "negative-pc-table-column-mismatch"
+      ]
+    },
+    {
+      "id": "CASE-024",
+      "category": "field-feedback",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "field-feedback-config-contract",
+        "artifact-paths-exist"
+      ]
+    },
+    {
+      "id": "CASE-025",
+      "category": "field-feedback",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "field-feedback-agent-protocol"
+      ]
+    },
+    {
+      "id": "CASE-026",
+      "category": "field-feedback",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "tde-feedback-skill-contract",
+        "skill-required-fields"
+      ]
+    },
+    {
+      "id": "CASE-027",
+      "category": "install",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "tde-feedback-install-mapping",
+        "artifact-paths-exist"
+      ]
+    }
+  ],
+  "expected_fail_graders": [
+    "negative-artifact-trace-missing-fields",
+    "negative-candidate-decision-missing",
+    "negative-pc-table-column-mismatch"
+  ],
+  "unexpected_failed_graders": []
+}

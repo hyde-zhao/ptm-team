@@ -225,6 +225,8 @@ PC 由 `覆盖策略选中的 state_path × data_overlay_set` 生成。
 
 **PC 步骤结构化契约**：
 
+`case_steps[].atomic_op.op_id` 必须逐字来自当前 LC / PC 的 `action_source_refs`。不得因为状态路径是 IPv6/IPv4 的相似场景而复用另一协议族的 `op_id`；例如 IPv6 状态用例只能使用 `fw_config_policy_route6_* / tg_send_ipv6_traffic / fw_query_policy_route6_hit_count` 等已在 `action_source_refs` 中出现的操作。若上游没有对应操作，必须输出 `pc_step_contract_gap` 并保持 `fact_status=needs-confirmation`。
+
 ```yaml
 case_steps:
   - step_id: STEP-001

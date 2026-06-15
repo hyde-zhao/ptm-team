@@ -91,9 +91,11 @@ mfq/factor-usage/
 | `candidate-factor-proposals.yaml` | 未命中或需扩展的候选因子、样本、约束和目标库建议 |
 | `factor-resolution-report.md` | 查库、复用、扩展、候选、冲突和降级处理报告 |
 
-`ptm-tde` 不得在项目运行期间直接修改公共主库；候选因子必须通过公共库维护流程回流到 `resource/factor-libraries/_proposals/`。
+`ptm-tde` 不得在项目运行期间直接修改公共主库；候选因子必须先展示给用户确认，并在 `mfq/candidates/factor-candidates.md` 中保留 `decision=confirmed/rejected/modified` 或等价确认结果，再通过公共库维护流程回流到 `resource/factor-libraries/_proposals/`。
 
 真实设备、端口和链路不写入 `mfq/factor-usage/`。它们属于拓扑绑定链路，由 `kym/scenarios/confirmed-scenarios.md`、LC `topology_bindings` 和 PC 物化字段承载。
+
+候选原子操作必须写入 `mfq/candidates/ptm-atomic-candidates.md` 或等价文件，并保留 `candidate_id / op_name 或 candidate_op_name / match_attempt / decision / decision_basis`。`decision` 必须来自用户确认，取值为 `confirmed / rejected / modified` 或明确中文等价状态；缺少确认结果时 GATE-3 阻断。
 
 ## 场景产物字段
 
@@ -107,8 +109,8 @@ Scenario Details 中每个场景至少包含：
 | `principle` | 场景原理依据 |
 | `preconditions` | 使用该场景前必须成立的条件 |
 | `topology_ref` | 关联 Topology；不依赖组网时填 `n/a` 并说明理由 |
-| `normal_path` | 正常路径，包含 `step_id / sub_step_ids / operation / necessity / description` |
-| `abnormal_path` | 异常路径，包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling` |
+| `normal_path` | 正常路径，包含 `step_id / sub_step_ids / operation / necessity / description`；每个步骤必须有 `action_source_ref(s)`、`atomic_op` 或 `op_id` |
+| `abnormal_path` | 异常路径，包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling`；每个异常步骤必须有 `action_source_ref(s)`、`atomic_op` 或 `op_id` |
 | `atomic_operations` | 主流程原子操作序列，直接引用 atomic-ops `op_id` |
 | `observation_points` | 观察点 |
 | `expected_state` | 预期状态 |
@@ -116,7 +118,7 @@ Scenario Details 中每个场景至少包含：
 | `data_overlay_slots` | 后续可叠加测试数据的位置 |
 | `exit_action` | 场景结束、清理、回滚或稳定化动作 |
 
-`normal_path.necessity` 只能使用 `必要 / 可选 / 至少选择一项`。异常路径必须通过 `related_normal_steps` 追溯到正常路径的大步骤或子步骤；无法追溯时必须说明异常来源并进入确认缺口或风险说明。
+`normal_path.necessity` 只能使用 `必要 / 可选 / 至少选择一项`。正常路径和异常路径的每个步骤必须回链场景级 `action_source_refs`。异常路径必须通过 `related_normal_steps` 追溯到正常路径的大步骤或子步骤；无法追溯时必须说明异常来源并进入确认缺口或风险说明。
 
 ### 确认场景与拓扑绑定基线
 

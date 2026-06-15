@@ -11,6 +11,9 @@
 | v1.6 | 2026-06-10 | meta-dev | GATE-1 Checklist 新增 #11（公共因子库内容完整）：校验 index.yaml 中每个 library_id 对应的因子库文件实际存在，缺失时 WARN 并列出缺失清单 |
 | v1.7 | 2026-06-11 | meta-po | [CR-018] Gate 实现口径更新为 machine-baseline：自动 Gate 读取结构化 Skill evidence，并为 GATE-2/3/4 生成独立 manual 审查稿 |
 | v1.8 | 2026-06-11 | meta-po | [CR-018 P2] machine-baseline 增加字段级结构检查：GATE-2 场景字段、GATE-3 CAE/trace/binding/PPDCS 字段、GATE-4 PC 16 列与交付 trace 字段 |
+| v1.9 | 2026-06-12 | current Codex session | [CR-018 P3 / CR-019 follow-up] GATE-4 PC 检查升级为标准 16 列表头、逐行恰好 16 列、`case_steps`、`atomic_op.op_id` 与 `action_source_refs` 回链检查 |
+| v1.10 | 2026-06-12 | current Codex session | [CR-018 P4] GATE-2 machine-baseline 增加逐场景正常链 / 异常链契约检查，避免 confirmed-scenarios 只有文件级字段或缺失链路仍通过 |
+| v1.11 | 2026-06-12 | current Codex session | [CR-018 P5] GATE-2 增加正常/异常链逐步骤原子操作回链检查；GATE-3 增加候选测试因子和候选原子操作用户确认状态检查 |
 
 ## 概述
 
@@ -67,9 +70,10 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 
 自动 Gate 不只检查文件存在，还会执行轻量字段级结构检查：
 
-- GATE-2：`confirmed-scenarios.md` 必须包含输入分类、`normal_path`、`abnormal_path`、`action_source_refs`、`confirmation_gaps`、`minimal_logic_chain` 等可消费字段。
+- GATE-2：`confirmed-scenarios.md` 必须包含输入分类、`normal_path`、`abnormal_path`、`action_source_refs`、`confirmation_gaps`、`minimal_logic_chain` 等可消费字段；自动 Gate 还会按 `scenario_id` / 场景标题逐场景校验 `normal_path` 字段集、合法 `necessity`、`abnormal_path.related_normal_steps` 或明确 N/A 理由、`minimal_logic_chain` 和 atomic/action 来源，并阻断正常链 / 异常链中缺少步骤级原子操作引用或无法回链 `action_source_refs` 的条目。不能只在文件级出现关键词。
 - GATE-3：M/F/Q 测试点必须包含 CAE 字段和 trace / 耦合 / 质量维度；LC 必须包含 `source_tp_ids`、`factor_bindings`、`topology_bindings`；设计计划必须包含 LC 与 PPDCS 方法字段。
-- GATE-4：PC 必须至少出现 16 列 Markdown 表格；交付物必须保留 `logic_case_id`、`physical_case_id` 和 trace / topology / fact status 字段。
+- GATE-3：若存在候选测试因子或候选原子操作来源文件，必须存在 `mfq/candidates/` 下的候选汇总文件，且逐项包含 `decision=confirmed/rejected/modified` 或等价确认结果；缺确认结果时不得发起通过态门禁。
+- GATE-4：PC 必须包含标准 16 列 Markdown 表头，所有数据行必须恰好 16 列；`测试步骤*` 必须渲染 `原子操作：<op_id>`；PC 源文件必须包含 `case_steps[].step_name`、`case_steps[].atomic_op.op_id`，且 op_id 必须回链到 `action_source_refs`；交付测试用例必须只有一张标准 16 列 PC 汇总表，并保留 `logic_case_id`、`physical_case_id`、`case_steps`、`action_source_refs` 和 trace / topology / fact status 字段。
 
 这些检查仍属于 machine-baseline：只能证明结构上可消费，不能替代 GATE-2/3/4 的人工语义确认。
 
@@ -160,6 +164,8 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 
 ### Checklist
 
+> 自动自检会逐 `scenario_id` / 场景标题执行 #8 和 #10 的字段契约检查；文件中只有字段名、模板说明或总览表，不能替代每条 confirmed scenario 的正常链和异常链。
+
 | # | 检查项 | 通过条件 | 失败处理 |
 |---|--------|----------|----------|
 | 1 | 输入文档类型识别 | 覆盖 raw requirement / functional scenario seed / deployment scenario draft / confirmed scenario artifact | 回到 `scenario-discovery` 补分类 |
@@ -169,13 +175,14 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 | 5 | Topology Catalog | 依赖组网的场景均有 `topology_ref`、来源（`resource/network-topology/` 优先 → `.input/` → wiki）、Mermaid、设备/端口/链路表 | 缺失拓扑时阻断 |
 | 6 | ptm-atomic 唯一口径 | `source_type=ptm-atomic`；`action_source_ref` 引用 ptm-atomic `op_id` | 出现旧口径时阻断 |
 | 7 | 场景链完整 | 每个场景包含目标、原理、前置条件、原子操作、观察点、预期状态、最小逻辑链、退出动作 | 缺字段时补场景链 |
-| 8 | 正常路径可追溯 | `normal_path` 包含 `step_id / sub_step_ids / operation / necessity / description`，`necessity` 仅使用 `必要 / 可选 / 至少选择一项` | 缺字段或取值不规范时补路径建模 |
+| 8 | 正常路径可追溯 | 每个 confirmed scenario 的 `normal_path` 包含 `step_id / sub_step_ids / operation / necessity / description`；每个正常步骤必须包含 `action_source_ref(s)`、`atomic_op` 或 `op_id` 并回链场景级 `action_source_refs`；`necessity` 仅使用 `必要 / 可选 / 至少选择一项` | 缺字段、缺原子操作或取值不规范时补路径建模 |
 | 9 | 选择组完整 | `至少选择一项` 步骤列出可选择子步骤；`minimal_logic_chain` 未把可选步骤写成必做 | 选择关系丢失时补结构化语义 |
-| 10 | 异常路径可追溯 | 每条异常路径包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling` | 缺少追溯时补异常路径 |
+| 10 | 异常路径可追溯 | 每个 confirmed scenario 的 `abnormal_path` 包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling`；每个异常步骤必须包含 `action_source_ref(s)`、`atomic_op` 或 `op_id` 并回链场景级 `action_source_refs`；无异常路径时必须写明 N/A 理由 | 缺少追溯或缺原子操作时补异常路径 |
 | 11 | Knowledge Reference 三态 | 保留 `resolved / missing / unavailable` | 混写或缺失时补齐 |
 | 12 | Tool Gap | 未满足的 ptm-atomic 进入 `Tool Abstraction Draft` 或 `confirmation_gaps` | 缺口未记录时阻断 |
 | 13 | Confirmation Gaps | 区分可下传缺口和必须先确认缺口 | 未分类时不得进入 MFQ |
 | 14 | 输出质量检查 | 场景产物包含 scenario-discovery 输出质量检查结果 | 缺失时补自检结果 |
+| 15 | 新增原子操作候选确认 | 若场景阶段提出新增 / 候选原子操作，GATE-2 自动结果和 manual 审查稿必须展示候选线索，用户需确认新增、复用、转 Tool Draft 或拒绝 | 未展示时不得进入 MFQ |
 | N1 | 使命文档存在 | `kym/mission-understanding/mission-statement.md` 可读且非空 | BLOCKING：提示执行 kym Skill 或补充使命文档 |
 | N2 | 启发式探索已执行 | 使命文档包含至少 2 个 CIDTESTD 维度的分析记录（含用户扩展维度） | BLOCKING：若 0-1 个维度，提示用户补充关键维度访谈 |
 | N3 | 范围边界已界定 | 使命文档包含明确的 scope 和 dont_test 声明 | BLOCKING：范围未界定时提示用户明确 |
@@ -245,6 +252,8 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 | M7 | 公共因子库 lock 有效 | `factor_bindings` 中的 `factor_id / sample_id` 能在 lock 指定公共库中找到 | 缺失时补充因子消费记录 |
 | M8 | 因子库扫描完整性 | `factor-resolution-report.md` 中 N_scanned == index.yaml 注册库数 | 不等时阻断（M 分析因子库扫描不完整） |
 | M9 | 原子操作匹配完整性 | `candidate-ptm-atomic.yaml` 中每个候选记录了 match_attempt（L1-L4 + score）；ptm-atomic-resolution-report.md 存在 | 缺失 match_attempt 时回到 M 分析补语义匹配 |
+| M10 | 候选测试因子显式确认状态 | 若存在 M/F/Q 候选因子来源，`mfq/candidates/factor-candidates.md` 或等价文件必须展示给用户并记录逐项 `decision=confirmed/rejected/modified` | 缺确认结果时回到候选汇总确认 |
+| M11 | 候选原子操作显式确认状态 | 若存在候选原子操作来源，`mfq/candidates/ptm-atomic-candidates.md` 或等价文件必须展示给用户并记录逐项 `decision=confirmed/rejected/modified` | 缺确认结果时回到候选汇总确认 |
 
 ### 上下游 Warning（非阻断）
 
@@ -261,6 +270,7 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 | LC 整合一致性 | ⛔ HARD-STOP：禁止 Agent 自行判定通过。必须等待用户回复 approve/修改/reject。测试点归集、因子绑定和拓扑绑定是否一致 |
 | 设计计划 | ⛔ HARD-STOP：禁止 Agent 自行判定通过。必须等待用户回复 approve/修改/reject。CAE→PPDCS 推断是否合理 |
 | 公共因子消费 | ⛔ HARD-STOP：禁止 Agent 自行判定通过。必须等待用户回复 approve/修改/reject。因子库 lock 和候选提案是否合理 |
+| 候选测试因子与候选原子操作 | ⛔ HARD-STOP：必须展示候选汇总表和确认结果；用户未确认时不得将候选写入最终产物或进入 PPDCS |
 
 ### Exit Criteria
 
@@ -310,12 +320,12 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 | # | 检查项 | 通过条件 |
 |---|--------|----------|
 | P1 | PPDCS 设计过程完整 | `ppdcs/ppdcs/` 下每个 LC 都有设计过程文件，PPDCS 方法与 plan 推荐一致 |
-| P2 | PC 文件完整 | `ppdcs/pc/` 下每个 LC 都有物理用例文件，16 列格式正确 |
+| P2 | PC 文件完整 | `ppdcs/pc/` 下每个 LC 都有物理用例文件；PC 表头等于标准 16 列，所有数据行恰好 16 列；每条 PC 包含 `case_steps`，每一步同时包含 `step_name` 与 `atomic_op.op_id`，且 op_id 回链到 `action_source_refs` |
 | P3 | PC 拓扑绑定回链 | PC 中所有真实设备、端口、链路能回链到 LC `topology_bindings` → `kym/scenarios/confirmed-scenarios.md` |
 | P4 | 双层覆盖率验证 | `ppdcs/coverage/` 存在覆盖率报告：需求覆盖 = 100%，测试点覆盖 ≥ 95% |
 | P5 | 因子覆盖验证 | 所有 `factor_bindings` 的因子在 PC 中有覆盖 |
-| P6 | 交付物完整 | `ppdcs/delivery/` 包含且仅包含测试方案和测试用例两个文件 |
-| P7 | 交付物字段保留 | 交付物保留 `topology_bindings / topology_role / source / fact_status` |
+| P6 | 交付物完整 | `ppdcs/delivery/` 包含测试方案和测试用例；测试用例全文只有一张标准 16 列 PC 汇总表，且 `测试步骤*` 单元格包含 `原子操作：<op_id>` |
+| P7 | 交付物字段保留 | 交付物保留 `logic_case_id / physical_case_id / case_steps / action_source_refs / topology_bindings / topology_role / source / fact_status` |
 
 ### 人工确认项
 

@@ -276,8 +276,9 @@ Entry Gate（GATE-1，纯自检）
 | Topology Catalog | 是否读取 TGFW 组网集合并为每个依赖组网场景绑定 `topology_ref` |
 | Topology Bindings | 真实端口是否来自已确认场景，并可回链到 `kym/scenarios/confirmed-scenarios.md` |
 | atomic-ops | `action_source_ref` 是否直接引用 atomic-ops `op_id`，REST API / CLI / tool-method 是否只作为底层契约 |
-| Operation Path | `normal_path` 是否包含大步骤、子步骤、必要性枚举和选择组约束 |
-| Abnormal Path | `abnormal_path` 是否通过 `related_normal_steps` 追溯到正常路径步骤或说明异常来源 |
+| Operation Path | `normal_path` 是否包含大步骤、子步骤、必要性枚举和选择组约束；每个步骤是否有可回链 `action_source_refs` 的原子操作 |
+| Abnormal Path | `abnormal_path` 是否通过 `related_normal_steps` 追溯到正常路径步骤或说明异常来源；每个异常步骤是否有可回链 `action_source_refs` 的原子操作 |
+| 新增原子操作候选 | 场景阶段发现的新 atomic-op 是否在 GATE-2 发起时显式展示并等待用户确认 |
 | Minimal Logic Chain | 是否保留可选步骤和 `至少选择一项` 选择语义，未误写成线性必做链路 |
 | 缺口分类 | `confirmation_gaps` 是否区分必须先确认与可下传缺口 |
 
@@ -291,7 +292,7 @@ Entry Gate（GATE-1，纯自检）
 | Scenario Chain | 每个场景的原子操作、观察点、最小逻辑链是否准确 |
 | Operation Path | 正常路径的大步骤、子步骤、必要性和选择组是否符合真实操作流程 |
 | Topology | 防火墙 topo、设备/端口/链路是否正确 |
-| atomic-ops | atomic-ops `op_id`、能力状态和调用/观测契约是否正确 |
+| atomic-ops | 每个正常/异常步骤的 atomic-ops `op_id`、能力状态和调用/观测契约是否正确；新增候选是否接受、修改、复用已有或拒绝 |
 | 遗漏场景 | 是否有未列出的重要场景需要补充 |
 
 **通过后**：进入 MFQ 阶段
@@ -310,6 +311,7 @@ Entry Gate（GATE-1，纯自检）
 | Q 分析完整性 | 质量属性有 HTSM 映射，CAE 质量测试点已生成 |
 | 整合完整性 | M+F+Q 测试点归集到 LC，包含 factor_bindings 和 topology_bindings |
 | 设计计划完整性 | CAE→PPDCS 推断和设计计划已生成 |
+| 候选确认状态 | 候选测试因子和候选原子操作存在时，`mfq/candidates/` 汇总文件必须记录用户确认结果 |
 
 **需要人工确认**：
 
@@ -319,6 +321,7 @@ Entry Gate（GATE-1，纯自检）
 | LC 整合一致性 | 测试点归集、因子绑定和拓扑绑定是否一致 |
 | 设计计划 | CAE→PPDCS 推断是否合理 |
 | 公共因子消费 | 因子库 lock 和候选提案是否合理 |
+| 候选测试因子 / 原子操作 | 候选汇总表是否已展示给用户，逐项 `decision=confirmed/rejected/modified` 是否符合预期 |
 
 **通过后**：进入 PPDCS 阶段
 
@@ -337,6 +340,8 @@ Entry Gate（GATE-1，纯自检）
 | 数据设计 | 数据对象、因子取值、组合结果是否正确 |
 | 双层覆盖率 | 需求覆盖率 = 100%；测试点覆盖率 = 100% |
 | CAE 追踪链完整 | SR→TP(C/A/E)→LC→组合方案→PC 链路无断点 |
+| PC 步骤契约 | 每条 PC 包含 `case_steps`；每一步同时包含步骤名称、执行对象、`atomic_op.op_id` 和预期结果；op_id 回链 `action_source_refs` |
+| 16 列表格稳定性 | PC 与交付测试用例表头等于标准 16 列，所有数据行恰好 16 列，`测试步骤*` 单元格包含 `原子操作：<op_id>` |
 | 未覆盖项 | 所有 gap 均已显式列出并可回链 |
 
 **通过后**：进入 delivery，生成最终测试方案与测试用例总表
@@ -352,7 +357,7 @@ Entry Gate（GATE-1，纯自检）
 步骤2: 方法专化分析（各方法不同，见下表）
 步骤3: 数据/路径组合分析
 步骤4: 实际取值/触发数据分配
-步骤5: 物理用例输出（16列标准格式）
+步骤5: 物理用例输出（结构化 `case_steps` + 标准 16 列渲染）
 ```
 
 ### 各方法步骤2专化内容
@@ -530,16 +535,16 @@ resource/
 - 场景输出采用 Scenario Details 与 ptm-tde Structured Supplement 双层结构，保留 Topology、atomic-ops、Knowledge Reference、Confirmation Gaps 和质量检查。
 - atomic-ops 是唯一原子操作引用对象；REST API、CLI、tool-method 只能作为 atomic-op 的底层调用或观测契约。
 - `action_source_refs` 直接引用 atomic-ops `op_id`，不再使用独立 source-action 对象。
-- GATE-2 KYM Exit Gate 已扩展为 auto + manual：自动检查输入分类、再发现、Seed-to-Scenario Mapping、Topology Catalog、atomic-ops 唯一口径、Operation Path 和缺口分类。
+- GATE-2 KYM Exit Gate 已扩展为 auto + manual：自动检查输入分类、再发现、Seed-to-Scenario Mapping、Topology Catalog、atomic-ops 唯一口径、Operation Path 和缺口分类；同时逐 `scenario_id` / 场景标题校验每条 confirmed scenario 的正常链和异常链。
 
 Operation Path 是场景阶段的强契约：
 
 | 字段 | 要求 |
 |---|---|
-| `normal_path` | 包含 `step_id / sub_step_ids / operation / necessity / description` |
+| `normal_path` | 每个 confirmed scenario 均包含 `step_id / sub_step_ids / operation / necessity / description`；每个步骤都有 `action_source_ref(s)`、`atomic_op` 或 `op_id` |
 | `necessity` | 只能使用 `必要 / 可选 / 至少选择一项` |
 | 选择组 | 必须列出可选子步骤，并说明不能全部跳过的约束 |
-| `abnormal_path` | 包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling` |
+| `abnormal_path` | 每个 confirmed scenario 均包含 `abnormal_item / related_normal_steps / input_or_state / expected_handling`；每个异常步骤都有 `action_source_ref(s)`、`atomic_op` 或 `op_id`；无异常路径时必须写明 N/A 理由 |
 | `minimal_logic_chain` | 必须保留可选步骤和 `至少选择一项` 语义，不得改写成线性必做链路 |
 
 策略路由类场景还必须拆分 `forwarding action` 与 `match dimensions`，避免把“配置策略路由”写成不可审计的大步骤。
