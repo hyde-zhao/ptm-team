@@ -72,7 +72,7 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 
 - GATE-2：`confirmed-scenarios.md` 必须包含输入分类、`normal_path`、`abnormal_path`、`action_source_refs`、`confirmation_gaps`、`minimal_logic_chain` 等可消费字段；自动 Gate 还会按 `scenario_id` / 场景标题逐场景校验 `normal_path` 字段集、合法 `necessity`、`abnormal_path.related_normal_steps` 或明确 N/A 理由、`minimal_logic_chain` 和 atomic/action 来源，并阻断正常链 / 异常链中缺少步骤级原子操作引用或无法回链 `action_source_refs` 的条目。不能只在文件级出现关键词。
 - GATE-3：M/F/Q 测试点必须包含 CAE 字段和 trace / 耦合 / 质量维度；LC 必须包含 `source_tp_ids`、`factor_bindings`、`topology_bindings`；设计计划必须包含 LC 与 PPDCS 方法字段。
-- GATE-3：若存在候选测试因子或候选原子操作来源文件，必须存在 `mfq/candidates/` 下的候选汇总文件，且逐项包含 `decision=confirmed/rejected/modified` 或等价确认结果；缺确认结果时不得发起通过态门禁。
+- GATE-3：若存在候选测试因子或候选原子操作来源文件，必须存在 `mfq/candidates/` 下的候选汇总文件。候选归集可先写 `decision=pending-review`，但 pending 只表示待评审；通过态门禁必须逐项包含最终 `decision=confirmed/rejected/modified` 或等价确认结果，缺最终确认结果时不得发起通过态门禁。
 - GATE-4：PC 必须包含标准 16 列 Markdown 表头，所有数据行必须恰好 16 列；`测试步骤*` 必须渲染 `原子操作：<op_id>`；PC 源文件必须包含 `case_steps[].step_name`、`case_steps[].atomic_op.op_id`，且 op_id 必须回链到 `action_source_refs`；交付测试用例必须只有一张标准 16 列 PC 汇总表，并保留 `logic_case_id`、`physical_case_id`、`case_steps`、`action_source_refs` 和 trace / topology / fact status 字段。
 
 这些检查仍属于 machine-baseline：只能证明结构上可消费，不能替代 GATE-2/3/4 的人工语义确认。
@@ -252,8 +252,8 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 | M7 | 公共因子库 lock 有效 | `factor_bindings` 中的 `factor_id / sample_id` 能在 lock 指定公共库中找到 | 缺失时补充因子消费记录 |
 | M8 | 因子库扫描完整性 | `factor-resolution-report.md` 中 N_scanned == index.yaml 注册库数 | 不等时阻断（M 分析因子库扫描不完整） |
 | M9 | 原子操作匹配完整性 | `candidate-ptm-atomic.yaml` 中每个候选记录了 match_attempt（L1-L4 + score）；ptm-atomic-resolution-report.md 存在 | 缺失 match_attempt 时回到 M 分析补语义匹配 |
-| M10 | 候选测试因子显式确认状态 | 若存在 M/F/Q 候选因子来源，`mfq/candidates/factor-candidates.md` 或等价文件必须展示给用户并记录逐项 `decision=confirmed/rejected/modified` | 缺确认结果时回到候选汇总确认 |
-| M11 | 候选原子操作显式确认状态 | 若存在候选原子操作来源，`mfq/candidates/ptm-atomic-candidates.md` 或等价文件必须展示给用户并记录逐项 `decision=confirmed/rejected/modified` | 缺确认结果时回到候选汇总确认 |
+| M10 | 候选测试因子显式确认状态 | 若存在 M/F/Q 候选因子来源，`mfq/candidates/factor-candidates.md` 或等价文件必须展示给用户并记录逐项最终 `decision=confirmed/rejected/modified`；`pending-review` 不算确认 | 缺确认结果时回到候选汇总确认 |
+| M11 | 候选原子操作显式确认状态 | 若存在候选原子操作来源，`mfq/candidates/ptm-atomic-candidates.md` 或等价文件必须展示给用户并记录逐项最终 `decision=confirmed/rejected/modified`；`pending-review` 不算确认 | 缺确认结果时回到候选汇总确认 |
 
 ### 上下游 Warning（非阻断）
 

@@ -70,6 +70,9 @@ Entry Gate（GATE-1，纯自检）
 2. **严格按顺序（可并行例外见下方）**：KYM 阶段必须 feature-parser → kym Skill → scenario-discovery，不得跳过或调换。MFQ 阶段 m-analyzer 完成后 f-analyzer 和 q-analyzer 可并行。PPDCS 阶段不同 LC 的设计 Skill 可并行。
 3. **禁止自行替代**：禁止 Agent 以「我理解了需求」「我可以直接整理」为由绕过 Skill。
 4. **必须记录 Skill 执行证据**：每次调用 Skill 完成后，必须通过 `checkpoint-manager` 的 `--record-skill-call` 写入 `process/execution/SKILL-CALLS.yaml`。没有证据时，不得声明该 Skill 已执行，不得推进后续 Gate。
+5. **失败不得包装成完成**：如果某个 Skill 运行超时、中断、输出不完整或只生成了中间文件，必须记录 `status=blocked/failed` 或明确记录补救执行者和补救范围；不得把“部分产物 + Agent 手工补写”表述为该 Skill 独立完成。
+6. **阶段提示必须小切片执行**：MFQ 阶段每次只要求当前 Skill 生成其规定文件，避免一次性长篇输出。每个 Skill 完成后立即运行对应 CP03-CP07 字段级自检；自检未通过时回到当前 Skill 修复，不得继续下一 Skill。
+7. **候选决策默认待评审**：候选测试因子和候选原子操作在用户确认前只能写 `decision=pending-review`。只有用户明确选择确认/拒绝/修改后，才能写 `decision=confirmed/rejected/modified` 或中文等价状态。
 
 ### Skill 执行证据契约
 
@@ -130,6 +133,16 @@ MFQ 阶段调用顺序：
 2. m-analyzer 完成后，**并行**调用 `f-analyzer` 和 `q-analyzer`（两者均消费 M 的 TSP 列表，互不依赖），等待两者完成
 3. f/q 全部完成后，调用 `test-point-integrator`（依赖 m+f+q 全量测试点），等待其完成
 4. integrator 完成后，调用 `design-planner`，等待其完成
+
+每个 MFQ Skill 完成后必须运行阶段内自检：
+
+| Skill | 自检命令 | 阻断行为 |
+|---|---|---|
+| `m-analyzer` | `checkpoint-manager --cp CP03` | CAE/trace/fact_status、覆盖矩阵、PPDCS 标注缺失时回到 M 分析 |
+| `f-analyzer` | `checkpoint-manager --cp CP04` | F CAE/coupling/fact_status 或 tool-analysis 缺失时回到 F 分析 |
+| `q-analyzer` | `checkpoint-manager --cp CP05` | Q CAE/quality/fact_status 或 tool-analysis 缺失时回到 Q 分析 |
+| `test-point-integrator` | `checkpoint-manager --cp CP06` | LC/TD/候选汇总缺失时回到整合；候选可为 `pending-review`，但不能跳过汇总 |
+| `design-planner` | `checkpoint-manager --cp CP07` | 设计计划、reasoning、待确认事项缺失时回到 design-planner |
 
 PPDCS 阶段调用顺序：
 
@@ -402,7 +415,7 @@ CAE 中使用因子占位符：
 ### GATE-3 MFQ Exit Gate（自检 + 人工确认）
 **确认内容**：M/F/Q 分析质量（v3.0 方法论）、Scenario-TSP 覆盖矩阵、步骤标签 [M]/[F→]/[Q→]、LC 整合一致性、候选测试因子与候选原子操作汇总（⛔ HARD-STOP 确认，必须保留 decision）、设计计划、公共因子消费
 **自检项编号**：M1-M11 + W1-W2（详见 `docs/ptm-tde/gate-spec.md`）
-**硬门控**：禁止在用户 approve 前进入 PPDCS 阶段。
+**硬门控**：禁止在用户 approve 前进入 PPDCS 阶段。GATE-3 机器自检 PASS 只表示结构基线通过；`mfq/candidates/*` 中若存在 `decision=pending-review`、`pending`、`TBD` 或待确认中文状态，必须视为人工确认未完成，不得推进 PPDCS。GATE-3 PASS 后 `process/STATE.yaml.current_step` 必须为 `mfq-exit`。
 
 ### GATE-4 PPDCS Exit Gate（自检 + 人工确认）
 **确认内容**：PPDCS 设计、覆盖率报告、PC 物化结果

@@ -489,6 +489,8 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 - 不能把缺失的观测工具默认为"人工可观察"；必须输出 tool gap
 - `Knowledge Reference=missing/unavailable` 时，可继续分析，但必须保留不确定性
 - 不得把 `DUT.port1/TG.port2`、link 或 TOPO 实例写入 `factor_refs / factor_bindings / covered_factors`；真实组网对象必须登记拓扑来源，来源不明则降级 `needs-confirmation`。
+- `quality-test-points.md` 与 `tool-analysis.md` 必须使用同一 `fact_status` 口径；任一质量测试点依赖 OPEN 相关性、候选质量因子、缺失观测工具、缺失知识引用或待确认拓扑来源时，必须降级为 `needs-confirmation`。
+- `confirmed` 只允许用于质量维度依据、观测方式、因子、场景链和拓扑来源均已确认的 TP-Q；不得把行业经验、弱相关起评或缺失工具观测包装成 confirmed。
 - **v3.0 新增：Q 线索缺失不阻断流程** — 若 M 分析的覆盖矩阵不含 Q 线索表或为空，步骤 1 仅基于 TSP.purpose、场景链和需求文档评估相关性，不依赖 Q 线索
 - **v3.0 新增：相关性评估不确定项的 OPEN 标记规则** — 判定依据不足时必须标记 OPEN，不得自行判定；步骤 1 末尾汇总所有 OPEN 项单次展示等待用户确认
 - **v3.0 新增：generation_basis 取值约束** — 质量因子候选必须标注 generation_basis，只能取「行业标准」「经验推断」「需求推断」三个值之一
@@ -504,6 +506,7 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 - [ ] 质量因子候选在公共因子库中已检索确认（未命中才加入候选列表）
 - [ ] 质量测试点按 TSP 组织、按质量维度分组，每个测试点含 tsp_ref
 - [ ] 质量因子全候选时 TP-Q 的 fact_status 已降级为 needs-confirmation
+- [ ] `quality-test-points.md` 与 `tool-analysis.md` 的不确定性一致，OPEN/候选/工具缺口相关 TP-Q 未被升格为 `confirmed`
 - [ ] 每个测试点包含完整 CAE 三字段（C/A/E 均不为空）
 - [ ] C 字段含质量约束基线（规格参数 / 性能基线 / 环境条件）
 - [ ] E="待定" 必须附批注 `[待定原因: <描述>]`；空 E 字段不允许

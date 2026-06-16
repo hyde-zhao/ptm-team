@@ -111,6 +111,59 @@ CANDIDATE_CONFIRMATION_MARKERS = (
     "全部确认",
     "逐项确认",
 )
+FINAL_CANDIDATE_DECISION_MARKERS = (
+    "decision=confirmed",
+    "decision: confirmed",
+    "decision：confirmed",
+    "decision=rejected",
+    "decision= rejected",
+    "decision: rejected",
+    "decision：rejected",
+    "decision=modified",
+    "decision: modified",
+    "decision：modified",
+    "| confirmed |",
+    "| rejected |",
+    "| modified |",
+    "decision=已确认",
+    "decision: 已确认",
+    "decision：已确认",
+    "decision=已拒绝",
+    "decision: 已拒绝",
+    "decision：已拒绝",
+    "decision=已修改",
+    "decision: 已修改",
+    "decision：已修改",
+    "已确认",
+    "已拒绝",
+    "已修改",
+    "确认结果: confirmed",
+    "确认结果：confirmed",
+    "确认结果: rejected",
+    "确认结果：rejected",
+    "确认结果: modified",
+    "确认结果：modified",
+)
+PENDING_CANDIDATE_DECISION_MARKERS = (
+    "pending-review",
+    "pending review",
+    "pending_review",
+    "decision=pending",
+    "decision: pending",
+    "decision：pending",
+    "decision=pending-review",
+    "decision: pending-review",
+    "decision：pending-review",
+    "| pending |",
+    "| pending-review |",
+    "待评审",
+    "待确认",
+    "未确认",
+    "待用户确认",
+    "需人工确认",
+    "todo",
+    "tbd",
+)
 SCENARIO_BLOCK_MARKERS = (
     "scenario_id",
     "scenario_goal",
@@ -170,6 +223,7 @@ REQUIRED_DIRS: list[str] = [
     "mfq/f-analysis",
     "mfq/q-analysis",
     "mfq/integration",
+    "mfq/candidates",
     "mfq/factor-usage",
     "process/plan",
     "ppdcs/ppdcs",
@@ -1179,7 +1233,25 @@ def candidate_confirmation_is_recorded(path: Path | None) -> bool:
     if path is None or not nonempty_file(path):
         return False
     text = read_text(path)
-    return contains_any_ci(text, CANDIDATE_CONFIRMATION_MARKERS)
+    return candidate_confirmation_status(path)[0]
+
+
+def candidate_confirmation_status(path: Path | None) -> tuple[bool, str]:
+    """Return whether a candidate summary contains final user decisions.
+
+    A summary that only contains a `decision` column with pending states is a
+    valid aggregation artifact, but it is not a GATE-3 confirmation.
+    """
+    if path is None or not nonempty_file(path):
+        return False, "缺失或为空"
+    text = read_text(path)
+    has_final = contains_any_ci(text, FINAL_CANDIDATE_DECISION_MARKERS)
+    has_pending = contains_any_ci(text, PENDING_CANDIDATE_DECISION_MARKERS)
+    if has_final:
+        return True, "已记录最终用户确认结果"
+    if has_pending or contains_any_ci(text, ("decision", "确认", "候选")):
+        return False, "仅记录候选汇总或 pending-review，缺少 confirmed/rejected/modified"
+    return False, "缺少 decision=confirmed/rejected/modified 或等价确认结果"
 
 
 def add_candidate_confirmation_check(
@@ -1202,6 +1274,10 @@ def add_candidate_confirmation_check(
 
     confirmed_summaries = [path for path in summaries if candidate_confirmation_is_recorded(path)]
     ok = bool(confirmed_summaries)
+    summary_statuses = [
+        f"{path}: {candidate_confirmation_status(path)[1]}"
+        for path in summaries
+    ]
     checks.append((
         len(checks) + 1,
         label,
@@ -1210,8 +1286,9 @@ def add_candidate_confirmation_check(
             "候选来源: " + ", ".join(str(path) for path in active_sources)
             + "；确认汇总: " + ", ".join(str(path) for path in confirmed_summaries)
         ) if ok else (
-            "发现候选来源但缺少带 decision/确认结果的候选汇总: "
+            "发现候选来源但缺少最终确认汇总（缺少带 decision/确认结果的候选汇总）: "
             + ", ".join(str(path) for path in active_sources)
+            + ("；已发现汇总状态: " + "；".join(summary_statuses) if summary_statuses else "")
         ),
     ))
     return ok
@@ -1230,7 +1307,7 @@ def render_candidate_confirmation_section(
     for path in active_sources:
         rows.append(f"| candidate-source | `{path}` | 需在候选汇总中逐项给出 decision |")
     for path in summaries:
-        status = "已记录确认结果" if candidate_confirmation_is_recorded(path) else "缺少 decision/确认结果"
+        _ok, status = candidate_confirmation_status(path)
         rows.append(f"| confirmation-summary | `{path}` | {status} |")
     return (
         f"## {title}\n\n"
@@ -2043,6 +2120,7 @@ def run_gate_3(args: argparse.Namespace) -> int:
             "A": ("A（Action）", "Action", "| A |", "动作"),
             "E": ("E（Effect）", "Effect", "| E |", "预期"),
             "trace": ("trace_refs", "scenario_refs", "source_refs"),
+            "fact_status": ("fact_status", "confirmed", "needs-confirmation"),
         },
     )
     add_required_fields_check(
@@ -2054,6 +2132,7 @@ def run_gate_3(args: argparse.Namespace) -> int:
             "A": ("A（Action）", "Action", "| A |", "A 动作", "动作"),
             "E": ("E（Effect）", "Effect", "| E |", "E 预期", "预期"),
             "coupling": ("coupling", "耦合", "coupling_refs"),
+            "fact_status": ("fact_status", "confirmed", "needs-confirmation"),
         },
     )
     add_required_fields_check(
@@ -2065,6 +2144,7 @@ def run_gate_3(args: argparse.Namespace) -> int:
             "A": ("A（Action）", "Action", "| A |", "A 动作", "动作"),
             "E": ("E（Effect）", "Effect", "| E |", "E 预期", "预期"),
             "quality": ("quality_dimension", "质量", "HTSM"),
+            "fact_status": ("fact_status", "confirmed", "needs-confirmation"),
         },
     )
     add_required_fields_check(
@@ -2076,6 +2156,7 @@ def run_gate_3(args: argparse.Namespace) -> int:
             "source_tp_ids": ("source_tp_ids", "source_tp_id", "TP-"),
             "factor_bindings": ("factor_bindings", "factor_refs", "因子"),
             "topology_bindings": ("topology_bindings", "topology_role_refs", "组网绑定", "拓扑"),
+            "fact_status": ("fact_status", "confirmed", "needs-confirmation"),
         },
     )
     add_required_fields_check(
@@ -2133,7 +2214,8 @@ def run_gate_3(args: argparse.Namespace) -> int:
         pending_items=manual_items, suffix="auto",
         extra_sections=warnings + candidate_confirmation_sections,
     )
-    write_state(project_root, feature_name, "GATE-3", overall, current_step="test-point-integrator", input_root=input_root)
+    gate3_step = "mfq-exit" if overall == "PASS" else "test-point-integrator"
+    write_state(project_root, feature_name, "GATE-3", overall, current_step=gate3_step, input_root=input_root)
     print(result_path)
     return 0 if overall == "PASS" else 2
 
@@ -2344,26 +2426,108 @@ def run_cp01(args: argparse.Namespace) -> int:
 def run_internal_check(cp: str, target: str, args: argparse.Namespace) -> int:
     """Execute a stage-internal scrolling check (CP03-CP07, CP08, CP10).
 
-    Internal checks do not generate independent Gate output files.
-    They verify the corresponding product directory exists and output
-    a lightweight summary to stdout.  Detailed check logic is deferred
-    to CR-012 (MFQ) and CR-013 (PPDCS).
+    Internal checks validate the target product directory plus the minimum
+    machine-readable contract for the corresponding stage.
     """
     project_root, _input_root = resolve_feature_workspace(args)
+    checkpoints_dir = project_root / "process" / "checkpoints"
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
     phase = "MFQ" if target.startswith("MFQ-INTERNAL-") else "PPDCS"
     print(f"[{cp}] {phase} 阶段内滚动自检: {target}")
 
     target_rel = INTERNAL_DIR_MAP.get(target)
-    if target_rel:
-        target_dir = project_root / target_rel
-        if target_dir.is_dir():
-            print(f"  {cp} 产物目录存在: {target_dir}")
-            return 0
-        else:
-            print(f"  {cp} 产物目录不存在: {target_dir}（阶段尚未执行或产物未生成）")
-            return 1
-    print(f"  {cp} 未知内部检查目标: {target}")
-    return 2
+    if not target_rel:
+        print(f"  {cp} 未知内部检查目标: {target}")
+        return 2
+
+    checks: list[tuple[int, str, str, str]] = []
+    target_dir = project_root / target_rel
+    checks.append((
+        len(checks) + 1,
+        f"{target}: 产物目录存在",
+        "PASS" if target_dir.is_dir() else "BLOCKING",
+        str(target_dir) if target_dir.is_dir() else f"目录不存在: {target_dir}",
+    ))
+
+    if target == "MFQ-INTERNAL-M":
+        m_test_points = first_existing(project_root, ["mfq/m-analysis/test-points.md"])
+        add_required_fields_check(checks, "CP03: M CAE/trace/fact_status", m_test_points, {
+            "C": ("C（Condition）", "Condition", "| C |", "前置"),
+            "A": ("A（Action）", "Action", "| A |", "动作"),
+            "E": ("E（Effect）", "Effect", "| E |", "预期"),
+            "trace": ("trace_refs", "scenario_refs", "source_refs"),
+            "fact_status": ("fact_status", "confirmed", "needs-confirmation"),
+        })
+        add_file_check(checks, "CP03: Scenario-TSP 覆盖矩阵存在", first_existing(project_root, ["mfq/m-analysis/scenario-tsp-coverage.md"]))
+        add_file_check(checks, "CP03: PPDCS 标注存在", first_existing(project_root, ["mfq/m-analysis/ppdcs-annotation.md"]))
+        add_file_check(checks, "CP03: 对象因子表存在", first_existing(project_root, ["mfq/m-analysis/test-objects-factors.md"]))
+    elif target == "MFQ-INTERNAL-F":
+        f_test_points = first_existing(project_root, ["mfq/f-analysis/coupling-test-points.md"])
+        add_required_fields_check(checks, "CP04: F CAE/coupling/fact_status", f_test_points, {
+            "C": ("C（Condition）", "Condition", "| C |", "C 条件", "前置"),
+            "A": ("A（Action）", "Action", "| A |", "A 动作", "动作"),
+            "E": ("E（Effect）", "Effect", "| E |", "E 预期", "预期"),
+            "coupling": ("coupling", "耦合", "coupling_refs"),
+            "fact_status": ("fact_status", "confirmed", "needs-confirmation"),
+        })
+        add_required_fields_check(checks, "CP04: F tool-analysis 字段", first_existing(project_root, ["mfq/f-analysis/tool-analysis.md"]), {
+            "existing_tools": ("Existing Tool Summary", "现有工具"),
+            "tool_gap": ("Tool Capability Gap", "工具能力缺口"),
+        })
+    elif target == "MFQ-INTERNAL-Q":
+        q_test_points = first_existing(project_root, ["mfq/q-analysis/quality-test-points.md"])
+        add_required_fields_check(checks, "CP05: Q CAE/quality/fact_status", q_test_points, {
+            "C": ("C（Condition）", "Condition", "| C |", "C 条件", "前置"),
+            "A": ("A（Action）", "Action", "| A |", "A 动作", "动作"),
+            "E": ("E（Effect）", "Effect", "| E |", "E 预期", "预期"),
+            "quality": ("quality_dimension", "质量", "HTSM"),
+            "fact_status": ("fact_status", "confirmed", "needs-confirmation"),
+        })
+        add_required_fields_check(checks, "CP05: Q tool-analysis 字段", first_existing(project_root, ["mfq/q-analysis/tool-analysis.md"]), {
+            "existing_tools": ("Existing Tool Summary", "现有工具"),
+            "tool_gap": ("Tool Capability Gap", "工具能力缺口"),
+        })
+    elif target == "MFQ-INTERNAL-INTEGRATION":
+        logic_cases = first_existing(project_root, ["mfq/integration/logic-cases.md"])
+        add_file_check(checks, "CP06: all-test-points 存在", first_existing(project_root, ["mfq/integration/all-test-points.md"]))
+        add_required_fields_check(checks, "CP06: LC trace/binding/fact_status", logic_cases, {
+            "LC-ID": ("LC-ID", "logic_case_id", "LC-"),
+            "source_tp_ids": ("source_tp_ids", "source_tp_id", "TP-"),
+            "factor_bindings": ("factor_bindings", "factor_refs", "因子"),
+            "topology_bindings": ("topology_bindings", "topology_role_refs", "组网绑定", "拓扑"),
+            "fact_status": ("fact_status", "confirmed", "needs-confirmation"),
+        })
+        add_file_check(checks, "CP06: test-data 存在", first_existing(project_root, ["mfq/integration/test-data.md"]))
+        add_file_check(checks, "CP06: 候选因子汇总存在", first_existing(project_root, ["mfq/candidates/factor-candidates.md"]), status_if_missing="WARN")
+        add_file_check(checks, "CP06: 候选原子操作汇总存在", first_existing(project_root, ["mfq/candidates/ptm-atomic-candidates.md"]), status_if_missing="WARN")
+    elif target == "MFQ-INTERNAL-PLAN":
+        design_plan = first_existing(project_root, ["process/plan/design-plan.md", "mfq/integration/design-plan.md"])
+        add_required_fields_check(checks, "CP07: 设计计划字段", design_plan, {
+            "logic_case": ("logic_case_id", "LC-ID", "LC-"),
+            "ppdcs": ("PPDCS", "P-Process", "P-Parameter", "D-Data", "C-Combination", "S-State"),
+            "method": ("recommended_method", "method", "设计方法"),
+            "gap": ("待确认", "confirmation_gap_refs", "uncertain", "fact_status"),
+        })
+        add_file_check(checks, "CP07: 设计推理存在", first_existing(project_root, ["process/plan/design-planner-reasoning.md"]))
+
+    overall = "PASS" if all(status not in ("BLOCKING", "MISSING") for _, _, status, _ in checks) else "BLOCKED"
+    result_path = checkpoints_dir / f"{cp}-{target}-auto.md"
+    rows = "\n".join(
+        f"| {idx} | {item} | {status} | {evidence} |"
+        for idx, item, status, evidence in checks
+    )
+    result_path.write_text(
+        f"---\ncheck_depth: internal-field-baseline\ncheckpoint: {cp}\ntarget: {target}\n---\n"
+        f"# {cp} {target}\n\n"
+        f"- 结论：`{overall}`\n"
+        f"- 检查时间：`{dt.datetime.now(dt.timezone.utc).isoformat()}`\n\n"
+        "| # | 检查项 | 状态 | 证据 / 处理意见 |\n"
+        "|---|---|---|---|\n"
+        f"{rows}\n",
+        encoding="utf-8",
+    )
+    print(result_path)
+    return 0 if overall == "PASS" else 1
 
 
 # ---------------------------------------------------------------------------

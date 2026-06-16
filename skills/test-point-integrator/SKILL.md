@@ -254,7 +254,7 @@ integrator 必须消费并透传以下字段：
 
 ### 步骤 4.5：候选汇总与用户确认
 
-⛔ **HARD-STOP（STOP-02）**：禁止 Agent 自行判定候选因子/原子操作为"全部确认"。必须展示候选汇总表，等待用户选择确认选项。候选表必须使用 `( )` 单选标记区分选项。GATE-3 会检查候选汇总文件是否保留用户确认结果；存在候选源但缺 `decision=confirmed/rejected/modified` 或等价确认结果时，GATE-3 必须阻断。
+⛔ **HARD-STOP（STOP-02）**：禁止 Agent 自行判定候选因子/原子操作为"全部确认"。必须先生成候选汇总文件，并把每个候选默认标记为 `decision=pending-review`、`decision_basis=awaiting-user-review`；随后展示候选汇总表，等待用户选择确认选项。候选表必须使用 `( )` 单选标记区分选项。GATE-3 会检查候选汇总文件是否保留最终用户确认结果；存在候选源但只有 `pending-review`、缺 `decision=confirmed/rejected/modified` 或等价确认结果时，GATE-3 必须阻断。
 
 #### 4.5.1 三源候选归集
 
@@ -355,7 +355,7 @@ integrator 必须消费并透传以下字段：
 
 #### 4.5.3 用户批量确认
 
-展示因子候选汇总表和原子操作候选汇总表后，输出确认选项。
+展示因子候选汇总表和原子操作候选汇总表后，输出确认选项。若当前运行环境无法获得用户回复（例如非交互批处理），必须保留 `pending-review` 汇总文件并停止在 GATE-3 前；不得把 pending 候选改写为 confirmed。
 
 **平台交互协议**：Claude Code 环境且 `AskUserQuestion` 可用时，优先使用结构化选择：
 - question: "请确认候选汇总的处理方式："
@@ -384,6 +384,15 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 
 #### 4.5.4 确认后回写
 
+在用户确认前，必须已经写入候选汇总草稿：
+
+| 文件 | 预确认写入要求 |
+|---|---|
+| `mfq/candidates/factor-candidates.md` | M/F/Q 三源候选逐项列出，`decision=pending-review`，`decision_basis=awaiting-user-review` |
+| `mfq/candidates/ptm-atomic-candidates.md` | 原子操作候选逐项列出，`decision=pending-review`，`decision_basis=awaiting-user-review` |
+
+预确认汇总只表示“候选已展示/待评审”，不是用户确认结果；GATE-3 必须保持 BLOCKED，直到用户给出最终决策。
+
 根据用户选择执行：
 
 | 用户选择 | 执行动作 |
@@ -393,7 +402,7 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 | 📝 批量修改 | 收集用户修改意见，批量调整后展示更新汇总表，再次等待确认 |
 | ❌ 全部拒绝 | 所有候选 `decision=rejected`，不写入最终产物，在汇总表中保留决定记录 |
 
-写入前必须校验目标父目录 `mfq/candidates/` 存在且为目录（非普通文件）。若父目录不存在，输出错误信息并提示用户，禁止 Agent 手动 mkdir。
+写入前必须校验目标父目录 `mfq/candidates/` 存在且为目录（非普通文件）。该目录由 GATE-1 / checkpoint-manager 初始化；若父目录不存在，先运行 GATE-1/目录初始化检查，禁止 integrator 手动 mkdir。
 
 候选汇总文件最低字段要求：
 
@@ -402,7 +411,7 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 | `mfq/candidates/factor-candidates.md` | `candidate_id / factor_name / source / decision / decision_basis` |
 | `mfq/candidates/ptm-atomic-candidates.md` | `candidate_id / op_name 或 candidate_op_name / match_attempt / decision / decision_basis` |
 
-`decision` 只允许 `confirmed / rejected / modified` 或明确的中文等价状态；空白、`pending`、`todo`、`TBD` 不得通过 GATE-3。
+预确认阶段 `decision=pending-review` 是允许的候选汇总状态，但不得通过 GATE-3；最终确认阶段 `decision` 只允许 `confirmed / rejected / modified` 或明确的中文等价状态。空白、`pending`、`pending-review`、`todo`、`TBD` 不得通过 GATE-3。
 
 ### 步骤 5：测试数据归集（Story-04 新增）
 
@@ -469,7 +478,7 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 
 ### 步骤 7.5：候选归集（为候选汇总阶段准备数据）
 
-> 本步骤只做归集和去重，不附加"建议确认"、"推荐通过"等自行判定语句。候选状态保留上游标注（`new-candidate` / `new-coupling-candidate` / `new-quality-candidate`）。为 STORY-012-07 候选汇总提供输入数据。
+> 本步骤只做归集和去重，不附加"建议确认"、"推荐通过"等自行判定语句。候选状态保留上游标注（`new-candidate` / `new-coupling-candidate` / `new-quality-candidate`）。输出到 `mfq/candidates/` 时必须补齐 `decision=pending-review` 和 `decision_basis=awaiting-user-review`，为 GATE-3 人工确认提供稳定输入。
 
 **读取三源候选列表**：
 
@@ -487,10 +496,10 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 
 | 文件 | 内容 |
 |------|------|
-| `mfq/candidates/factor-candidates.md` | M/F/Q 三源因子候选合并（按 `factor_id` 去重），含 `候选ID / 因子名称 / 数据域 / 来源分析器（M/F/Q）/ 关联 TSP / 优先级 / 原始来源` |
-| `mfq/candidates/ptm-atomic-candidates.md` | M 分析原子操作候选，含 `候选ID / 操作名称 / 操作描述 / 关联对象 / 关联场景` |
+| `mfq/candidates/factor-candidates.md` | M/F/Q 三源因子候选合并（按 `factor_id` 去重），含 `候选ID / 因子名称 / 数据域 / 来源分析器（M/F/Q）/ 关联 TSP / 优先级 / 原始来源 / decision / decision_basis`；预确认状态固定为 `pending-review` |
+| `mfq/candidates/ptm-atomic-candidates.md` | M 分析原子操作候选，含 `候选ID / 操作名称 / 操作描述 / 关联对象 / 关联场景 / decision / decision_basis`；预确认状态固定为 `pending-review` |
 
-> 写入前必须校验目标父目录 `mfq/candidates/` 存在且为目录（STOP-04 规则）。禁止 Agent 手动 mkdir。
+> 写入前必须校验目标父目录 `mfq/candidates/` 存在且为目录（STOP-04 规则）。该目录由 GATE-1 / checkpoint-manager 初始化；禁止 integrator 手动 mkdir。
 
 ### 步骤 8：输出
 
@@ -503,8 +512,8 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 | `mfq/integration/test-data.md` | TD 清单（含 factor/value/trace/gap） |
 | `mfq/integration/tool-analysis.md` | 归并后的 Existing Tool Summary + Tool Capability Gap（renderer 别名已对齐） |
 | `mfq/integration/coverage-matrix.md` | `SR→Scenario→TP→LC→TD` 的追踪矩阵 |
-| `mfq/candidates/factor-candidates.md` | M/F/Q 三源因子候选归集（按 `factor_id` 去重，为候选汇总阶段准备数据） |
-| `mfq/candidates/ptm-atomic-candidates.md` | 原子操作候选归集（为候选汇总阶段准备数据） |
+| `mfq/candidates/factor-candidates.md` | M/F/Q 三源因子候选归集（按 `factor_id` 去重，预确认 `decision=pending-review`，为 GATE-3 人工确认准备数据） |
+| `mfq/candidates/ptm-atomic-candidates.md` | 原子操作候选归集（预确认 `decision=pending-review`，为 GATE-3 人工确认准备数据） |
 
 > 写入前必须校验目标父目录存在且为目录（STOP-04 规则）。禁止 Agent 手动 mkdir。
 
@@ -582,9 +591,9 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 - 组网绑定只来自 confirmed-scenarios.md；不要用端口命名习惯或场景标题推断 DUT/TG 真实接口
 - 裸端口不是 LC 因子值；发现后应转成 topology gap，而不是放入因子-取值表
 - 覆盖矩阵（`scenario-tsp-coverage.md`）不存在时，步骤 1 报错终止（fail-fast），不静默跳过
-- 候选归集步骤只做归集和去重，不附加"建议确认"、"推荐通过"等自行判定语句；候选状态保留上游标注
-- 候选汇总步骤（步骤 4.5）受 STOP-02 硬停止约束：禁止 Agent 自行判定全部确认或跳过用户确认交互；必须展示汇总表并等待用户选择后执行，且输出文件必须保留 `decision` 结果供 GATE-3 检查
-- 候选汇总确认后写入 `mfq/candidates/` 前必须校验父目录存在且为目录（STOP-04）；禁止 Agent 手动 mkdir
+- 候选归集步骤只做归集和去重，不附加"建议确认"、"推荐通过"等自行判定语句；候选状态保留上游标注，并在汇总文件中默认写 `decision=pending-review`
+- 候选汇总步骤（步骤 4.5）受 STOP-02 硬停止约束：禁止 Agent 自行判定全部确认或跳过用户确认交互；必须展示汇总表并等待用户选择后执行，且输出文件必须保留最终 `decision=confirmed/rejected/modified` 结果供 GATE-3 检查
+- 候选汇总写入 `mfq/candidates/` 前必须校验父目录存在且为目录（STOP-04）；目录缺失时回到 GATE-1/目录初始化，禁止 integrator 手动 mkdir
 
 ## 验收标准
 
@@ -604,5 +613,5 @@ Codex 或 `AskUserQuestion` 不可用时，回退到 STOP-05 文本标记：
 - [ ] 追踪矩阵 `SR→Scenario→TP→LC→TD` 链路完整
 - [ ] 输出文件写入 `mfq/integration/` 和 `mfq/candidates/`
 - [ ] 覆盖矩阵被正确消费（步骤 1 加载 + 步骤 2 视角 A 检查）
-- [ ] M/F/Q 三源候选列表被正确归集和去重（步骤 7.5）
+- [ ] M/F/Q 三源候选列表被正确归集和去重（步骤 7.5），预确认候选均标记 `decision=pending-review`
 - [ ] 覆盖矩阵或候选文件缺失时报错终止（fail-fast），不静默降级

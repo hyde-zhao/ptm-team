@@ -91,11 +91,11 @@ mfq/factor-usage/
 | `candidate-factor-proposals.yaml` | 未命中或需扩展的候选因子、样本、约束和目标库建议 |
 | `factor-resolution-report.md` | 查库、复用、扩展、候选、冲突和降级处理报告 |
 
-`ptm-tde` 不得在项目运行期间直接修改公共主库；候选因子必须先展示给用户确认，并在 `mfq/candidates/factor-candidates.md` 中保留 `decision=confirmed/rejected/modified` 或等价确认结果，再通过公共库维护流程回流到 `resource/factor-libraries/_proposals/`。
+`ptm-tde` 不得在项目运行期间直接修改公共主库；候选因子必须先写入 `mfq/candidates/factor-candidates.md`，预确认状态为 `decision=pending-review`。只有用户明确确认后，才能改为 `decision=confirmed/rejected/modified` 或等价确认结果，再通过公共库维护流程回流到 `resource/factor-libraries/_proposals/`。`pending-review` 不得通过 GATE-3。
 
 真实设备、端口和链路不写入 `mfq/factor-usage/`。它们属于拓扑绑定链路，由 `kym/scenarios/confirmed-scenarios.md`、LC `topology_bindings` 和 PC 物化字段承载。
 
-候选原子操作必须写入 `mfq/candidates/ptm-atomic-candidates.md` 或等价文件，并保留 `candidate_id / op_name 或 candidate_op_name / match_attempt / decision / decision_basis`。`decision` 必须来自用户确认，取值为 `confirmed / rejected / modified` 或明确中文等价状态；缺少确认结果时 GATE-3 阻断。
+候选原子操作必须写入 `mfq/candidates/ptm-atomic-candidates.md` 或等价文件，并保留 `candidate_id / op_name 或 candidate_op_name / match_attempt / decision / decision_basis`。预确认状态固定为 `decision=pending-review`；最终 `decision` 必须来自用户确认，取值为 `confirmed / rejected / modified` 或明确中文等价状态；缺少最终确认结果时 GATE-3 阻断。
 
 ## 场景产物字段
 

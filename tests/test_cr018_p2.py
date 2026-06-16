@@ -173,20 +173,20 @@ def write_minimal_gate3_fixture(
     write(feature / ".input" / "req.md", "# Feature A\n")
     write(
         feature / "mfq" / "m-analysis" / "test-points.md",
-        "# M\n\n| C（Condition） | A（Action） | E（Effect） | trace_refs |\n|---|---|---|---|\n| C | A | E | TP-001 |\nscenario_refs: [SCN-001]\n",
+        "# M\n\n| C（Condition） | A（Action） | E（Effect） | trace_refs | fact_status |\n|---|---|---|---|---|\n| C | A | E | TP-001 | confirmed |\nscenario_refs: [SCN-001]\n",
     )
     write(
         feature / "mfq" / "f-analysis" / "coupling-test-points.md",
-        "# F\n\n| C 条件 | A 动作 | E 预期 | coupling_refs |\n|---|---|---|---|\n| C | A | E | CPL-001 |\n",
+        "# F\n\n| C 条件 | A 动作 | E 预期 | coupling_refs | fact_status |\n|---|---|---|---|---|\n| C | A | E | CPL-001 | confirmed |\n",
     )
     write(
         feature / "mfq" / "q-analysis" / "quality-test-points.md",
-        "# Q\n\n| C 条件 | A 动作 | E 预期 | quality_dimension |\n|---|---|---|---|\n| C | A | E | reliability |\n",
+        "# Q\n\n| C 条件 | A 动作 | E 预期 | quality_dimension | fact_status |\n|---|---|---|---|---|\n| C | A | E | reliability | confirmed |\n",
     )
     write(feature / "mfq" / "integration" / "all-test-points.md", "TP-001\n")
     write(
         feature / "mfq" / "integration" / "logic-cases.md",
-        "LC-ID: LC-001\nsource_tp_ids: [TP-001]\nfactor_bindings: [FAC-001]\ntopology_bindings: [TB-001]\n",
+        "LC-ID: LC-001\nsource_tp_ids: [TP-001]\nfactor_bindings: [FAC-001]\ntopology_bindings: [TB-001]\nfact_status: confirmed\n",
     )
     write(feature / "mfq" / "integration" / "test-data.md", "TD-001\n")
     write(
@@ -463,6 +463,29 @@ class CR018P2Tests(unittest.TestCase):
             self.assertIn("M11: 候选原子操作显式确认状态", text)
             self.assertIn("缺少带 decision/确认结果的候选汇总", text)
 
+    def test_gate3_blocks_when_candidate_decision_is_pending_review(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="ptm-cr018-gate3-pending-") as tmp:
+            feature = Path(tmp) / "feature-a"
+            write_minimal_gate3_fixture(
+                feature,
+                write_candidate_sources=True,
+                write_candidate_confirmations=False,
+            )
+            write(
+                feature / "mfq" / "candidates" / "factor-candidates.md",
+                "| candidate_id | factor_name | decision |\n|---|---|---|\n| CF-001 | 新增匹配模式 | pending-review |\n\n## 用户确认选项\n\n( ) 全部确认 — 将所有候选转为 confirmed\n",
+            )
+            write(
+                feature / "mfq" / "candidates" / "ptm-atomic-candidates.md",
+                "| candidate_id | op_name | decision |\n|---|---|---|\n| CAO-001 | fw_config_new_match_mode | pending-review |\n\n当前未收到用户确认，因此所有 `decision` 均保持 `pending-review`。\n",
+            )
+
+            result = run_cmd([str(CHECKPOINT), "--gate", "GATE-3", "--project-root", str(feature)], cwd=REPO_ROOT)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            text = (feature / "process" / "checkpoints" / "GATE-3-MFQ-Exit-auto.md").read_text(encoding="utf-8")
+            self.assertIn("pending-review", text)
+            self.assertIn("缺少 confirmed/rejected/modified", text)
+
     def test_gate3_passes_when_candidates_have_user_confirmation(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ptm-cr018-gate3-confirmed-") as tmp:
             feature = Path(tmp) / "feature-a"
@@ -475,8 +498,10 @@ class CR018P2Tests(unittest.TestCase):
             result = run_cmd([str(CHECKPOINT), "--gate", "GATE-3", "--project-root", str(feature)], cwd=REPO_ROOT)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             text = (feature / "process" / "checkpoints" / "GATE-3-MFQ-Exit-auto.md").read_text(encoding="utf-8")
+            state_text = (feature / "process" / "STATE.yaml").read_text(encoding="utf-8")
             self.assertIn("GATE-3 候选测试因子确认摘要", text)
             self.assertIn("GATE-3 候选原子操作确认摘要", text)
+            self.assertIn('current_step: "mfq-exit"', state_text)
 
     def test_install_check_reports_resource_content_drift(self) -> None:
         with tempfile.TemporaryDirectory(prefix="ptm-cr018-resource-") as tmp:

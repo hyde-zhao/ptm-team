@@ -698,7 +698,7 @@ mfq/factor-usage/
 - `factor-bindings.md` 是下游设计链正式消费的因子绑定。
 - `candidate-factor-proposals.yaml` 记录公共库未覆盖的新因子、样本、值域或约束建议。
 - `factor-resolution-report.md` 记录查库、复用、扩展、候选和冲突处理结果。
-- GATE-3 会检查候选测试因子和候选原子操作是否已经展示给用户，并在 `mfq/candidates/` 中保留逐项确认结果；存在候选但缺少 `decision=confirmed/rejected/modified` 时会阻断。
+- GATE-3 会检查候选测试因子和候选原子操作是否已经展示给用户，并在 `mfq/candidates/` 中保留逐项确认结果。候选归集阶段可以先写 `decision=pending-review`，但这只表示待评审；存在候选但缺少最终 `decision=confirmed/rejected/modified` 时会阻断。
 
 拓扑绑定与因子绑定并行存在：
 

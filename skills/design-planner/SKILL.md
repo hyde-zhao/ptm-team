@@ -364,6 +364,7 @@ Codex 或 `AskUserQuestion` 不可用时，回退到文本确认：
 - PPDCS 特征是“子模块级”标注，但 design-planner 必须按 **LC + TD** 做二次复核
 - 不得只从 `source_tp_ids` 简写推断，必须查看 LC 动作路径与 TD 取值集合
 - `confirmation_gap_refs`、`TD.status=needs-confirmation`、`knowledge_refs=missing/unavailable` 不能被吞掉
+- 若上游 integration 明确标注 `M1-only`、`not-generated`、`needs-confirmation` 或其他范围缺口，`design-plan.md` 必须在每条受影响 LC 和总览中保留这些范围限制；不得用局部设计计划暗示完整特性已覆盖。
 - 混合特征必须写明“主 / 辅 / 排除”三类结果，不能只给模糊推荐
 - 直接设计法应尽量避免，v2 有 5 种方法足以覆盖大部分场景
 - 用户修改方法时需同步更新推荐理由、排除摘要与 reasoning
@@ -383,6 +384,7 @@ Codex 或 `AskUserQuestion` 不可用时，回退到文本确认：
 - [ ] 拓扑角色只作为约束/前置，不作为 D-Data/C-Combination/P-Parameter 因子信号
 - [ ] 发现拓扑实例混入因子时，LC `fact_status=needs-confirmation` 并记录 uncertain fact
 - [ ] 未确认事实通过 `confirmation_gap_refs / uncertain facts` 显式保留
+- [ ] 上游 `M1-only / not-generated / needs-confirmation` 范围限制已在设计计划和 reasoning 中保留
 - [ ] 详细推断路径写入 `process/plan/design-planner-reasoning.md`（不在设计计划表完整展开）
 - [ ] 直接设计法占比 < 5%
 - [ ] 用户已确认设计计划

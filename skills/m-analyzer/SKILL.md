@@ -557,6 +557,12 @@ tsp:
 - C/A/E 涉及接口位置时必须优先写拓扑角色占位，例如 `{{topo_role:MATCH_INGRESS_IF}}`；不得把真实端口写成因子值
 - C/A/E 出现真实端口时，必须同时写 `topology_refs` 并能回链 confirmed-scenarios.md；无法回链时 `topology_binding_status=needs-confirmation` 且 `fact_status=needs-confirmation`
 
+**fact_status 与统计口径约束**：
+- 只要 TP 依赖 `confirmation_gap_refs`、候选因子、候选原子操作、`Knowledge Reference=missing/unavailable`、拓扑绑定缺失/不唯一，`fact_status` 必须为 `needs-confirmation`。
+- `confirmed` 只能用于需求、场景链、原子操作、因子和拓扑来源均已确认且无 gap 的 TP。
+- `test-points.md`、`scenario-tsp-coverage.md` 和候选/lock 文件中的统计数字必须口径一致；必须区分 `total`、`confirmed`、`needs-confirmation`、`not-generated/excluded`。
+- 若当前只分析部分 M/TSP，必须在 `scenario-tsp-coverage.md` 的统计区显式写明 scope（例如 `M1-only`）和未生成范围，不得用局部 PASS 暗示全量覆盖。
+
 **📤 生产**：M 分析测试点，按四级→五级分节输出，写入 `mfq/m-analysis/test-points.md`
 
 ### 步骤 6：覆盖初检（四维）

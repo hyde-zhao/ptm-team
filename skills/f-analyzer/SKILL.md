@@ -574,6 +574,8 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "mfq/f-analy
 - 场景耦合推理可能产生误报，需用户确认
 - 不要漏掉"反向耦合"：A→B 存在时检查 B→A
 - `confirmation_gaps` 影响耦合成立性时，允许输出候选 TP，但不能包装成已确认耦合
+- `coupling-graph.yaml`、`coupling-test-points.md` 与 `tool-analysis.md` 必须使用同一 `fact_status` 口径；任一耦合边或 TP 依赖 `confirmation_gaps`、候选因子、推理型 coupling、缺失知识引用或拓扑来源不明时，必须降级为 `needs-confirmation`
+- `confirmed` 只允许用于已确认场景链、已存在耦合矩阵/显式需求依据、已确认因子和已确认拓扑来源同时成立的耦合点；不得因“合理推测”或“看起来应当耦合”写成 confirmed
 - 工具评估只基于已给定 ptm-atomic / Existing Tool Usage Seed / Tool Draft，不能自行发明现有工具能力
 - 不得把 `DUT.port1/TG.port2`、link 或 TOPO 实例写入 `factor_refs / factor_bindings / covered_factors`；真实组网对象必须登记拓扑来源，来源不明则降级 `needs-confirmation`
 - **（v3.0 新增）F 线索指向不存在的 TSP**：当覆盖矩阵的 F 线索汇总表中某行的目标 TSP 在 TSP 列表中不存在时，记录 `confirmation_gap`（类型 `f-tag-target-tsp-missing`）并警告，不阻断分析。该线索不作为种子线索参与步骤 2 的优先展开
@@ -595,6 +597,7 @@ python scripts/excel_coupling_tool.py write "<excel_path>" --source "mfq/f-analy
 - [ ] E="待定" 必须附批注 `[待定原因: <描述>]`；空 E 字段不允许
 - [ ] 耦合测试点**按 TSP 组织**（每个 TSP 一个子节）
 - [ ] 耦合因子全候选的 TP 已降级 `fact_status=needs-confirmation`
+- [ ] `coupling-graph.yaml` 与 `coupling-test-points.md` 的 `fact_status` 一致，未确认耦合未被升格为 `confirmed`
 - [ ] A 动作不得直接操作耦合目标
 - [ ] 每个 TP-F 包含 `scenario_refs / action_source_refs / factor_refs / trace_refs / discovery_source`
 - [ ] `factor_refs / factor_bindings / covered_factors` 未混入真实端口、link 或 TOPO 实例；涉及真实组网对象时已登记拓扑来源或降级 `needs-confirmation`
