@@ -227,7 +227,8 @@ D. 上传已有采集包
 2. 默认反馈仓库 remote 为 `git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team-feedback.git`，不得改回 HTTP。
 3. `collect` / `submit` 只读取用户指定的特性工作区运行材料，不写 `.input/`。
 4. 执行 `--push` 前必须从用户请求中获得明确授权；没有授权时只允许本地 `collect` 或本地 `publish --commit`。
-5. 反馈材料进入 GitLab 后，评估侧通过 `tde-feedback` 执行 `pull --root <ptm-team>` 拉取到 `process/field-feedback/inbox/gitlab-materials`，再生成 RUN-EXEC、ISSUE、coverage_status、regression_asset 和质量看板。
+5. `collect` / `submit` 成功后必须自动生成 `RUN-EXEC-*` 并绑定 `collection_path`；`submit` 还必须在 `RUN-EXEC` 中绑定 `published_path`。
+6. 反馈材料进入 GitLab 后，评估侧通过 `tde-feedback` 执行 `pull --root <ptm-team>` 拉取到 `process/field-feedback/inbox/gitlab-materials`，再基于 RUN-EXEC 生成 ISSUE、coverage_status、regression_asset 和质量看板。
 
 常用入口：
 

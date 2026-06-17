@@ -214,3 +214,79 @@ cases:
     target: "../script/install.py"
     graders: ["tde-feedback-install-mapping", "artifact-paths-exist"]
     expected_result: "PASS"
+
+  - id: "CASE-028"
+    title: "field_feedback collect/submit 必须自动登记 RUN-EXEC 并绑定采集包路径"
+    category: "field-feedback"
+    target: "../script/field_feedback.py"
+    graders: ["field-feedback-run-exec-contract"]
+    expected_result: "PASS"
+
+  - id: "CASE-029"
+    title: "ptm-team 保留 BGP4+ 与 policy_route 的领域 runtime 样本清单"
+    category: "runtime-sample"
+    target: "RUNTIME-SAMPLE-REGISTRY.yaml"
+    graders: ["runtime-sample-registry-contract", "artifact-paths-exist"]
+    expected_result: "PASS"
+    severity: "HIGH"
+    blocking: true
+    coverage_status: "covered"
+    regression_asset: "evals/RUNTIME-SAMPLE-REGISTRY.yaml"
+
+  - id: "CASE-030"
+    title: "BGP4+ partial 真实 workspace 走到 MFQ / GATE-3 且保留 KYM/MFQ 追踪证据"
+    category: "runtime-artifact"
+    target: "/home/hyde/projects/ptm-tde/test/bgp4+"
+    graders: ["runtime-artifact-bgp4-partial"]
+    expected_result: "PASS"
+    severity: "MEDIUM"
+    blocking: false
+    coverage_status: "covered"
+    runtime_required: true
+    source_issue: "FIELD-BGP4-PARTIAL-20260617"
+    regression_asset: "RT-BGP4-PARTIAL-20260617"
+
+  - id: "CASE-031"
+    title: "policy_route full 真实 workspace 完成 GATE-5 并保留 PPDCS / Delivery 证据"
+    category: "runtime-artifact"
+    target: "/home/hyde/projects/ptm-tde/test/policy_route_rt_verify"
+    graders: ["runtime-artifact-policy-route-full"]
+    expected_result: "PASS"
+    severity: "HIGH"
+    blocking: true
+    coverage_status: "covered"
+    runtime_required: true
+    regression_asset: "RT-POLICY-ROUTE-GATE5-20260615"
+
+  - id: "CASE-032"
+    title: "WORKFLOW-EVAL 声明 feedback_sources，可被 meta-flow eval feedback pull/analyze 消费"
+    category: "feedback-source"
+    target: "WORKFLOW-EVAL.yaml"
+    graders: ["feedback-source-contract"]
+    expected_result: "PASS"
+    severity: "HIGH"
+    blocking: true
+    coverage_status: "covered"
+    regression_asset: "feedback_sources.ptm-team-feedback-local"
+
+  - id: "CASE-033"
+    title: "真实 Claude 安装面包含 ptm-tde Agent 与 tde-feedback 等关键 Skill"
+    category: "install"
+    target: "/home/hyde/projects/ptm-tde/test/.claude"
+    graders: ["claude-install-runtime-mapping"]
+    expected_result: "PASS"
+    severity: "HIGH"
+    blocking: true
+    coverage_status: "covered"
+    regression_asset: "/home/hyde/projects/ptm-tde/test/.claude"
+
+  - id: "CASE-034"
+    title: "release profile 明确 runtime、feedback、blocking case 与 regression asset 发布门禁"
+    category: "release-check"
+    target: "RELEASE-CHECK-PROFILE.yaml"
+    graders: ["release-check-profile-contract"]
+    expected_result: "PASS"
+    severity: "HIGH"
+    blocking: true
+    coverage_status: "covered"
+    regression_asset: "evals/RELEASE-CHECK-PROFILE.yaml"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -158,10 +159,18 @@ class FieldFeedbackTests(unittest.TestCase):
                 cwd=REPO_ROOT,
             )
             self.assertEqual(collect.returncode, 0, collect.stderr + collect.stdout)
-            collection = Path(collect.stdout.strip())
+            collect_lines = collect.stdout.strip().splitlines()
+            collection = Path(collect_lines[0])
+            run_exec = Path(collect_lines[1].removeprefix("run_exec: ").strip())
             self.assertTrue((collection / "MANIFEST.json").is_file())
             self.assertTrue((collection / "artifacts/process/STATE.yaml").is_file())
             self.assertTrue((collection / "artifacts/process/checkpoints/GATE-5-Exit.md").is_file())
+            self.assertTrue(run_exec.is_file())
+            run_exec_text = run_exec.read_text(encoding="utf-8")
+            self.assertIn(f'collection_path: "{collection}"', run_exec_text)
+            self.assertIn("| published_path | `N/A` |", run_exec_text)
+            manifest = json.loads((collection / "MANIFEST.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["run_exec_path"], str(run_exec))
 
             publish = run_cmd(
                 [
@@ -260,6 +269,17 @@ class FieldFeedbackTests(unittest.TestCase):
             )
             self.assertEqual(submit.returncode, 0, submit.stderr + submit.stdout)
             self.assertTrue((local_repo / "tde-feedback/policy_route").is_dir())
+            submit_lines = submit.stdout.strip().splitlines()
+            collection = Path(submit_lines[0].removeprefix("collection: ").strip())
+            published = Path(submit_lines[1].removeprefix("published: ").strip())
+            run_exec = Path(submit_lines[2].removeprefix("run_exec: ").strip())
+            self.assertTrue(run_exec.is_file())
+            run_exec_text = run_exec.read_text(encoding="utf-8")
+            self.assertIn(f'collection_path: "{collection}"', run_exec_text)
+            self.assertIn(f'published_path: "{published}"', run_exec_text)
+            manifest = json.loads((collection / "MANIFEST.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["run_exec_path"], str(run_exec))
+            self.assertEqual(manifest["published_path"], str(published))
 
             pull = run_cmd(["pull", "--root", str(root)], cwd=REPO_ROOT)
             self.assertEqual(pull.returncode, 0, pull.stderr + pull.stdout)

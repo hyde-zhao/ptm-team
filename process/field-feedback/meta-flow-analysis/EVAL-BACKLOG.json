@@ -1,0 +1,604 @@
+{
+  "eval_backlog": [
+    {
+      "id": "EVAL-BL-20260617-006",
+      "source_issue": "ISSUE-DRAFT-006",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-007",
+      "source_issue": "ISSUE-DRAFT-007",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-009",
+      "source_issue": "ISSUE-DRAFT-009",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-013",
+      "source_issue": "ISSUE-DRAFT-013",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-015",
+      "source_issue": "ISSUE-DRAFT-015",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-017",
+      "source_issue": "ISSUE-DRAFT-017",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-019",
+      "source_issue": "ISSUE-DRAFT-019",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-028",
+      "source_issue": "ISSUE-DRAFT-028",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-034",
+      "source_issue": "ISSUE-DRAFT-034",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-040",
+      "source_issue": "ISSUE-DRAFT-040",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-041",
+      "source_issue": "ISSUE-DRAFT-041",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-043",
+      "source_issue": "ISSUE-DRAFT-043",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-044",
+      "source_issue": "ISSUE-DRAFT-044",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-045",
+      "source_issue": "ISSUE-DRAFT-045",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-047",
+      "source_issue": "ISSUE-DRAFT-047",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-057",
+      "source_issue": "ISSUE-DRAFT-057",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-058",
+      "source_issue": "ISSUE-DRAFT-058",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-060",
+      "source_issue": "ISSUE-DRAFT-060",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-064",
+      "source_issue": "ISSUE-DRAFT-064",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-066",
+      "source_issue": "ISSUE-DRAFT-066",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-068",
+      "source_issue": "ISSUE-DRAFT-068",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-070",
+      "source_issue": "ISSUE-DRAFT-070",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-079",
+      "source_issue": "ISSUE-DRAFT-079",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-085",
+      "source_issue": "ISSUE-DRAFT-085",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-091",
+      "source_issue": "ISSUE-DRAFT-091",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-092",
+      "source_issue": "ISSUE-DRAFT-092",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-094",
+      "source_issue": "ISSUE-DRAFT-094",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-095",
+      "source_issue": "ISSUE-DRAFT-095",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-096",
+      "source_issue": "ISSUE-DRAFT-096",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-098",
+      "source_issue": "ISSUE-DRAFT-098",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-108",
+      "source_issue": "ISSUE-DRAFT-108",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-109",
+      "source_issue": "ISSUE-DRAFT-109",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-111",
+      "source_issue": "ISSUE-DRAFT-111",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-115",
+      "source_issue": "ISSUE-DRAFT-115",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-117",
+      "source_issue": "ISSUE-DRAFT-117",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-119",
+      "source_issue": "ISSUE-DRAFT-119",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-121",
+      "source_issue": "ISSUE-DRAFT-121",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-130",
+      "source_issue": "ISSUE-DRAFT-130",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-136",
+      "source_issue": "ISSUE-DRAFT-136",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-142",
+      "source_issue": "ISSUE-DRAFT-142",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-143",
+      "source_issue": "ISSUE-DRAFT-143",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-145",
+      "source_issue": "ISSUE-DRAFT-145",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-146",
+      "source_issue": "ISSUE-DRAFT-146",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-147",
+      "source_issue": "ISSUE-DRAFT-147",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-149",
+      "source_issue": "ISSUE-DRAFT-149",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-159",
+      "source_issue": "ISSUE-DRAFT-159",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-160",
+      "source_issue": "ISSUE-DRAFT-160",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-162",
+      "source_issue": "ISSUE-DRAFT-162",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-166",
+      "source_issue": "ISSUE-DRAFT-166",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-168",
+      "source_issue": "ISSUE-DRAFT-168",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-170",
+      "source_issue": "ISSUE-DRAFT-170",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-172",
+      "source_issue": "ISSUE-DRAFT-172",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-181",
+      "source_issue": "ISSUE-DRAFT-181",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-187",
+      "source_issue": "ISSUE-DRAFT-187",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-193",
+      "source_issue": "ISSUE-DRAFT-193",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-194",
+      "source_issue": "ISSUE-DRAFT-194",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-196",
+      "source_issue": "ISSUE-DRAFT-196",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-197",
+      "source_issue": "ISSUE-DRAFT-197",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-198",
+      "source_issue": "ISSUE-DRAFT-198",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-200",
+      "source_issue": "ISSUE-DRAFT-200",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-210",
+      "source_issue": "ISSUE-DRAFT-210",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-211",
+      "source_issue": "ISSUE-DRAFT-211",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-213",
+      "source_issue": "ISSUE-DRAFT-213",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-217",
+      "source_issue": "ISSUE-DRAFT-217",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-219",
+      "source_issue": "ISSUE-DRAFT-219",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-221",
+      "source_issue": "ISSUE-DRAFT-221",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-223",
+      "source_issue": "ISSUE-DRAFT-223",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-232",
+      "source_issue": "ISSUE-DRAFT-232",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-238",
+      "source_issue": "ISSUE-DRAFT-238",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-244",
+      "source_issue": "ISSUE-DRAFT-244",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-245",
+      "source_issue": "ISSUE-DRAFT-245",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-247",
+      "source_issue": "ISSUE-DRAFT-247",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-248",
+      "source_issue": "ISSUE-DRAFT-248",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-249",
+      "source_issue": "ISSUE-DRAFT-249",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    },
+    {
+      "id": "EVAL-BL-20260617-251",
+      "source_issue": "ISSUE-DRAFT-251",
+      "missing_stage": "field_feedback",
+      "proposed_grader": "runtime_artifact",
+      "priority": "MEDIUM",
+      "status": "pending"
+    }
+  ]
+}

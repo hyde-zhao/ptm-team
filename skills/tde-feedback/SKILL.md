@@ -94,6 +94,14 @@ uv run python <ptm-team-root>/script/field_feedback.py collect \
   --actual "<实际结果>"
 ```
 
+`collect` 成功后必须同时生成：
+
+- `process/field-feedback/collections/COLLECT-*`
+- `process/field-feedback/runs/RUN-EXEC-*`
+- `RUN-EXEC-INDEX.md` 索引行
+
+`RUN-EXEC` 必须记录 `collection_path`，并在 `COLLECT-*/MANIFEST.json` 中回写 `run_exec_id` 和 `run_exec_path`。
+
 ### 采集并上传
 
 用户明确授权 `push` 时执行：
@@ -112,6 +120,8 @@ uv run python <ptm-team-root>/script/field_feedback.py submit \
   --commit \
   --push
 ```
+
+`submit` 成功后必须同时生成 `COLLECT-*`、`RUN-EXEC-*` 并推送采集包；`RUN-EXEC` 必须记录 `collection_path` 和 `published_path`，`MANIFEST.json` 必须回写 `run_exec_path` 和 `published_path`。
 
 ### 上传已有采集包
 
@@ -142,6 +152,8 @@ uv run python <ptm-team-root>/script/field_feedback.py pull --root <ptm-team-roo
 - 是否询问用户“是否有问题反馈”；
 - 用户是否确认有问题反馈；
 - 生成或处理的 `COLLECT-*` 路径；
+- 自动登记的 `RUN-EXEC-*` 路径；
+- `RUN-EXEC` 是否包含 `collection_path` / `published_path`；
 - GitLab 目标仓库、分支和目录；
 - 是否执行 `push`；
 - `push` / `pull` 是否成功；
@@ -152,12 +164,14 @@ uv run python <ptm-team-root>/script/field_feedback.py pull --root <ptm-team-roo
 - 用户只说“上传反馈”但没有明确 `feature_workspace_root` 时，先询问工作区路径，不要猜。
 - 用户没有明确授权 `--push` 时，不得推送。
 - HTTP remote 曾导致认证失败；默认和修复都必须使用 SSH remote。
-- 反馈采集包是运行证据，不等同于 ISSUE；后续仍需按问题生成 `RUN-EXEC`、`ISSUE` 和覆盖盲区分析。
+- 反馈采集包是运行证据，不等同于 ISSUE；`collect` / `submit` 会自动登记 `RUN-EXEC`，但后续仍需按问题生成 `ISSUE` 和覆盖盲区分析。
 
 ## 验收标准
 
 - [ ] 交付或真实运行结束后先询问是否有问题反馈
 - [ ] 支持 `collect / submit / publish / pull` 四类动作
+- [ ] `collect / submit` 自动生成 `RUN-EXEC` 并绑定 `collection_path`
+- [ ] `submit` 生成的 `RUN-EXEC` 绑定 `published_path`
 - [ ] 使用 `.ptm-field-feedback.yaml` 默认配置
 - [ ] 默认远端为 SSH `git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team-feedback.git`
 - [ ] `--push` 前必须有明确授权

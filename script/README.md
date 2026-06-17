@@ -80,7 +80,7 @@ uv run script/skills_manager.py
 
 真实发布后的现场反馈闭环工具，用于一键采集运行材料、同步到 Git/GitLab 仓库、拉取原始反馈材料、生成 RUN-EXEC、ISSUE、覆盖盲区分析和每周质量看板。
 
-Agent 侧默认通过 `tde-feedback` Skill 调度该脚本；交付或真实运行结束后，Skill 会先询问用户是否有问题反馈，再根据授权选择 `collect / submit / publish / pull`。
+Agent 侧默认通过 `tde-feedback` Skill 调度该脚本；交付或真实运行结束后，Skill 会先询问用户是否有问题反馈，再根据授权选择 `collect / submit / publish / pull`。`collect` / `submit` 成功后会自动登记 `RUN-EXEC-*`，并把 `collection_path` 写入运行记录；`submit` 还会写入 `published_path`。
 
 仓库根目录的 `.ptm-field-feedback.yaml` 提供默认反馈仓库配置：
 
@@ -162,6 +162,7 @@ process/field-feedback/collections/COLLECT-20260615-policy_route-001/
   FEEDBACK.md
   MANIFEST.json
   artifacts/
+process/field-feedback/runs/RUN-EXEC-20260615-001.md
 ```
 
 可用 `--include <workspace-relative-path>` 追加采集路径。
@@ -231,6 +232,38 @@ uv run python script/field_feedback.py submit \
   --summary "GATE-4 BLOCKED: ppdcs/coverage 缺失" \
   --commit \
   --push
+```
+
+`submit` 输出中会同时报告本地采集包、反馈仓库发布目录和自动登记的 RUN-EXEC：
+
+```text
+collection: /path/to/ptm-team/process/field-feedback/collections/COLLECT-20260615-policy_route-001
+published: /path/to/ptm-team-feedback/tde-feedback/policy_route/COLLECT-20260615-policy_route-001
+run_exec: /path/to/ptm-team/process/field-feedback/runs/RUN-EXEC-20260615-001.md
+```
+
+### 与 meta-flow eval feedback / release-check 集成
+
+ptm-team 的 `evals/WORKFLOW-EVAL.yaml` 已声明 `feedback_sources`，meta-flow 通用反馈入口可以直接消费这些采集包：
+
+```bash
+meta-flow eval feedback pull \
+  --eval evals/WORKFLOW-EVAL.yaml \
+  --out process/field-feedback/meta-flow-pull
+
+meta-flow eval feedback analyze \
+  --eval evals/WORKFLOW-EVAL.yaml \
+  --source-dir process/field-feedback/meta-flow-pull \
+  --out process/field-feedback/meta-flow-analysis
+```
+
+发布前需要把静态 eval、runtime artifact、suite health 和 release-check 串起来：
+
+```bash
+meta-flow eval validate --eval evals/WORKFLOW-EVAL.yaml
+meta-flow eval run --eval evals/WORKFLOW-EVAL.yaml --out process/evals/runs/ptm-tde
+meta-flow eval suite-health --runs process/evals/runs --out docs/quality/EVAL-SUITE-HEALTH.md
+meta-flow eval release-check --eval evals/WORKFLOW-EVAL.yaml --runs process/evals/runs --out docs/quality/EVAL-RELEASE-CHECK.md
 ```
 
 ### 拉取 GitLab 原始反馈材料

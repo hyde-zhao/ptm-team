@@ -19,6 +19,24 @@ trace_policy:
     - "token"
     - "secret"
     - "cookie"
+
+feedback_sources:
+  - id: "ptm-team-feedback-local"
+    type: "local"
+    path: "../process/field-feedback/collections"
+  - id: "ptm-team-feedback-gitlab"
+    type: "git"
+    repo: "git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team-feedback.git"
+    branch: "main"
+    path: "tde-feedback"
+
+release_profiles:
+  - id: "release"
+    profile_path: "RELEASE-CHECK-PROFILE.yaml"
+    required_runtime_samples: ["RT-POLICY-ROUTE-GATE5-20260615"]
+    advisory_runtime_samples: ["RT-BGP4-PARTIAL-20260617"]
+    required_feedback_sources: ["ptm-team-feedback-local"]
+    blocking_case_categories: ["smoke", "regression", "security", "permission", "workflow-skip", "content-retention", "table-schema", "field-feedback", "install", "runtime-artifact", "release-check"]
 graders:
   # --- Eval contract integrity ---
   - id: "eval-config-non-empty"
@@ -64,6 +82,8 @@ graders:
       - "../CLAUDE.md"
       - "../AGENTS.md"
       - "../.ptm-field-feedback.yaml"
+      - "RUNTIME-SAMPLE-REGISTRY.yaml"
+      - "RELEASE-CHECK-PROFILE.yaml"
       - "../script/field_feedback.py"
       - "../script/install.py"
       - "../script/ptm_team/install.py"
@@ -250,6 +270,9 @@ graders:
       - "本次 ptm-tde 使用是否有问题需要反馈"
       - "repo-init"
       - "submit"
+      - "RUN-EXEC"
+      - "collection_path"
+      - "published_path"
       - "pull --root"
       - "ptm-team-feedback"
       - "不得把 `ptm-team` 代码仓库的 `origin` 改成反馈仓库"
@@ -277,6 +300,9 @@ graders:
       - "上传已有采集包"
       - "collect"
       - "submit"
+      - "RUN-EXEC"
+      - "collection_path"
+      - "published_path"
       - "publish"
       - "pull"
       - "git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team-feedback.git"
@@ -284,6 +310,104 @@ graders:
       - "不得修改 `.input/`"
       - "不得修改 ptm-team 代码仓库的 `origin`"
     description: "验证 tde-feedback Skill 固化询问反馈、采集、上传、拉取和权限边界"
+
+  - id: "field-feedback-run-exec-contract"
+    type: "content_schema"
+    target: "../script/field_feedback.py"
+    required_patterns:
+      - "create_run_exec_for_collection"
+      - "write_run_exec_record"
+      - "collection_path"
+      - "published_path"
+      - "run_exec:"
+      - "command_collect"
+      - "command_submit"
+      - "RUN-EXEC-INDEX"
+    description: "验证 collect/submit 成功后自动登记 RUN-EXEC，并绑定 COLLECT 与发布路径"
+
+  - id: "runtime-sample-registry-contract"
+    type: "content_schema"
+    target: "RUNTIME-SAMPLE-REGISTRY.yaml"
+    required_patterns:
+      - "ptm-tde-runtime-samples"
+      - "RT-BGP4-PARTIAL-20260617"
+      - "RT-POLICY-ROUTE-GATE5-20260615"
+      - "runtime_artifact_profile"
+      - "field-feedback-regression"
+      - "full-runtime-pass"
+      - "COLLECT-20260615-BGP4-005"
+      - "policy_route_rt_verify"
+      - "required_workspace_paths"
+      - "required_collection_paths"
+    description: "验证 ptm-team 保留 BGP4+ 与 policy_route 领域 runtime 样本清单，但不实现通用 runtime runner"
+
+  - id: "runtime-artifact-bgp4-partial"
+    type: "runtime_artifact"
+    workspace: "/home/hyde/projects/ptm-tde/test/bgp4+"
+    state_path: "process/STATE.yaml"
+    skill_calls_path: "process/execution/SKILL-CALLS.yaml"
+    expected_phase: "mfq"
+    required_paths: ["process/STATE.yaml", "process/execution/SKILL-CALLS.yaml", "process/checkpoints/GATE-3-MFQ-Exit-auto.md", "process/checkpoints/GATE-3-MFQ-Exit-manual.md", "kym/scenarios/confirmed-scenarios.md", "mfq/m-analysis/test-points.md", "mfq/f-analysis/coupling-test-points.md", "mfq/q-analysis/quality-test-points.md", "mfq/integration/logic-cases.md", "process/plan/design-plan.md"]
+    required_skill_calls: ["feature-parser", "kym", "scenario-discovery", "m-analyzer", "f-analyzer", "q-analyzer", "test-point-integrator", "design-planner", "checkpoint-manager"]
+    required_gates: ["GATE-1", "GATE-2", "GATE-3"]
+    target_globs: ["kym/**/*.md", "mfq/**/*.md", "process/**/*.md", "process/**/*.yaml"]
+    required_patterns: ["normal_path", "abnormal_path", "minimal_logic_chain", "action_source_refs", "TSP-M1-001", "LC-BGP4-", "pending-review"]
+    min_tables: 8
+    blocking_policy: "advisory"
+    description: "检查 BGP4+ partial / blocked 真实 workspace 已完整走到 MFQ / GATE-3，作为现场反馈回归样本，不作为发布阻断样本"
+
+  - id: "runtime-artifact-policy-route-full"
+    type: "runtime_artifact"
+    workspace: "/home/hyde/projects/ptm-tde/test/policy_route_rt_verify"
+    state_path: "process/STATE.yaml"
+    skill_calls_path: "process/execution/SKILL-CALLS.yaml"
+    expected_phase: "completed"
+    required_paths: ["process/STATE.yaml", "process/execution/SKILL-CALLS.yaml", "process/checkpoints/GATE-5-Exit.md", "kym/scenarios/confirmed-scenarios.md", "mfq/m-analysis/test-points.md", "mfq/f-analysis/coupling-test-points.md", "mfq/q-analysis/quality-test-points.md", "mfq/integration/logic-cases.md", "process/plan/design-plan.md", "ppdcs/coverage/coverage-summary.md", "ppdcs/ppdcs", "ppdcs/pc", "ppdcs/delivery/策略路由特性测试方案.md", "ppdcs/delivery/策略路由特性测试用例.md"]
+    required_skill_calls: ["feature-parser", "kym", "scenario-discovery", "m-analyzer", "f-analyzer", "q-analyzer", "test-point-integrator", "design-planner", "design-ppdcs-analyzer", "coverage-verifier", "deliverable-renderer", "checkpoint-manager"]
+    required_gates: ["GATE-1", "GATE-2", "GATE-3", "GATE-4", "GATE-5"]
+    target_globs: ["kym/**/*.md", "mfq/**/*.md", "ppdcs/**/*.md", "process/**/*.md", "process/**/*.yaml"]
+    required_patterns: ["normal_path", "abnormal_path", "minimal_logic_chain", "action_source_refs", "case_steps", "atomic_op", "fact_status", "LC-CFG-PR-001"]
+    min_tables: 20
+    blocking_policy: "always"
+    description: "检查 policy_route GATE-5 full runtime workspace，作为 release profile 的必选真实运行证据"
+
+  - id: "feedback-source-contract"
+    type: "content_schema"
+    target: "WORKFLOW-EVAL.yaml"
+    required_patterns:
+      - "feedback_sources"
+      - "ptm-team-feedback-local"
+      - "../process/field-feedback/collections"
+      - "ptm-team-feedback-gitlab"
+      - "git@<IP_ADDRESS>:<INTERNAL_GIT_PATH>/ptm-team-feedback.git"
+      - "tde-feedback"
+      - "release_profiles"
+      - "RELEASE-CHECK-PROFILE.yaml"
+    description: "验证 ptm-team 已声明 meta-flow eval feedback pull/analyze 与 release profile 的消费端配置"
+
+  - id: "release-check-profile-contract"
+    type: "content_schema"
+    target: "RELEASE-CHECK-PROFILE.yaml"
+    required_patterns:
+      - "profile_id"
+      - "release"
+      - "required_runtime_samples"
+      - "RT-POLICY-ROUTE-GATE5-20260615"
+      - "advisory_runtime_samples"
+      - "RT-BGP4-PARTIAL-20260617"
+      - "blocking_case_categories"
+      - "regression_asset_required_for_source_issue"
+      - "feedback_triage_required"
+    description: "验证 ptm-team 的 release profile 明确 runtime、feedback、blocking case 与 regression asset 门禁"
+
+  - id: "claude-install-runtime-mapping"
+    type: "install_mapping"
+    platform: "claude"
+    agent: "ptm-tde"
+    installed_root: "/home/hyde/projects/ptm-tde/test/.claude"
+    expected_skills: ["feature-parser", "kym", "scenario-discovery", "m-analyzer", "f-analyzer", "q-analyzer", "test-point-integrator", "design-planner", "design-ppdcs-analyzer", "coverage-verifier", "deliverable-renderer", "checkpoint-manager", "tde-feedback"]
+    blocking_policy: "always"
+    description: "检查真实测试目录的 Claude 安装面包含 ptm-tde Agent 与 tde-feedback 等关键 Skill"
 
   - id: "tde-feedback-install-mapping"
     type: "content_schema"

@@ -1,0 +1,86 @@
+{
+  "run_id": "eval-20260617T094137Z",
+  "created_at": "2026-06-17T09:41:37+00:00",
+  "eval_path": "evals/WORKFLOW-EVAL.yaml",
+  "suite_id": "ptm-tde-suite",
+  "status": "PASS",
+  "issues": [],
+  "grader_results": [
+    {
+      "id": "claude-install-runtime-mapping",
+      "type": "install_mapping",
+      "mode": "runtime",
+      "authorization": "local-fs",
+      "blocking_policy": "always",
+      "status": "PASS",
+      "evidence": {
+        "grader_id": "claude-install-runtime-mapping",
+        "status": "PASS",
+        "checked_files": 22,
+        "checked_paths": [
+          "/home/hyde/projects/ptm-tde/test/.claude/agents/ptm-tde.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/design-ppdcs-analyzer/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/process-design/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/case-retriever/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/scenario-discovery/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/test-point-integrator/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/state-design/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/coverage-verifier/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/bug-gap-analyzer/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/feature-parser/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/tde-feedback/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/change-impact-analyzer/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/design-planner/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/q-analyzer/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/f-analyzer/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/combination-design/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/checkpoint-manager/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/parameter-design/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/data-design/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/kym/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/deliverable-renderer/SKILL.md",
+          "/home/hyde/projects/ptm-tde/test/.claude/skills/m-analyzer/SKILL.md"
+        ],
+        "failures": [],
+        "metrics": {
+          "expected_skill_count": 13,
+          "expected_rule_count": 0,
+          "checked_install_files": 22
+        },
+        "messages": [
+          "install mapping OK for platform=claude agent=ptm-tde"
+        ]
+      },
+      "evidence_text": [
+        "install mapping OK for platform=claude agent=ptm-tde"
+      ]
+    }
+  ],
+  "case_results": [
+    {
+      "id": "CASE-033",
+      "category": "install",
+      "severity": "HIGH",
+      "blocking": true,
+      "runtime_required": false,
+      "requires_authorization": false,
+      "regression_asset": "/home/hyde/projects/ptm-tde/test/.claude",
+      "source_issue": "",
+      "coverage_status": "covered",
+      "last_verified_at": "",
+      "status": "PASS",
+      "expected_result": "PASS",
+      "expected_match": true,
+      "graders": [
+        "claude-install-runtime-mapping"
+      ]
+    }
+  ],
+  "expected_fail_graders": [],
+  "unexpected_failed_graders": [],
+  "incomplete_graders": [],
+  "allowed_authorizations": [
+    "local-fs",
+    "none"
+  ]
+}

@@ -1,0 +1,69 @@
+schema_version: "1.0"
+profile_id: "release"
+suite_id: "ptm-tde-suite"
+owner: "ptm-team"
+purpose: "ptm-tde release gate profile consumed by meta-flow eval release-check"
+
+required_commands:
+  - "meta-flow eval validate --eval evals/WORKFLOW-EVAL.yaml"
+  - "meta-flow eval run --eval evals/WORKFLOW-EVAL.yaml --out process/evals/runs/ptm-tde"
+  - "meta-flow eval suite-health --runs process/evals/runs --out docs/quality/EVAL-SUITE-HEALTH.md"
+  - "meta-flow eval release-check --eval evals/WORKFLOW-EVAL.yaml --runs process/evals/runs --out docs/quality/EVAL-RELEASE-CHECK.md"
+
+blocking_case_categories:
+  - "smoke"
+  - "regression"
+  - "security"
+  - "permission"
+  - "workflow-skip"
+  - "content-retention"
+  - "table-schema"
+  - "field-feedback"
+  - "install"
+  - "runtime-artifact"
+  - "feedback-source"
+  - "release-check"
+
+required_runtime_samples:
+  - sample_id: "RT-POLICY-ROUTE-GATE5-20260615"
+    grader_id: "runtime-artifact-policy-route-full"
+    required_result: "PASS"
+    release_blocking: true
+
+advisory_runtime_samples:
+  - sample_id: "RT-BGP4-PARTIAL-20260617"
+    grader_id: "runtime-artifact-bgp4-partial"
+    required_result: "PASS"
+    release_blocking: false
+    reason: "BGP4+ is a partial blocked field-feedback regression sample and must not block release unless its grader itself fails unexpectedly."
+
+feedback_triage_required:
+  enabled: true
+  sources:
+    - "ptm-team-feedback-local"
+  normalized_run_exec_required: true
+  issue_draft_allowed: true
+  direct_issue_creation_allowed: false
+  allowed_triage_outputs:
+    - "ISSUE_DRAFT"
+    - "GAP"
+    - "BACKLOG"
+    - "ENVIRONMENT"
+    - "USAGE"
+    - "DUPLICATE"
+    - "NO_ACTION"
+
+issue_gate:
+  blocking_open_issue_severities:
+    - "BLOCKER"
+    - "HIGH"
+  regression_asset_required_for_source_issue: true
+  coverage_status_blocking_values:
+    - "uncovered"
+    - "needs-triage"
+
+suite_health_gate:
+  required_status: "PASS"
+  unexpected_failed_graders_allowed: 0
+  incomplete_required_graders_allowed: 0
+  flaky_blocking_graders_allowed: 0

@@ -31,27 +31,38 @@
 | CASE-025 | field-feedback | `agents/ptm-tde.md` | Agent 无法通过提示词触发反馈闭环 | Agent 定义 |
 | CASE-026 | field-feedback | `skills/tde-feedback/SKILL.md` | 问题反馈询问、上传授权或拉取协议缺失 | Skill 定义 |
 | CASE-027 | install | `script/install.py` + `script/ptm_team/install.py` | 安装 ptm-tde 时遗漏 tde-feedback | 安装映射 |
+| CASE-028 | field-feedback | `script/field_feedback.py` | COLLECT 采集包未自动进入 RUN-EXEC 台账 | Feedback 脚本 |
+| CASE-029 | runtime-sample | `evals/RUNTIME-SAMPLE-REGISTRY.yaml` | BGP4+ / policy_route 真实运行样本未登记 | Runtime 样本清单 |
+| CASE-030 | runtime-artifact | `/home/hyde/projects/ptm-tde/test/bgp4+` | BGP4+ partial 真实运行样本阶段证据不可消费 | Runtime workspace |
+| CASE-031 | runtime-artifact | `/home/hyde/projects/ptm-tde/test/policy_route_rt_verify` | policy_route full 真实运行样本未完成 GATE-5 或交付证据缺失 | Runtime workspace |
+| CASE-032 | feedback-source | `evals/WORKFLOW-EVAL.yaml` | feedback source 未接入 meta-flow eval feedback pull/analyze | Eval 配置 |
+| CASE-033 | install | `/home/hyde/projects/ptm-tde/test/.claude` | 真实 Claude 安装面缺 ptm-tde 或 tde-feedback | 安装结果 |
+| CASE-034 | release-check | `evals/RELEASE-CHECK-PROFILE.yaml` | release 门禁未声明 runtime / feedback / regression asset 要求 | 发布门禁配置 |
 
 ## 覆盖分布
 
 | 类别 | 数量 | 占比 |
 |------|------|------|
-| smoke | 1 | 3.7% |
-| positive | 3 | 11.1% |
-| regression | 1 | 3.7% |
-| security | 2 | 7.4% |
-| permission | 1 | 3.7% |
-| failure-recovery | 1 | 3.7% |
-| style | 1 | 3.7% |
-| content-depth | 3 | 11.1% |
-| eval-contract | 1 | 3.7% |
-| workflow-skip | 2 | 7.4% |
-| content-retention | 2 | 7.4% |
-| table-schema | 2 | 7.4% |
-| negative | 3 | 11.1% |
-| field-feedback | 3 | 11.1% |
-| install | 1 | 3.7% |
-| **总计** | **27** | **100%** |
+| smoke | 1 | 2.9% |
+| positive | 3 | 8.8% |
+| regression | 1 | 2.9% |
+| security | 2 | 5.9% |
+| permission | 1 | 2.9% |
+| failure-recovery | 1 | 2.9% |
+| style | 1 | 2.9% |
+| content-depth | 3 | 8.8% |
+| eval-contract | 1 | 2.9% |
+| workflow-skip | 2 | 5.9% |
+| content-retention | 2 | 5.9% |
+| table-schema | 2 | 5.9% |
+| negative | 3 | 8.8% |
+| field-feedback | 4 | 11.8% |
+| install | 2 | 5.9% |
+| runtime-sample | 1 | 2.9% |
+| runtime-artifact | 2 | 5.9% |
+| feedback-source | 1 | 2.9% |
+| release-check | 1 | 2.9% |
+| **总计** | **34** | **100%** |
 
 ## 未覆盖类别（后续迭代补充）
 
@@ -64,4 +75,8 @@
 | external-adapter | LLM/SaaS grader 默认 disabled；如启用需 runtime_authorization |
 | content-depth | ~~新增~~ 已通过 CASE-011/012/013 覆盖：输出模板完整性、状态机形式化、表格列对齐检查 |
 | workflow-skip / content-retention / table-schema | ~~新增~~ 已通过 CASE-015~020 覆盖：流程跳过、内容丢失和关键表 schema |
-| field-feedback | ~~新增~~ 已通过 CASE-024/025/026 覆盖：默认反馈仓库配置、Agent 触发协议和 tde-feedback Skill |
+| field-feedback | ~~新增~~ 已通过 CASE-024/025/026/028 覆盖：默认反馈仓库配置、Agent 触发协议、tde-feedback Skill 和 RUN-EXEC 自动登记 |
+| runtime-sample | ~~新增~~ 已通过 CASE-029 覆盖：BGP4+ partial field-feedback regression 样本和 policy_route full runtime 样本登记 |
+| runtime-artifact | ~~新增~~ 已通过 CASE-030/031 覆盖：BGP4+ partial workspace 与 policy_route full workspace 的真实 artifact 检查 |
+| feedback-source | ~~新增~~ 已通过 CASE-032 覆盖：meta-flow eval feedback pull/analyze 的 source 配置 |
+| release-check | ~~新增~~ 已通过 CASE-034 覆盖：release 门禁 profile 的 runtime / feedback / regression asset 要求 |

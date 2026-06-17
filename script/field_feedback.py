@@ -361,7 +361,9 @@ def create_collection(args: argparse.Namespace) -> Path:
 
 def command_collect(args: argparse.Namespace) -> None:
     collection_root = create_collection(args)
+    run_exec_path = create_run_exec_for_collection(args, collection_root)
     print(collection_root)
+    print(f"run_exec: {run_exec_path}")
 
 
 def publish_collection(args: argparse.Namespace) -> Path:
@@ -534,25 +536,48 @@ def command_submit(args: argparse.Namespace) -> None:
     collection = create_collection(args)
     args.collection = str(collection)
     published = publish_collection(args)
+    run_exec_path = create_run_exec_for_collection(args, collection, published)
     print(f"collection: {collection}")
     print(f"published: {published}")
+    print(f"run_exec: {run_exec_path}")
 
 
-def command_run_exec(args: argparse.Namespace) -> None:
-    root = Path(args.root).resolve()
+def write_run_exec_record(
+    *,
+    root: Path,
+    date_value: str,
+    run_id: str,
+    feature: str,
+    platform: str,
+    agent_version: str,
+    workspace: str,
+    result: str,
+    gate: str,
+    summary: str,
+    command: str,
+    input_docs: list[str],
+    evidence: list[str],
+    notes: str,
+    expected: str = "",
+    actual: str = "",
+    collection_path: str = "",
+    published_path: str = "",
+) -> Path:
     ensure_dirs(root)
-    date_value = today(args.date)
-    run_id = args.run_id or next_id(root / "process/field-feedback/runs", "RUN-EXEC", date_value)
     rel_path = Path("process/field-feedback/runs") / f"{run_id}.md"
     path = root / rel_path
+    collection_value = collection_path or "N/A"
+    published_value = published_path or "N/A"
     content = f"""---
 run_id: "{run_id}"
-feature: "{args.feature}"
-platform: "{args.platform}"
-agent_version: "{args.agent_version}"
-workspace: "{args.workspace}"
-result: "{args.result}"
-gate_reached: "{args.gate}"
+feature: "{feature}"
+platform: "{platform}"
+agent_version: "{agent_version}"
+workspace: "{workspace}"
+result: "{result}"
+gate_reached: "{gate}"
+collection_path: "{collection_value}"
+published_path: "{published_value}"
 created_at: "{iso_now()}"
 ---
 
@@ -562,28 +587,37 @@ created_at: "{iso_now()}"
 
 | Field | Value |
 |---|---|
-| feature | `{args.feature}` |
-| platform | `{args.platform}` |
-| agent_version | `{args.agent_version}` |
-| workspace | `{args.workspace}` |
-| gate_reached | `{args.gate}` |
-| result | `{args.result}` |
+| feature | `{feature}` |
+| platform | `{platform}` |
+| agent_version | `{agent_version}` |
+| workspace | `{workspace}` |
+| gate_reached | `{gate}` |
+| result | `{result}` |
+| collection_path | `{collection_value}` |
+| published_path | `{published_value}` |
 
 ## Input Documents
 
-{md_list(args.input_doc)}
+{md_list(input_docs)}
 
 ## Command Or Entry
 
 ```text
-{args.command or "N/A"}
+{command or "N/A"}
 ```
 
 ## Task Results
 
 | Task | Result | Expected Result | Actual Result | Evidence |
 |---|---|---|---|---|
-| {args.summary} | {args.result} | TBD | TBD | {", ".join(args.evidence) if args.evidence else "N/A"} |
+| {summary} | {result} | {expected or "TBD"} | {actual or "TBD"} | {", ".join(evidence) if evidence else "N/A"} |
+
+## Feedback Collection
+
+| Field | Value |
+|---|---|
+| collection_path | `{collection_value}` |
+| published_path | `{published_value}` |
 
 ## Issues
 
@@ -593,17 +627,96 @@ created_at: "{iso_now()}"
 
 ## Evidence
 
-{md_list(args.evidence)}
+{md_list(evidence)}
 
 ## Notes
 
-{args.notes or "N/A"}
+{notes or "N/A"}
 """
     write_new(path, content)
     append_unique_line(
         root / "process/field-feedback/RUN-EXEC-INDEX.md",
         "# RUN-EXEC Index\n\n| Run | Feature | Result | Gate | Issue Count | Path |\n|---|---|---|---|---:|---|",
-        f"| {run_id} | {args.feature} | {args.result} | {args.gate} | 0 | `{rel_path}` |",
+        f"| {run_id} | {feature} | {result} | {gate} | 0 | `{rel_path}` |",
+    )
+    return path
+
+
+def update_collection_manifest(collection: Path, **fields: str) -> None:
+    manifest_path = collection / "MANIFEST.json"
+    if not manifest_path.is_file():
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.update({key: value for key, value in fields.items() if value})
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def create_run_exec_for_collection(
+    args: argparse.Namespace,
+    collection: Path,
+    published: Path | None = None,
+) -> Path:
+    root = Path(args.root).resolve()
+    date_value = today(args.date)
+    run_id = next_id(root / "process/field-feedback/runs", "RUN-EXEC", date_value)
+    evidence = [str(collection)]
+    if published is not None:
+        evidence.append(str(published))
+    run_exec_path = write_run_exec_record(
+        root=root,
+        date_value=date_value,
+        run_id=run_id,
+        feature=args.feature,
+        platform=args.platform,
+        agent_version=getattr(args, "agent_version", "unknown"),
+        workspace=str(Path(args.workspace).resolve()),
+        result=args.result,
+        gate=args.gate,
+        summary=args.summary,
+        command=args.command,
+        input_docs=[],
+        evidence=evidence,
+        notes=args.notes,
+        expected=args.expected,
+        actual=args.actual,
+        collection_path=str(collection),
+        published_path=str(published) if published is not None else "",
+    )
+    update_collection_manifest(
+        collection,
+        run_exec_id=run_id,
+        run_exec_path=str(run_exec_path),
+        published_path=str(published) if published is not None else "",
+    )
+    return run_exec_path
+
+
+def command_run_exec(args: argparse.Namespace) -> None:
+    root = Path(args.root).resolve()
+    date_value = today(args.date)
+    run_id = args.run_id or next_id(root / "process/field-feedback/runs", "RUN-EXEC", date_value)
+    path = write_run_exec_record(
+        root=root,
+        date_value=date_value,
+        run_id=run_id,
+        feature=args.feature,
+        platform=args.platform,
+        agent_version=args.agent_version,
+        workspace=args.workspace,
+        result=args.result,
+        gate=args.gate,
+        summary=args.summary,
+        command=args.command,
+        input_docs=args.input_doc,
+        evidence=args.evidence,
+        notes=args.notes,
+        expected=args.expected,
+        actual=args.actual,
+        collection_path=args.collection,
+        published_path=args.published_path,
     )
     print(path)
 
@@ -913,6 +1026,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_exec.add_argument("--command", default="")
     run_exec.add_argument("--input-doc", action="append", default=[])
     run_exec.add_argument("--evidence", action="append", default=[])
+    run_exec.add_argument("--expected", default="")
+    run_exec.add_argument("--actual", default="")
+    run_exec.add_argument("--collection", default="")
+    run_exec.add_argument("--published-path", default="")
     run_exec.add_argument("--notes", default="")
     run_exec.set_defaults(func=command_run_exec)
 
