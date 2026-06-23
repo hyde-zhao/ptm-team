@@ -191,6 +191,7 @@ cython_debug/
 # ============================================================
 # Meta Flow 过程文档 — 全部忽略，归档至 ptm-team-process 仓库
 process/*
+process.before-artifact-routing-*
 
 # Legacy checkpoints 目录 — 已迁移至 process/checkpoints/
 checkpoints/*
