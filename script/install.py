@@ -44,7 +44,7 @@ except ImportError:
     inquirer = None
 
 # Constants
-VALID_PLATFORMS = ("claude", "codex")
+VALID_PLATFORMS = ("claude", "codex", "qoder")
 MANAGED_VERSION = "1.0.0"
 MANIFEST_FILENAME = ".ptm-team-manifest.json"
 RESOURCE_HOME_ENV = "PTM_TEAM_RESOURCE_HOME"
@@ -53,6 +53,7 @@ PTM_TDE_RULE_BLOCK_ID = "ptm-tde-workflow"
 PTM_TDE_RULE_FILES = {
     "claude": "CLAUDE.md",
     "codex": "AGENTS.md",
+    "qoder": "AGENTS.md",
 }
 
 # Agent aliases
@@ -98,6 +99,10 @@ PLATFORM_DIRS = {
     "codex": {
         "agents": ".codex/agents",
         "skills": ".agents/skills",
+    },
+    "qoder": {
+        "agents": ".qoder/agents",
+        "skills": ".qoder/skills",
     },
 }
 
@@ -294,6 +299,34 @@ def render_claude_agent(
     return "\n".join(frontmatter) + f"\n{audit}\n\n{instructions.rstrip()}\n"
 
 
+def render_qoder_agent(
+    name: str,
+    description: str,
+    instructions: str,
+    commit: str,
+    generated: str,
+    color: str = "",
+    tools: str = "",
+    effort: str = "",
+) -> str:
+    """Render agent content in Qoder format (.md with YAML frontmatter)."""
+    frontmatter = [
+        "---",
+        f"name: {yaml_scalar(name)}",
+        f"description: {yaml_scalar(description)}",
+    ]
+    if effort:
+        frontmatter.append(f"effort: {effort}")
+    if color:
+        frontmatter.append(f"color: {yaml_scalar(color)}")
+    if tools:
+        frontmatter.append(f"tools: {tools}")
+    frontmatter.append("---")
+
+    audit = f"<!-- ptm-team-managed: version={MANAGED_VERSION} canonical-commit={commit} generated={generated} -->"
+    return "\n".join(frontmatter) + f"\n{audit}\n\n{instructions.rstrip()}\n"
+
+
 def render_codex_agent(
     name: str,
     description: str,
@@ -380,7 +413,10 @@ def get_agent_skills(agent_name: str) -> list[str]:
 
 def render_ptm_tde_rule_body(platform: str) -> str:
     """Render the short platform rule block installed with ptm-tde."""
-    platform_label = "Claude Code" if platform == "claude" else "Codex"
+    rule_file = PTM_TDE_RULE_FILES[platform]
+    sharing = sorted(p for p, f in PTM_TDE_RULE_FILES.items() if f == rule_file)
+    labels = {"claude": "Claude Code", "codex": "Codex", "qoder": "Qoder"}
+    platform_label = " / ".join(labels[p] for p in sharing)
     return f"""## ptm-tde 工作流程规则
 
 本项目安装了 `ptm-tde` 测试设计 Agent。{platform_label} 中触发 `ptm-tde` / `tde` 相关工作时必须遵守以下流程：
@@ -769,12 +805,17 @@ def install_agent(
     description = fields.get("description", "")
     color = fields.get("color", "")
     tools = fields.get("tools", "")
+    effort = fields.get("effort", "")
 
     # Render for platform
     agents_dir = workspace_root / PLATFORM_DIRS[platform]["agents"]
     if platform == "claude":
         dest = agents_dir / f"{agent_name}.md"
         rendered = render_claude_agent(agent_name, description, body, commit, generated, color, tools)
+    elif platform == "qoder":
+        dest = agents_dir / f"{agent_name}.md"
+        rendered = render_qoder_agent(agent_name, description, body, commit, generated,
+                                      color=color, tools=tools, effort=effort)
     else:
         dest = agents_dir / f"{agent_name}.toml"
         rendered = render_codex_agent(agent_name, description, body, commit, generated,
@@ -1135,6 +1176,19 @@ def install_skills_interactive(
     return entries
 
 
+def has_other_platform_rule(manifest: dict, platform: str, agent_name: str) -> bool:
+    """Check if another platform sharing the same rule file still has the rule installed."""
+    rule_file = PTM_TDE_RULE_FILES[platform]
+    sharing = [p for p, f in PTM_TDE_RULE_FILES.items() if f == rule_file and p != platform]
+    for other in sharing:
+        other_record = find_install_record(manifest, other)
+        if other_record:
+            for entry in other_record.get("entries", []):
+                if entry.get("kind") == "rule" and agent_name in entry.get("installed_for", []):
+                    return True
+    return False
+
+
 def uninstall_agent(
     platform: str,
     agent_name: str,
@@ -1165,7 +1219,10 @@ def uninstall_agent(
             else:
                 entries_to_remove.append(entry)
         elif entry["kind"] == "rule" and agent_name in entry.get("installed_for", []):
-            entries_to_remove.append(entry)
+            if has_other_platform_rule(manifest, platform, agent_name):
+                print(f"  ✓ 保留共享规则块: {entry.get('managed_block_id', '')} (其他平台仍在使用)")
+            else:
+                entries_to_remove.append(entry)
         else:
             remaining_entries.append(entry)
 

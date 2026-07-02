@@ -32,6 +32,84 @@ class InstallMappingTests(unittest.TestCase):
         self.assertEqual(script_skills, package_skills)
         self.assertTrue((REPO_ROOT / "skills/tde-feedback/SKILL.md").is_file())
 
+    def test_qoder_platform_supported(self) -> None:
+        for mod_path, mod_name in [
+            (REPO_ROOT / "script/install.py", "script_install"),
+            (REPO_ROOT / "script/ptm_team/install.py", "package_install"),
+        ]:
+            mod = load_module(mod_path, mod_name)
+            self.assertIn("qoder", mod.VALID_PLATFORMS)
+            self.assertEqual(mod.PLATFORM_DIRS["qoder"]["agents"], ".qoder/agents")
+            self.assertEqual(mod.PLATFORM_DIRS["qoder"]["skills"], ".qoder/skills")
+            self.assertEqual(mod.PTM_TDE_RULE_FILES["qoder"], "AGENTS.md")
+
+    def test_render_qoder_agent_format(self) -> None:
+        mod = load_module(REPO_ROOT / "script/install.py", "script_install")
+        rendered = mod.render_qoder_agent(
+            name="test-agent",
+            description="Test description",
+            instructions="Test instructions body.",
+            commit="abc123",
+            generated="2026-06-29T10:00:00Z",
+            color="blue",
+            tools="Read, Write",
+            effort="medium",
+        )
+        self.assertIn("name: \"test-agent\"", rendered)
+        self.assertIn("description: \"Test description\"", rendered)
+        self.assertIn("effort: medium", rendered)
+        self.assertIn("color: \"blue\"", rendered)
+        self.assertIn("tools: Read, Write", rendered)
+        self.assertIn("Test instructions body.", rendered)
+
+    def test_render_qoder_agent_without_effort(self) -> None:
+        mod = load_module(REPO_ROOT / "script/install.py", "script_install")
+        rendered = mod.render_qoder_agent(
+            name="test-agent",
+            description="Test",
+            instructions="Body.",
+            commit="abc",
+            generated="2026-06-29T10:00:00Z",
+        )
+        self.assertNotIn("effort:", rendered)
+        self.assertIn("name: \"test-agent\"", rendered)
+
+    def test_shared_rule_block_for_codex_and_qoder(self) -> None:
+        mod = load_module(REPO_ROOT / "script/install.py", "script_install")
+        # Codex and Qoder share the same rule file (AGENTS.md) and the same block ID
+        self.assertEqual(mod.PTM_TDE_RULE_FILES["codex"], mod.PTM_TDE_RULE_FILES["qoder"])
+        # Rule body for codex and qoder should be identical (same combined label)
+        body_codex = mod.render_ptm_tde_rule_body("codex")
+        body_qoder = mod.render_ptm_tde_rule_body("qoder")
+        self.assertEqual(body_codex, body_qoder)
+        # Combined label includes both platforms
+        self.assertIn("Codex", body_codex)
+        self.assertIn("Qoder", body_codex)
+        # Claude uses its own rule file and label
+        body_claude = mod.render_ptm_tde_rule_body("claude")
+        self.assertIn("Claude Code", body_claude)
+        self.assertNotIn("Codex", body_claude)
+
+    def test_has_other_platform_rule(self) -> None:
+        mod = load_module(REPO_ROOT / "script/install.py", "script_install")
+        # When codex has a rule entry, qoder uninstall should detect it
+        manifest = {
+            "installs": [
+                {
+                    "platform": "codex",
+                    "scope": "project",
+                    "status": "installed",
+                    "entries": [
+                        {"kind": "rule", "name": "ptm-tde:ptm-tde-workflow", "installed_for": ["ptm-tde"]},
+                    ],
+                },
+            ],
+        }
+        self.assertTrue(mod.has_other_platform_rule(manifest, "qoder", "ptm-tde"))
+        self.assertFalse(mod.has_other_platform_rule(manifest, "claude", "ptm-tde"))
+        # Empty manifest
+        self.assertFalse(mod.has_other_platform_rule({"installs": []}, "qoder", "ptm-tde"))
+
 
 if __name__ == "__main__":
     unittest.main()

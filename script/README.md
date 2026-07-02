@@ -4,7 +4,7 @@
 
 ## install.py
 
-ptm-team 安装工具，支持将 Agent 和 Skill 安装到 Claude Code 或 Codex 平台。
+ptm-team 安装工具，支持将 Agent 和 Skill 安装到 Claude Code、Codex 或 Qoder 平台。
 
 ### 安装 Agent
 
@@ -12,6 +12,7 @@ ptm-team 安装工具，支持将 Agent 和 Skill 安装到 Claude Code 或 Code
 # 安装 ptm-tde 及其引用的所有 skills
 uv run python script/install.py install claude --agent ptm-tde
 uv run python script/install.py install codex --agent tde
+uv run python script/install.py install qoder --agent ptm-tde
 
 # 预览模式（不实际修改文件）
 uv run python script/install.py install claude --agent ptm-tde --dry-run
@@ -24,6 +25,7 @@ uv run python script/install.py install claude --agent ptm-tde --dry-run
 ```shell
 # 交互式选择安装
 uv run python script/install.py install claude --skill
+uv run python script/install.py install qoder --skill
 
 # 模糊匹配安装
 uv run python script/install.py install claude --skill checkpoint
@@ -37,6 +39,7 @@ uv run python script/install.py uninstall claude
 
 # 卸载指定 agent 及其 skills
 uv run python script/install.py uninstall claude --agent ptm-tde
+uv run python script/install.py uninstall qoder --agent ptm-tde
 
 # 交互式选择卸载 skill
 uv run python script/install.py uninstall claude --skill
@@ -49,6 +52,7 @@ uv run python script/install.py uninstall claude --dry-run
 
 ```shell
 uv run python script/install.py install claude --list
+uv run python script/install.py install qoder --list
 ```
 
 ### 检查安装漂移
@@ -56,6 +60,7 @@ uv run python script/install.py install claude --list
 ```shell
 uv run python script/install.py check codex --agent ptm-tde
 uv run python script/install.py check claude --agent ptm-tde
+uv run python script/install.py check qoder --agent ptm-tde
 ```
 
 `check` 会读取 `.ptm-team-manifest.json`，校验已安装 agent、skill、规则 managed block 和 resource 文件是否仍与 manifest 一致，并校验源仓库资产是否已变化。
