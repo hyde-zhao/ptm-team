@@ -29,3 +29,9 @@
 | FL-PR-0.2.1-008 | 2026-05-21 | new_factor | FAC-PR-RULE-SRC-PORT | 新增规则源端口配置字段合法性因子 | active |
 | FL-PR-0.2.1-009 | 2026-05-21 | new_factor | FAC-PR-RULE-DST-PORT | 新增规则目的端口配置字段合法性因子 | active |
 | FL-PR-0.2.1-010 | 2026-05-21 | new_factor_group | CONFIG_FIELD_VALIDITY | 新增策略路由配置字段合法性因子组 | active |
+| FL-PR-0.2.2-001 | 2026-07-02 | new_factor | FAC-PR-RULE-ACTION | 新增策略路由动作类型因子（forward/skip/bypass），skip 对应 fallback-route | active |
+| FL-PR-0.2.2-002 | 2026-07-02 | new_factor | FAC-TRAFFIC-ADDR-MATCH-POSITION | 新增流量地址匹配位置因子，跨库依赖 ngfw-objects 地址对象排除因子 | active |
+| FL-PR-0.2.2-003 | 2026-07-02 | new_factor | FAC-PR-RULE-NAT-REF | 新增策略路由NAT类型引用因子，取值与 ngfw-nat/FAC-NAT44-TYPE 同步 | active |
+| FL-PR-0.2.2-004 | 2026-07-02 | update_factor_group | PR_RULE_ORDER | 加入 FAC-PR-RULE-ACTION | active |
+| FL-PR-0.2.2-005 | 2026-07-02 | update_factor_group | PR_TRAFFIC_MATCHING | 加入 FAC-TRAFFIC-ADDR-MATCH-POSITION | active |
+| FL-PR-0.2.2-006 | 2026-07-02 | new_factor_group | PR_NAT_COUPLING | 新增策略路由NAT耦合因子组 | active |

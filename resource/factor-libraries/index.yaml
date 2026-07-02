@@ -101,3 +101,13 @@ libraries:
     path: ngfw-load-balance/factor-library.yaml
     compatible_consumers: [ptm-tde, ngfw-policy-routing]
     checksum: pending
+
+  - library_id: ngfw-nat
+    resource_type: factor-library
+    display_name: "NGFW NAT 因子库"
+    domain: ngfw-nat
+    version: 0.1.0
+    status: candidate
+    path: ngfw-nat/factor-library.yaml
+    compatible_consumers: [ptm-tde, ngfw-policy-routing]
+    checksum: pending

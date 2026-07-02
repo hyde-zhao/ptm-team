@@ -1,0 +1,70 @@
+# NGFW NAT 因子库
+# 研究区 — ngfw-nat
+# NAT 转换类型公共因子，供策略路由、安全策略等特性跨库引用
+
+schema_version: 1
+library_id: ngfw-nat
+version: 0.1.0
+status: candidate
+description: "NGFW NAT 公共因子库，覆盖 NAT44 转换类型。供策略路由、安全策略等特性跨库引用。"
+
+factors:
+
+  - factor_id: FAC-NAT44-TYPE
+    factor_name: NAT44 类型
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-NAT
+    domain_model: enum
+    value_type: enum
+    values: [source-nat, destination-nat, static-nat]
+    display_values:
+      source-nat: 源NAT
+      destination-nat: 目的NAT
+      static-nat: 静态NAT
+    aliases: [NAT类型, NAT转换类型, nat44]
+    applicable_when: "NAT rule configured"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      NAT44 转换类型。源进源出（source-in-source-out）属于转发模式而非 NAT44 类型，
+      不纳入本因子取值；如需建模应作为独立的转发模式因子，由消费方在其领域库定义。
+    sample_definitions:
+      - sample_id: NAT44_SOURCE
+        sample_class: valid_member
+        description: "源NAT，转换报文源地址。"
+        representative_values: ["source-nat"]
+        expr: 'source-nat'
+        materialized_value: "source-nat"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NAT44_DESTINATION
+        sample_class: valid_member
+        description: "目的NAT，转换报文目的地址。"
+        representative_values: ["destination-nat"]
+        expr: 'destination-nat'
+        materialized_value: "destination-nat"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NAT44_STATIC
+        sample_class: valid_member
+        description: "静态NAT，一对一固定地址映射。"
+        representative_values: ["static-nat"]
+        expr: 'static-nat'
+        materialized_value: "static-nat"
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [NAT44_SOURCE, NAT44_DESTINATION, NAT44_STATIC]
+      function_test:
+        precondition_samples: [NAT44_SOURCE]
+
+factor_groups:
+  - group_id: NAT44_TYPE
+    group_name: NAT44 转换类型
+    factors: [FAC-NAT44-TYPE]
+    coverage_strategy:
+      positive: 三种 NAT44 类型各覆盖一次
+
+external_consumers:
+  - consumer: ngfw-policy-routing/FAC-PR-RULE-NAT-REF
+    samples_used: [accepted]

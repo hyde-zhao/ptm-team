@@ -225,6 +225,117 @@ factors:
       function_test:
         precondition_samples: [QP_PAGE_NORMAL]
 
+  # ═══════════════════════════════════════════════════════
+  # FAC-CFG-SOUTHBOUND-IF — 南向配置下发通道
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-CFG-SOUTHBOUND-IF
+    factor_name: 南向配置下发通道
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-GENERIC-CONFIG
+    domain_model: enum
+    value_type: enum
+    values: [R01, R03, REST-API]
+    display_values:
+      R01: R01 NETCONF/YANG
+      R03: R03 南向接口
+      REST-API: REST API 接口
+    aliases: [南向接口, 南向类型, 下发通道, southbound, southbound_interface]
+    applicable_when: "config delivered via southbound interface"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      南向配置下发通道类型。R01=NETCONF/YANG，R03=另一南向协议，REST-API=RESTful 接口。
+      跨特性复用，非策略路由规则字段。
+    sample_definitions:
+      - sample_id: SB_R01
+        sample_class: valid_member
+        description: "R01 NETCONF/YANG 南向下发。"
+        representative_values: ["R01"]
+        expr: 'R01'
+        materialized_value: "R01"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: SB_R03
+        sample_class: valid_member
+        description: "R03 南向下发。"
+        representative_values: ["R03"]
+        expr: 'R03'
+        materialized_value: "R03"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: SB_REST
+        sample_class: valid_member
+        description: "REST API 下发。"
+        representative_values: ["REST-API"]
+        expr: 'REST-API'
+        materialized_value: "REST-API"
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [SB_R01, SB_R03, SB_REST]
+      function_test:
+        precondition_samples: [SB_R01]
+
+  # ═══════════════════════════════════════════════════════
+  # FAC-SEC-USER-ROLE — 用户角色权限
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-SEC-USER-ROLE
+    factor_name: 用户角色权限
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-GENERIC-CONFIG
+    domain_model: enum
+    value_type: enum
+    values: [admin, readonly, config-admin, auditor]
+    display_values:
+      admin: 管理员
+      readonly: 只读用户
+      config-admin: 配置管理员
+      auditor: 审计员
+    aliases: [用户角色, 权限角色, user_role, 用户权限]
+    applicable_when: "user role authorization"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      用户角色权限。admin=完全权限，readonly=只读，config-admin=三权分立模式下配置权限，
+      auditor=审计日志查询。配 ngfw-dfx/FAC-DFX-AUTH-RESULT（权限校验结果 oracle）。
+      通用安全维度，非策略路由规则字段。
+    sample_definitions:
+      - sample_id: ROLE_ADMIN
+        sample_class: valid_member
+        description: "管理员，完全权限。"
+        representative_values: ["admin"]
+        expr: 'admin'
+        materialized_value: "admin"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: ROLE_READONLY
+        sample_class: valid_member
+        description: "只读用户，仅查询权限。"
+        representative_values: ["readonly"]
+        expr: 'readonly'
+        materialized_value: "readonly"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: ROLE_CONFIG_ADMIN
+        sample_class: valid_member
+        description: "配置管理员，三权分立模式下配置权限。"
+        representative_values: ["config-admin"]
+        expr: 'config-admin'
+        materialized_value: "config-admin"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: ROLE_AUDITOR
+        sample_class: valid_member
+        description: "审计员，日志查询权限。"
+        representative_values: ["auditor"]
+        expr: 'auditor'
+        materialized_value: "auditor"
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [ROLE_ADMIN, ROLE_READONLY, ROLE_CONFIG_ADMIN, ROLE_AUDITOR]
+      function_test:
+        precondition_samples: [ROLE_ADMIN]
+
 # ═══════════════════════════════════════════════════════
 # 外部消费方（被谁引用）
 # ═══════════════════════════════════════════════════════
@@ -258,3 +369,6 @@ external_consumers:
     samples_used: [invalid_format]
   - consumer: ngfw-policy-routing/FAC-PR-RULE-SERVICE
     samples_used: [invalid_format]
+  - consumer: ngfw-dfx/FAC-DFX-AUTH-RESULT
+    samples_used: [accepted]
+    note: "权限校验结果 oracle 配 FAC-SEC-USER-ROLE"

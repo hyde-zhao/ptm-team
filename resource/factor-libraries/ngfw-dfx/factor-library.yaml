@@ -815,6 +815,529 @@ factors:
   # ═══════════════════════════════════════════════════════
   # 为 debug 诊断、抓包分析、日志导出、技术支持 dump 等工具能力预留。
 
+  # ═══════════════════════════════════════════════════════
+  # 并发 / 引用计数 / 配置持久化（driver）
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-DFX-CONCURRENT-OP
+    factor_name: 并发操作模式
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [single, concurrent-modify, batch-create, batch-delete]
+    display_values:
+      single: 单会话操作
+      concurrent-modify: 多会话并发修改
+      batch-create: 批量创建
+      batch-delete: 批量删除
+    aliases: [并发操作, 并发模式, 批量操作模式]
+    applicable_when: always
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      并发/批量操作模式。与 FAC-RT-CRUD-OP(操作动词 create/modify/delete) 和
+      FAC-DFX-RELIABILITY-OP(repeated-crud 重复可靠性) 不同维度：本因子建模
+      "并发模式"，CRUD-OP 建模"做什么操作"，RELIABILITY-OP 建模"重复压力"。
+    sample_definitions:
+      - sample_id: CONC_SINGLE
+        sample_class: valid_member
+        description: "单会话顺序操作，作为基线。"
+        representative_values: ["single"]
+        expr: 'single'
+        materialized_value: "single"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: CONC_CONCURRENT_MODIFY
+        sample_class: valid_member
+        description: "多会话并发修改同一策略。"
+        representative_values: ["concurrent-modify"]
+        expr: 'concurrent-modify'
+        materialized_value: "concurrent-modify"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: CONC_BATCH_CREATE
+        sample_class: valid_member
+        description: "批量创建多条策略。"
+        representative_values: ["batch-create"]
+        expr: 'batch-create'
+        materialized_value: "batch-create"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: CONC_BATCH_DELETE
+        sample_class: valid_member
+        description: "批量删除多条策略。"
+        representative_values: ["batch-delete"]
+        expr: 'batch-delete'
+        materialized_value: "batch-delete"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  - factor_id: FAC-DFX-REF-COUNT
+    factor_name: 引用计数
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: range
+    value_type: integer
+    domain_expr: "int[0,N]"
+    aliases: [引用计数, 引用数, ref_count]
+    applicable_when: "reference count validation"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      策略路由被其他模块引用的计数值。N 为引用方数量，PC 阶段从拓扑获取。
+      删除引用中的对象时应校验计数是否归零。
+    sample_definitions:
+      - sample_id: REF_COUNT_ZERO
+        sample_class: boundary_min
+        description: "无引用，可安全删除。"
+        representative_values: ["0"]
+        expr: 'min'
+        materialized_value: 0
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: REF_COUNT_ONE
+        sample_class: in_range_nominal
+        description: "单一引用方。"
+        representative_values: ["1"]
+        expr: 'min + 1'
+        materialized_value: 1
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: REF_COUNT_MULTI
+        sample_class: in_range_nominal
+        description: "多引用方，删除应被拒绝或告警。"
+        representative_values: ["N"]
+        expr: 'random_int(2, N, seed=case_id)'
+        materialized_value: "N"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  - factor_id: FAC-DFX-CONFIG-PERSISTENCE
+    factor_name: 配置持久化模式
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [saved, rollback]
+    display_values:
+      saved: 已保存
+      rollback: 回滚上一版本
+    aliases: [配置持久化, 保存状态, 持久化模式]
+    applicable_when: "reboot or rollback validation"
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      配置持久化状态模式。系统实时保存配置，unsaved 状态不可构造，不纳入取值。
+      rollback 与 FAC-DFX-RELIABILITY-OP=rollback 是"状态↔操作"对应关系：
+      RELIABILITY-OP=rollback 执行回滚动作，本因子描述回滚后的持久化状态。
+      驱动重启保留测试，oracle 配 FAC-DFX-CONFIG-PERSISTENCE-RESULT。
+    sample_definitions:
+      - sample_id: PERSIST_SAVED
+        sample_class: valid_member
+        description: "配置已保存，重启后保留。"
+        representative_values: ["saved"]
+        expr: 'saved'
+        materialized_value: "saved"
+        applicability: {config_test: not_applicable, function_test: precondition}
+      - sample_id: PERSIST_ROLLBACK
+        sample_class: valid_member
+        description: "配置回滚到上一版本。"
+        representative_values: ["rollback"]
+        expr: 'rollback'
+        materialized_value: "rollback"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
+  # ═══════════════════════════════════════════════════════
+  # 质量度量 oracle
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-DFX-CONFIG-PERSISTENCE-RESULT
+    factor_name: 配置持久化结果
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [preserved, lost, partially-lost]
+    display_values:
+      preserved: 保留
+      lost: 丢失
+      partially-lost: 部分丢失
+    aliases: [持久化结果, 配置保留结果]
+    applicable_when: "config persistence validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 配 FAC-DFX-CONFIG-PERSISTENCE。重启/回滚后验证配置是否保留。
+    sample_definitions:
+      - sample_id: PERSIST_RESULT_PRESERVED
+        sample_class: positive_function
+        description: "重启/回滚后配置完整保留。"
+        representative_values: ["preserved"]
+        expr: 'preserved'
+        materialized_value: "preserved"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: PERSIST_RESULT_LOST
+        sample_class: negative_function
+        description: "重启后配置丢失。"
+        representative_values: ["lost"]
+        expr: 'lost'
+        materialized_value: "lost"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: PERSIST_RESULT_PARTIAL
+        sample_class: negative_function
+        description: "重启后部分配置丢失。"
+        representative_values: ["partially-lost"]
+        expr: 'partially-lost'
+        materialized_value: "partially-lost"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-DFX-VPP-CONSISTENCY
+    factor_name: VPP下发一致性
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [consistent, inconsistent]
+    display_values:
+      consistent: 一致
+      inconsistent: 不一致
+    aliases: [VPP一致性, 下发一致性]
+    applicable_when: "vpp delivery validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 验证策略配置下发到 VPP 后与配置源是否一致。
+    sample_definitions:
+      - sample_id: VPP_CONSISTENT
+        sample_class: positive_function
+        description: "VPP 下发与配置源一致。"
+        representative_values: ["consistent"]
+        expr: 'consistent'
+        materialized_value: "consistent"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: VPP_INCONSISTENT
+        sample_class: negative_function
+        description: "VPP 下发与配置源不一致。"
+        representative_values: ["inconsistent"]
+        expr: 'inconsistent'
+        materialized_value: "inconsistent"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-DFX-MEMORY-TREND
+    factor_name: 内存使用趋势
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [stable, growing, leaking]
+    display_values:
+      stable: 稳定
+      growing: 增长
+      leaking: 泄漏
+    aliases: [内存趋势, 内存使用趋势, 内存泄漏]
+    applicable_when: "stability soak validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 配 FAC-DFX-STABILITY-TYPE=soak。长时间浸泡后内存趋势判定。
+    sample_definitions:
+      - sample_id: MEM_STABLE
+        sample_class: positive_function
+        description: "内存使用稳定，无泄漏。"
+        representative_values: ["stable"]
+        expr: 'stable'
+        materialized_value: "stable"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: MEM_LEAKING
+        sample_class: negative_function
+        description: "内存持续增长，疑似泄漏。"
+        representative_values: ["leaking"]
+        expr: 'leaking'
+        materialized_value: "leaking"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-DFX-LB-RATIO-DEVIATION
+    factor_name: 负载分担比率偏差
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [zero, within-threshold, exceeds-threshold]
+    display_values:
+      zero: 0%
+      within-threshold: ≤5%
+      exceeds-threshold: ">5%"
+    aliases: [负载分担偏差, 分担比率偏差, 负载偏差]
+    applicable_when: "load balance ratio validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 配 ngfw-ipv4-route/FAC-RT-ECMP-LOAD-BALANCE。实际分担比率与预期偏差判定。
+    sample_definitions:
+      - sample_id: LB_RATIO_ZERO
+        sample_class: positive_function
+        description: "无偏差，完全均衡。"
+        representative_values: ["zero"]
+        expr: 'zero'
+        materialized_value: "zero"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: LB_RATIO_WITHIN
+        sample_class: positive_function
+        description: "偏差在阈值内（≤5%）。"
+        representative_values: ["within-threshold"]
+        expr: 'within-threshold'
+        materialized_value: "within-threshold"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: LB_RATIO_EXCEEDS
+        sample_class: negative_function
+        description: "偏差超阈值（>5%）。"
+        representative_values: ["exceeds-threshold"]
+        expr: 'exceeds-threshold'
+        materialized_value: "exceeds-threshold"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-DFX-FAILOVER-LOSS
+    factor_name: 切换丢包数
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [zero, within-threshold, exceeds-threshold]
+    display_values:
+      zero: "0"
+      within-threshold: "≤10"
+      exceeds-threshold: ">10"
+    aliases: [切换丢包, 切换丢包数, HA丢包]
+    applicable_when: "failover loss validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 配 FAC-DFX-AVAILABILITY-METRIC。HA/链路切换时丢包数判定。
+    sample_definitions:
+      - sample_id: FAILOVER_LOSS_ZERO
+        sample_class: positive_function
+        description: "切换无丢包。"
+        representative_values: ["zero"]
+        expr: 'zero'
+        materialized_value: "zero"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FAILOVER_LOSS_WITHIN
+        sample_class: positive_function
+        description: "切换丢包在阈值内（≤10）。"
+        representative_values: ["within-threshold"]
+        expr: 'within-threshold'
+        materialized_value: "within-threshold"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: FAILOVER_LOSS_EXCEEDS
+        sample_class: negative_function
+        description: "切换丢包超阈值（>10）。"
+        representative_values: ["exceeds-threshold"]
+        expr: 'exceeds-threshold'
+        materialized_value: "exceeds-threshold"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-DFX-BATCH-RESPONSE-TIME
+    factor_name: 批量操作响应时间
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [within-threshold, exceeds-threshold, timeout]
+    display_values:
+      within-threshold: "≤3s"
+      exceeds-threshold: ">3s"
+      timeout: 超时
+    aliases: [批量响应时间, 批量操作响应, 批量时延]
+    applicable_when: "batch operation response validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 配 FAC-DFX-CONCURRENT-OP。批量操作响应时间判定。
+    sample_definitions:
+      - sample_id: BATCH_RESP_WITHIN
+        sample_class: positive_function
+        description: "批量操作响应在阈值内（≤3s）。"
+        representative_values: ["within-threshold"]
+        expr: 'within-threshold'
+        materialized_value: "within-threshold"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: BATCH_RESP_EXCEEDS
+        sample_class: negative_function
+        description: "批量操作响应超阈值（>3s）。"
+        representative_values: ["exceeds-threshold"]
+        expr: 'exceeds-threshold'
+        materialized_value: "exceeds-threshold"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: BATCH_RESP_TIMEOUT
+        sample_class: negative_function
+        description: "批量操作超时无响应。"
+        representative_values: ["timeout"]
+        expr: 'timeout'
+        materialized_value: "timeout"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-DFX-AUTH-RESULT
+    factor_name: 权限校验结果
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [pass, deny]
+    display_values:
+      pass: 通过
+      deny: 拒绝
+    aliases: [权限校验结果, 鉴权结果, 鉴权判定]
+    applicable_when: "authorization validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 配 common-network/FAC-SEC-USER-ROLE。用户角色权限校验结果判定。
+    sample_definitions:
+      - sample_id: AUTH_PASS
+        sample_class: positive_function
+        description: "权限校验通过，操作允许。"
+        representative_values: ["pass"]
+        expr: 'pass'
+        materialized_value: "pass"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: AUTH_DENY
+        sample_class: negative_function
+        description: "权限校验拒绝，操作被拒。"
+        representative_values: ["deny"]
+        expr: 'deny'
+        materialized_value: "deny"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-DFX-UPGRADE-COMPATIBILITY
+    factor_name: 升级配置兼容性
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [compatible, partial-compatible, incompatible]
+    display_values:
+      compatible: 兼容
+      partial-compatible: 部分兼容
+      incompatible: 不兼容
+    aliases: [升级兼容性, 配置兼容, 升级兼容]
+    applicable_when: "upgrade compatibility validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 配 FAC-DFX-RELIABILITY-OP=upgrade。升级后既有配置兼容性判定。
+    sample_definitions:
+      - sample_id: UPGRADE_COMPAT
+        sample_class: positive_function
+        description: "升级后配置完全兼容。"
+        representative_values: ["compatible"]
+        expr: 'compatible'
+        materialized_value: "compatible"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: UPGRADE_PARTIAL
+        sample_class: negative_function
+        description: "升级后部分配置不兼容。"
+        representative_values: ["partial-compatible"]
+        expr: 'partial-compatible'
+        materialized_value: "partial-compatible"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: UPGRADE_INCOMPAT
+        sample_class: negative_function
+        description: "升级后配置不兼容，丢失或失效。"
+        representative_values: ["incompatible"]
+        expr: 'incompatible'
+        materialized_value: "incompatible"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-DFX-APP-MATCH-LOSS-RATE
+    factor_name: 应用匹配丢包率
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [zero, within-threshold, exceeds-threshold]
+    display_values:
+      zero: "0"
+      within-threshold: "≤1%"
+      exceeds-threshold: ">1%"
+    aliases: [应用匹配丢包率, 应用丢包, 应用识别丢包]
+    applicable_when: "application match loss validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: 配 ngfw-policy-routing/FAC-TRAFFIC-APP-MATCH。应用匹配流量丢包率判定。
+    sample_definitions:
+      - sample_id: APP_LOSS_ZERO
+        sample_class: positive_function
+        description: "应用匹配无丢包。"
+        representative_values: ["zero"]
+        expr: 'zero'
+        materialized_value: "zero"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: APP_LOSS_WITHIN
+        sample_class: positive_function
+        description: "应用匹配丢包率在阈值内（≤1%）。"
+        representative_values: ["within-threshold"]
+        expr: 'within-threshold'
+        materialized_value: "within-threshold"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: APP_LOSS_EXCEEDS
+        sample_class: negative_function
+        description: "应用匹配丢包率超阈值（>1%）。"
+        representative_values: ["exceeds-threshold"]
+        expr: 'exceeds-threshold'
+        materialized_value: "exceeds-threshold"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-DFX-MULTI-PATH-CONSISTENCY
+    factor_name: 多通道一致性
+    factor_kind: oracle
+    design_role: oracle
+    owner_object: OBJ-DFX
+    domain_model: enum
+    value_type: enum
+    values: [consistent, inconsistent, partially-consistent]
+    display_values:
+      consistent: 一致
+      inconsistent: 不一致
+      partially-consistent: 部分一致
+    aliases: [多通道一致性, 多路径一致性, 通道一致性]
+    applicable_when: "multi-path consistency validation"
+    downstream_methods: [oracle-design]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      多通道/多路径转发一致性判定。配 ngfw-ipv4-route/FAC-RT-ECMP-* 系列因子。
+      多链路负载分担时各通道状态与预期是否一致。
+    sample_definitions:
+      - sample_id: MULTIPATH_CONSISTENT
+        sample_class: positive_function
+        description: "多通道状态一致。"
+        representative_values: ["consistent"]
+        expr: 'consistent'
+        materialized_value: "consistent"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: MULTIPATH_INCONSISTENT
+        sample_class: negative_function
+        description: "多通道状态不一致。"
+        representative_values: ["inconsistent"]
+        expr: 'inconsistent'
+        materialized_value: "inconsistent"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: MULTIPATH_PARTIAL
+        sample_class: negative_function
+        description: "部分通道一致。"
+        representative_values: ["partially-consistent"]
+        expr: 'partially-consistent'
+        materialized_value: "partially-consistent"
+        applicability: {config_test: not_applicable, function_test: negative}
+
 factor_groups:
   - group_id: DFX_OBSERVABILITY
     group_name: 可维可测
@@ -862,6 +1385,25 @@ factor_groups:
     factors: [FAC-DFX-AVAILABILITY-METRIC]
     coverage_strategy:
       all: 五个恢复场景全部覆盖，oracle 判定时间阈值
+
+  - group_id: DFX_CONFIG_DURABILITY
+    group_name: 配置耐久性与并发
+    factors: [FAC-DFX-CONCURRENT-OP, FAC-DFX-REF-COUNT, FAC-DFX-CONFIG-PERSISTENCE]
+    coverage_strategy:
+      positive: 单会话基线 + 已保存 + 引用计数归零
+      negative: 并发修改 + 批量创建/删除 + 回滚 + 多引用
+
+  - group_id: DFX_QUALITY_ORACLE
+    group_name: 质量度量判定
+    factors: [FAC-DFX-CONFIG-PERSISTENCE-RESULT, FAC-DFX-VPP-CONSISTENCY,
+              FAC-DFX-MEMORY-TREND, FAC-DFX-LB-RATIO-DEVIATION,
+              FAC-DFX-FAILOVER-LOSS, FAC-DFX-BATCH-RESPONSE-TIME,
+              FAC-DFX-AUTH-RESULT, FAC-DFX-UPGRADE-COMPATIBILITY,
+              FAC-DFX-APP-MATCH-LOSS-RATE, FAC-DFX-MULTI-PATH-CONSISTENCY]
+    coverage_strategy:
+      positive: 各 oracle 正向判定各覆盖一次
+      negative: 各 oracle 异常判定各覆盖一次
+      notes: 每个 oracle 必须与对应 driver 配对设计，避免孤立判定因子
 
 external_consumers:
   - consumer: ngfw-ipv4-route/FAC-RT-CRUD-OP

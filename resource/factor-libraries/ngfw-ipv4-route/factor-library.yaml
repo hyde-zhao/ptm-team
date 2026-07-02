@@ -376,10 +376,10 @@ constraints:
 
   # 出接口模式: 只允许 Tunnel/PPPoE
   - constraint_id: C-RT-EGRESS-001
-    description: "出接口模式仅支持 Tunnel 接口和 PPPoE 接口"
+    description: "出接口模式支持 PPPoE 和隧道接口类型（4over6/6over4/gre/sslvpn/ipsec）"
     if: "FAC-L3-EGRESS-MODE == out-interface"
     allowed_values:
-      FAC-RT-INTERFACE-TYPE: [tunnel, pppoe]
+      FAC-L3-OUTIF-TYPE: [pppoe, 4over6, 6over4, gre, sslvpn, ipsec]
 
   # 下一跳模式: 禁止 Tunnel/PPPoE 作为出接口类型
   - constraint_id: C-RT-EGRESS-002
@@ -417,19 +417,24 @@ constraints:
     owner_object: OBJ-RT-EGRESS
     domain_model: enum
     value_type: enum
-    values: [physical, sub-interface, aggregate, bvi, tunnel]
+    values: [physical, sub-interface, aggregate, bvi, 4over6, gre, sslvpn, ipsec]
     display_values:
       physical: 物理口
       sub-interface: 子接口
       aggregate: 聚合口
       bvi: BVI接口
-      tunnel: 隧道口
+      4over6: 4over6 隧道口
+      gre: GRE 隧道口
+      sslvpn: SSL VPN 隧道口
+      ipsec: IPSec 隧道口
     aliases: [下一跳接口类型, 下一跳所在接口]
     applicable_when: "FAC-L3-EGRESS-MODE == next-hop"
     downstream_methods: [C-Combination]
     reuse_policy: must_reuse
     status: candidate
-    notes: 从 ngfw-policy-routing 迁移。下一跳模式下可选接口类型。
+    notes: >
+      从 ngfw-policy-routing 迁移。下一跳模式下可选接口类型。原 tunnel 细化为
+      4over6/gre/sslvpn/ipsec 四种隧道接口类型（下一跳模式不含 6over4）。
     sample_definitions:
       - sample_id: NH_IF_PHYSICAL
         sample_class: valid_member
@@ -459,16 +464,37 @@ constraints:
         expr: 'bvi'
         materialized_value: "bvi"
         applicability: {config_test: accepted, function_test: precondition}
-      - sample_id: NH_IF_TUNNEL
+      - sample_id: NH_IF_4OVER6
         sample_class: valid_member
-        description: "下一跳出接口为隧道口。"
-        representative_values: ["tunnel"]
-        expr: 'tunnel'
-        materialized_value: "tunnel"
+        description: "下一跳出接口为 4over6 隧道口。"
+        representative_values: ["4over6"]
+        expr: '4over6'
+        materialized_value: "4over6"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_IF_GRE
+        sample_class: valid_member
+        description: "下一跳出接口为 GRE 隧道口。"
+        representative_values: ["gre"]
+        expr: 'gre'
+        materialized_value: "gre"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_IF_SSLVPN
+        sample_class: valid_member
+        description: "下一跳出接口为 SSL VPN 隧道口。"
+        representative_values: ["sslvpn"]
+        expr: 'sslvpn'
+        materialized_value: "sslvpn"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NH_IF_IPSEC
+        sample_class: valid_member
+        description: "下一跳出接口为 IPSec 隧道口。"
+        representative_values: ["ipsec"]
+        expr: 'ipsec'
+        materialized_value: "ipsec"
         applicability: {config_test: accepted, function_test: precondition}
     usage_profiles:
       config_test:
-        accepted_config_samples: [NH_IF_PHYSICAL, NH_IF_SUB_INTERFACE, NH_IF_AGGREGATE, NH_IF_BVI, NH_IF_TUNNEL]
+        accepted_config_samples: [NH_IF_PHYSICAL, NH_IF_SUB_INTERFACE, NH_IF_AGGREGATE, NH_IF_BVI, NH_IF_4OVER6, NH_IF_GRE, NH_IF_SSLVPN, NH_IF_IPSEC]
 
   - factor_id: FAC-L3-OUTIF-TYPE
     factor_name: 出接口接口类型
@@ -477,24 +503,23 @@ constraints:
     owner_object: OBJ-RT-EGRESS
     domain_model: enum
     value_type: enum
-    values: [tunnel, pppoe]
+    values: [pppoe, 4over6, 6over4, gre, sslvpn, ipsec]
     display_values:
-      tunnel: 隧道口
       pppoe: PPPoE接口
+      4over6: 4over6 隧道口
+      6over4: 6over4 隧道口
+      gre: GRE 隧道口
+      sslvpn: SSL VPN 隧道口
+      ipsec: IPSec 隧道口
     aliases: [出接口类型, 策略路由出接口]
     applicable_when: "FAC-L3-EGRESS-MODE == out-interface"
     downstream_methods: [C-Combination]
     reuse_policy: must_reuse
     status: candidate
-    notes: 从 ngfw-policy-routing 迁移。出接口模式仅支持 Tunnel 和 PPPoE。
+    notes: >
+      从 ngfw-policy-routing 迁移。出接口模式支持 PPPoE 和五种隧道接口类型
+      （4over6/6over4/gre/sslvpn/ipsec）。原 tunnel 已细化。
     sample_definitions:
-      - sample_id: OUTIF_TUNNEL
-        sample_class: valid_member
-        description: "出接口为隧道口。"
-        representative_values: ["tunnel"]
-        expr: 'tunnel'
-        materialized_value: "tunnel"
-        applicability: {config_test: accepted, function_test: precondition}
       - sample_id: OUTIF_PPPOE
         sample_class: valid_member
         description: "出接口为 PPPoE 接口。"
@@ -502,9 +527,44 @@ constraints:
         expr: 'pppoe'
         materialized_value: "pppoe"
         applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: OUTIF_4OVER6
+        sample_class: valid_member
+        description: "出接口为 4over6 隧道口。"
+        representative_values: ["4over6"]
+        expr: '4over6'
+        materialized_value: "4over6"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: OUTIF_6OVER4
+        sample_class: valid_member
+        description: "出接口为 6over4 隧道口。"
+        representative_values: ["6over4"]
+        expr: '6over4'
+        materialized_value: "6over4"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: OUTIF_GRE
+        sample_class: valid_member
+        description: "出接口为 GRE 隧道口。"
+        representative_values: ["gre"]
+        expr: 'gre'
+        materialized_value: "gre"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: OUTIF_SSLVPN
+        sample_class: valid_member
+        description: "出接口为 SSL VPN 隧道口。"
+        representative_values: ["sslvpn"]
+        expr: 'sslvpn'
+        materialized_value: "sslvpn"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: OUTIF_IPSEC
+        sample_class: valid_member
+        description: "出接口为 IPSec 隧道口。"
+        representative_values: ["ipsec"]
+        expr: 'ipsec'
+        materialized_value: "ipsec"
+        applicability: {config_test: accepted, function_test: precondition}
     usage_profiles:
       config_test:
-        accepted_config_samples: [OUTIF_TUNNEL, OUTIF_PPPOE]
+        accepted_config_samples: [OUTIF_PPPOE, OUTIF_4OVER6, OUTIF_6OVER4, OUTIF_GRE, OUTIF_SSLVPN, OUTIF_IPSEC]
 
   - factor_id: FAC-L3-IF-CAPABILITY
     factor_name: 三层转发接口能力
@@ -1155,18 +1215,53 @@ capability_matrices:
         valid: true
       - egress_mode: next-hop
         interface_factor: FAC-L3-NH-IF-TYPE
-        interface_type: tunnel
-        display: 隧道口
+        interface_type: 4over6
+        display: 4over6 隧道口
         valid: true
-      - egress_mode: out-interface
-        interface_factor: FAC-L3-OUTIF-TYPE
-        interface_type: tunnel
-        display: 隧道口
+      - egress_mode: next-hop
+        interface_factor: FAC-L3-NH-IF-TYPE
+        interface_type: gre
+        display: GRE 隧道口
+        valid: true
+      - egress_mode: next-hop
+        interface_factor: FAC-L3-NH-IF-TYPE
+        interface_type: sslvpn
+        display: SSL VPN 隧道口
+        valid: true
+      - egress_mode: next-hop
+        interface_factor: FAC-L3-NH-IF-TYPE
+        interface_type: ipsec
+        display: IPSec 隧道口
         valid: true
       - egress_mode: out-interface
         interface_factor: FAC-L3-OUTIF-TYPE
         interface_type: pppoe
         display: PPPoE接口
+        valid: true
+      - egress_mode: out-interface
+        interface_factor: FAC-L3-OUTIF-TYPE
+        interface_type: 4over6
+        display: 4over6 隧道口
+        valid: true
+      - egress_mode: out-interface
+        interface_factor: FAC-L3-OUTIF-TYPE
+        interface_type: 6over4
+        display: 6over4 隧道口
+        valid: true
+      - egress_mode: out-interface
+        interface_factor: FAC-L3-OUTIF-TYPE
+        interface_type: gre
+        display: GRE 隧道口
+        valid: true
+      - egress_mode: out-interface
+        interface_factor: FAC-L3-OUTIF-TYPE
+        interface_type: sslvpn
+        display: SSL VPN 隧道口
+        valid: true
+      - egress_mode: out-interface
+        interface_factor: FAC-L3-OUTIF-TYPE
+        interface_type: ipsec
+        display: IPSec 隧道口
         valid: true
 
   # ═══════════════════════════════════════════════════════

@@ -141,6 +141,42 @@ factors:
         materialized_value: "standby-active"
         applicability: {config_test: not_applicable, function_test: positive}
 
+  - factor_id: FAC-VRRP-ROLE
+    factor_name: VRRP 角色
+    factor_kind: state
+    design_role: driver
+    owner_object: OBJ-HA
+    domain_model: enum
+    value_type: enum
+    values: [master, backup]
+    display_values:
+      master: VRRP主设备
+      backup: VRRP备设备
+    aliases: [VRRP角色, VRRP主备, 虚拟冗余角色]
+    applicable_when: "VRRP configured"
+    downstream_methods: [S-State]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      VRRP 虚拟路由冗余协议角色。与 FAC-HA-ROLE(primary/standby) 语义不同：
+      HA 冷热备描述设备主备关系，VRRP 描述虚拟组内 master/backup 角色，
+      master 承载虚拟 IP 转发，backup 待命。两者可共存但不可互相替代。
+    sample_definitions:
+      - sample_id: VRRP_MASTER
+        sample_class: positive_function
+        description: "VRRP 主设备，承载虚拟 IP 转发。"
+        representative_values: ["master"]
+        expr: 'master'
+        materialized_value: "master"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: VRRP_BACKUP
+        sample_class: valid_member
+        description: "VRRP 备设备，待命。"
+        representative_values: ["backup"]
+        expr: 'backup'
+        materialized_value: "backup"
+        applicability: {config_test: not_applicable, function_test: precondition}
+
 factor_groups:
   - group_id: HA_MAINTENANCE
     group_name: HA 基础状态
@@ -154,5 +190,12 @@ factor_groups:
     factors: [FAC-HA-ROLE, FAC-HA-FAILOVER-ACTION, FAC-HA-EXPECTED-ACTIVE-DEVICE]
     coverage_strategy:
       state: 覆盖主故障切换、主恢复、回切
+
+  - group_id: HA_VRRP
+    group_name: VRRP 虚拟冗余
+    factors: [FAC-VRRP-ROLE]
+    coverage_strategy:
+      positive: master 承载虚拟 IP
+      negative: backup 待命
 
 external_consumers: []

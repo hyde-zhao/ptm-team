@@ -117,6 +117,108 @@ factors:
         precondition_samples: [ADDR_GROUP_EXISTING]
 
   # ═══════════════════════════════════════════════════════
+  # 2.1 地址对象排除参数
+  # 描述地址对象内部包含网段 (network) 与排除网段 (exclnetworks) 的配置维度
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-OBJ-ADDRESS-EXCLUDE-MODE
+    factor_name: 地址对象排除模式
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: enum
+    value_type: enum
+    values: [no-exclude, has-exclude]
+    display_values:
+      no-exclude: 仅包含网段
+      has-exclude: 包含网段与排除网段共存
+    aliases: [排除模式, 地址排除, exclnetworks, 排除地址]
+    applicable_when: "address object configured"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      地址对象可配置包含网段 (network, ipaddr+mask) 和排除网段 (exclnetworks)。
+      本因子描述是否启用排除网段。策略路由引用地址对象时组合本因子与
+      FAC-OBJ-ADDRESS-EXCLUDE-RELATION 测试排除语义。
+    sample_definitions:
+      - sample_id: ADDR_EXCL_MODE_NONE
+        sample_class: valid_member
+        description: "地址对象仅含包含网段，无排除网段。"
+        representative_values: ["no-exclude"]
+        expr: 'no-exclude'
+        materialized_value: "no-exclude"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: ADDR_EXCL_MODE_HAS
+        sample_class: valid_member
+        description: "地址对象同时含包含网段和排除网段。"
+        representative_values: ["has-exclude"]
+        expr: 'has-exclude'
+        materialized_value: "has-exclude"
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [ADDR_EXCL_MODE_NONE, ADDR_EXCL_MODE_HAS]
+      function_test:
+        precondition_samples: [ADDR_EXCL_MODE_NONE, ADDR_EXCL_MODE_HAS]
+
+  - factor_id: FAC-OBJ-ADDRESS-EXCLUDE-RELATION
+    factor_name: 包含与排除网段关系
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-NET-OBJECT
+    domain_model: enum
+    value_type: enum
+    values: [disjoint, crossing, include-covers-exclude, exclude-covers-include]
+    display_values:
+      disjoint: 无交集
+      crossing: 交叉
+      include-covers-exclude: 包含网段包含排除网段
+      exclude-covers-include: 排除网段包含包含网段
+    aliases: [排除关系, 包含排除关系, 网段关系]
+    applicable_when: "FAC-OBJ-ADDRESS-EXCLUDE-MODE == has-exclude"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      包含网段与排除网段的几何关系。exclude-covers-include 时地址对象有效匹配范围
+      可能为空，需配合特定测试场景验证。策略路由流量匹配位置由
+      ngfw-policy-routing/FAC-TRAFFIC-ADDR-MATCH-POSITION 承载。
+    sample_definitions:
+      - sample_id: ADDR_EXCL_REL_DISJOINT
+        sample_class: valid_member
+        description: "包含网段与排除网段无交集，排除网段不影响有效匹配范围。"
+        representative_values: ["disjoint"]
+        expr: 'disjoint'
+        materialized_value: "disjoint"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: ADDR_EXCL_REL_CROSSING
+        sample_class: valid_member
+        description: "包含网段与排除网段部分重叠。"
+        representative_values: ["crossing"]
+        expr: 'crossing'
+        materialized_value: "crossing"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: ADDR_EXCL_REL_INCLUDE_COVERS
+        sample_class: valid_member
+        description: "包含网段完全覆盖排除网段，有效匹配范围为包含网段减去排除网段。"
+        representative_values: ["include-covers-exclude"]
+        expr: 'include-covers-exclude'
+        materialized_value: "include-covers-exclude"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: ADDR_EXCL_REL_EXCLUDE_COVERS
+        sample_class: valid_member
+        description: "排除网段完全覆盖包含网段，有效匹配范围为空。"
+        representative_values: ["exclude-covers-include"]
+        expr: 'exclude-covers-include'
+        materialized_value: "exclude-covers-include"
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [ADDR_EXCL_REL_DISJOINT, ADDR_EXCL_REL_CROSSING, ADDR_EXCL_REL_INCLUDE_COVERS, ADDR_EXCL_REL_EXCLUDE_COVERS]
+      function_test:
+        precondition_samples: [ADDR_EXCL_REL_DISJOINT]
+
+  # ═══════════════════════════════════════════════════════
   # 3. MAC 地址对象
   # API: /api/v1/macpool (POST/GET/DELETE/PUT)
   # ═══════════════════════════════════════════════════════
@@ -570,6 +672,13 @@ factor_groups:
       positive: 地址对象和地址组各覆盖一个已存在名称
       negative: 不存在的名称 + 名称格式非法
 
+  - group_id: OBJ_ADDRESS_EXCLUDE
+    group_name: 地址对象排除语义
+    factors: [FAC-OBJ-ADDRESS-EXCLUDE-MODE, FAC-OBJ-ADDRESS-EXCLUDE-RELATION]
+    coverage_strategy:
+      positive: 仅包含网段 + 包含与排除共存各覆盖一次，四种排除关系各覆盖一次
+      notes: 策略路由引用地址对象时组合本组因子，流量匹配位置由 ngfw-policy-routing/FAC-TRAFFIC-ADDR-MATCH-POSITION 承载
+
   - group_id: OBJ_IDENTITY
     group_name: 标识对象
     factors: [FAC-OBJ-MAC, FAC-OBJ-DOMAIN, FAC-OBJ-GEOIP]
@@ -632,3 +741,6 @@ external_consumers:
     samples_used: [accepted, invalid_config, invalid_format]
   - consumer: ngfw-policy-routing/FAC-PR-RULE-TIME-OBJ
     samples_used: [accepted, invalid_config, invalid_format]
+  - consumer: ngfw-policy-routing/FAC-TRAFFIC-ADDR-MATCH-POSITION
+    samples_used: [accepted]
+    notes: 消费地址对象排除模式与排除关系因子，构造流量匹配位置

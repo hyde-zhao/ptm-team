@@ -778,6 +778,154 @@ factors:
         materialized_value: "miss"
         applicability: {config_test: not_applicable, function_test: negative}
 
+  # ═══════════════════════════════════════════════════════
+  # 策略路由动作 / 流量地址匹配位置 / NAT 引用
+  # ═══════════════════════════════════════════════════════
+  - factor_id: FAC-PR-RULE-ACTION
+    factor_name: 策略路由动作类型
+    factor_kind: control
+    design_role: driver
+    owner_object: OBJ-PR-RULE
+    domain_model: enum
+    value_type: enum
+    values: [forward, skip, bypass]
+    display_values:
+      forward: 正常转发
+      skip: 跳过策略路由
+      bypass: 等同skip
+    aliases: [策略路由动作, 动作类型, skip动作, bypass动作]
+    applicable_when: always
+    downstream_methods: [P-Parameter]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      策略路由规则动作类型。forward 为正常策略转发；skip/bypass 表示跳过策略路由
+      直接查路由表，对应 FAC-L3-EXPECTED-FWD-PATH=fallback-route。bypass 语义等同于
+      skip，作为独立取值以覆盖厂商动作命名差异。
+    sample_definitions:
+      - sample_id: ACTION_FORWARD
+        sample_class: positive_function
+        description: "正常策略路由转发，命中规则后按策略出接口转发。"
+        representative_values: ["forward"]
+        expr: 'forward'
+        materialized_value: "forward"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: ACTION_SKIP
+        sample_class: negative_function
+        description: "跳过策略路由，直接查路由表转发。"
+        representative_values: ["skip"]
+        expr: 'skip'
+        materialized_value: "skip"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: ACTION_BYPASS
+        sample_class: negative_function
+        description: "Bypass 动作，等同于 skip。"
+        representative_values: ["bypass"]
+        expr: 'bypass'
+        materialized_value: "bypass"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-TRAFFIC-ADDR-MATCH-POSITION
+    factor_name: 流量地址匹配位置
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-PR-TRAFFIC
+    domain_model: enum
+    value_type: enum
+    values: [match-include, match-intersection, match-exclude]
+    display_values:
+      match-include: 匹配包含网段且非排除
+      match-intersection: 落在包含与排除交集
+      match-exclude: 仅落在排除网段
+    aliases: [流量匹配位置, 地址排除匹配, 排除匹配位置]
+    applicable_when: "FAC-OBJ-ADDRESS-EXCLUDE-MODE == has-exclude"
+    downstream_methods: [P-Parameter, C-Combination]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      流量相对地址对象排除网段的匹配位置。跨库依赖 ngfw-objects 的
+      FAC-OBJ-ADDRESS-EXCLUDE-MODE 与 FAC-OBJ-ADDRESS-EXCLUDE-RELATION。
+      match-include 预期命中规则；match-intersection 与 match-exclude 预期不命中
+      （被排除），结果判定复用 FAC-EXPECTED-MATCH-RESULT=miss。
+    sample_definitions:
+      - sample_id: ADDR_MATCH_INCLUDE
+        sample_class: positive_function
+        description: "流量落在包含网段且不在排除网段，预期命中。"
+        representative_values: ["match-include"]
+        expr: 'match-include'
+        materialized_value: "match-include"
+        applicability: {config_test: not_applicable, function_test: positive}
+      - sample_id: ADDR_MATCH_INTERSECTION
+        sample_class: negative_function
+        description: "流量落在包含与排除网段交集，被排除，预期不命中。"
+        representative_values: ["match-intersection"]
+        expr: 'match-intersection'
+        materialized_value: "match-intersection"
+        applicability: {config_test: not_applicable, function_test: negative}
+      - sample_id: ADDR_MATCH_EXCLUDE
+        sample_class: negative_function
+        description: "流量仅落在排除网段，预期不命中。"
+        representative_values: ["match-exclude"]
+        expr: 'match-exclude'
+        materialized_value: "match-exclude"
+        applicability: {config_test: not_applicable, function_test: negative}
+
+  - factor_id: FAC-PR-RULE-NAT-REF
+    factor_name: 策略路由NAT类型引用
+    factor_kind: data
+    design_role: driver
+    owner_object: OBJ-PR-RULE
+    domain_model: enum
+    value_type: enum
+    values: [none, source-nat, destination-nat, static-nat]
+    display_values:
+      none: 无NAT耦合
+      source-nat: 源NAT
+      destination-nat: 目的NAT
+      static-nat: 静态NAT
+    aliases: [NAT引用, 策略路由NAT, NAT耦合]
+    applicable_when: "policy route rule NAT coupling configured"
+    downstream_methods: [D-Data]
+    reuse_policy: must_reuse
+    status: candidate
+    notes: >
+      策略路由规则关联的 NAT44 类型。取值与 ngfw-nat/FAC-NAT44-TYPE 同步，
+      none 表示规则不关联 NAT。源进源出属转发模式非 NAT44 类型，不纳入。
+    sample_definitions:
+      - sample_id: NAT_REF_NONE
+        sample_class: valid_member
+        description: "策略路由规则不关联 NAT。"
+        representative_values: ["none"]
+        expr: 'none'
+        materialized_value: "none"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NAT_REF_SOURCE
+        sample_class: valid_member
+        description: "策略路由规则关联源NAT，转发时转换源地址。"
+        representative_values: ["source-nat"]
+        expr: 'source-nat'
+        materialized_value: "source-nat"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NAT_REF_DESTINATION
+        sample_class: valid_member
+        description: "策略路由规则关联目的NAT，转发时转换目的地址。"
+        representative_values: ["destination-nat"]
+        expr: 'destination-nat'
+        materialized_value: "destination-nat"
+        applicability: {config_test: accepted, function_test: precondition}
+      - sample_id: NAT_REF_STATIC
+        sample_class: valid_member
+        description: "策略路由规则关联静态NAT，一对一固定映射。"
+        representative_values: ["static-nat"]
+        expr: 'static-nat'
+        materialized_value: "static-nat"
+        applicability: {config_test: accepted, function_test: precondition}
+    usage_profiles:
+      config_test:
+        accepted_config_samples: [NAT_REF_NONE, NAT_REF_SOURCE, NAT_REF_DESTINATION, NAT_REF_STATIC]
+      function_test:
+        precondition_samples: [NAT_REF_NONE]
+
 # ═══════════════════════════════════════════════════════
 # 约束
 # ═══════════════════════════════════════════════════════
@@ -825,7 +973,7 @@ factor_groups:
 
   - group_id: PR_RULE_ORDER
     group_name: 策略路由重叠规则命中判定
-    factors: [FAC-PR-RULE-ORDER, FAC-PR-RULE-SCOPE, FAC-PR-RULE-STATE, FAC-PR-RULE-EFFECTIVE-STATE, FAC-PR-EXPECTED-HIT-RULE]
+    factors: [FAC-PR-RULE-ORDER, FAC-PR-RULE-SCOPE, FAC-PR-RULE-STATE, FAC-PR-RULE-EFFECTIVE-STATE, FAC-PR-EXPECTED-HIT-RULE, FAC-PR-RULE-ACTION]
     coverage_strategy:
       parameter: 使用判定表覆盖顺序、范围、启用状态与预期命中规则
 
@@ -836,10 +984,17 @@ factor_groups:
       required_value: policy_match
     factors: [FAC-TRAFFIC-LAYER-TYPE, FAC-TRAFFIC-IP-MATCH,
               FAC-TRAFFIC-SERVICE-MATCH, FAC-TRAFFIC-APP-MATCH,
-              FAC-EXPECTED-MATCH-RESULT]
+              FAC-EXPECTED-MATCH-RESULT, FAC-TRAFFIC-ADDR-MATCH-POSITION]
     coverage_strategy:
       positive: 各层级正向匹配 + 命中
       negative: 各层级反向不匹配 + 不命中
+
+  - group_id: PR_NAT_COUPLING
+    group_name: 策略路由NAT耦合
+    factors: [FAC-PR-RULE-NAT-REF]
+    coverage_strategy:
+      positive: 无NAT耦合 + 三种NAT44类型各覆盖一次
+      notes: 取值与 ngfw-nat/FAC-NAT44-TYPE 同步，跨库引用关系由 ngfw-nat 声明 external_consumers
 
 # ═══════════════════════════════════════════════════════
 # 被引用方反向记录
