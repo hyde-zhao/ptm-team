@@ -1,5 +1,8 @@
 # docs/.gitignore — 默认忽略全部，仅白名单放行
 *
+# 取消忽略一层目录，使下方 !path 白名单能重新包含文件
+# （git 规则：父目录被 * 排除则子文件无法 unignore，需先 !*/ 放行目录本身）
+!*/
 
 # === 白名单 ===
 
@@ -28,3 +31,8 @@
 
 # 部署检查清单（安装安全验证）
 !release/DEPLOY-CHECKLIST.md
+
+# 质量评估文档（已 git add -f 跟踪，补入白名单保持与实际跟踪一致）
+!quality/EVAL-RELEASE-CHECK.md
+!quality/EVAL-SUITE-HEALTH.md
+!quality/FIELD-QUALITY-DASHBOARD.md
