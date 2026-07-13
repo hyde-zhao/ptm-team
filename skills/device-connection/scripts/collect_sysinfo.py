@@ -10,11 +10,13 @@
 
 用法:
     # 采集指定设备快照
-    uv run python scripts/collect_sysinfo.py <设备名> --phase before --run-id <run-id>
+    uv run --python 3.12 --with "paramiko>=3.0,<4.0" --with "pyyaml>=6.0" python scripts/collect_sysinfo.py <设备名> --phase before --run-id <run-id>
     # 采集所有设备快照
-    uv run python scripts/collect_sysinfo.py --all --phase after --run-id <run-id>
+    uv run --python 3.12 --with "paramiko>=3.0,<4.0" --with "pyyaml>=6.0" python scripts/collect_sysinfo.py --all --phase after --run-id <run-id>
     # 直接指定 IP 采集（--password-env 传环境变量名，不是明文密码）
-    uv run python scripts/collect_sysinfo.py --host <IP_ADDRESS> --password-env FW_SSH_PASSWORD --phase before --run-id <run-id>
+    uv run --python 3.12 --with "paramiko>=3.0,<4.0" --with "pyyaml>=6.0" python scripts/collect_sysinfo.py --host <IP_ADDRESS> --password-env FW_SSH_PASSWORD --phase before --run-id <run-id>
+    # 对比 before/after 快照（P2-10，产出 snapshot-diff.json）
+    uv run --python 3.12 --with "pyyaml>=6.0" python scripts/collect_sysinfo.py --diff --before-dir runs/<run-id>/snapshot-before --after-dir runs/<run-id>/snapshot-after
 """
 
 import argparse
@@ -350,6 +352,47 @@ def save_snapshot(
     return filepath
 
 
+def diff_snapshots(before_dir: Path, after_dir: Path, output_path: Path) -> dict:
+    """对比 before/after 快照，产出 snapshot-diff.json（P2-10）。
+
+    参数:
+        before_dir: snapshot-before/ 目录
+        after_dir: snapshot-after/ 目录
+        output_path: snapshot-diff.json 输出路径
+
+    返回:
+        diff dict: {device: {device, before_timestamp, after_timestamp,
+                   dimensions: {dim: {changed, before, after}}}}
+    """
+    diff_result: dict = {}
+    before_files = {f.stem: f for f in before_dir.glob("*.json")}
+    after_files = {f.stem: f for f in after_dir.glob("*.json")}
+    all_devices = set(before_files) | set(after_files)
+    for device in sorted(all_devices):
+        bf = before_files.get(device)
+        af = after_files.get(device)
+        before_data = json.loads(bf.read_text(encoding="utf-8")) if bf and bf.exists() else {}
+        after_data = json.loads(af.read_text(encoding="utf-8")) if af and af.exists() else {}
+        device_diff = {
+            "device": device,
+            "before_timestamp": before_data.get("timestamp", ""),
+            "after_timestamp": after_data.get("timestamp", ""),
+            "dimensions": {},
+        }
+        for dim in ("cpu", "memory", "disk", "processes"):
+            b = before_data.get(dim, "")
+            a = after_data.get(dim, "")
+            device_diff["dimensions"][dim] = {
+                "changed": b != a,
+                "before": b,
+                "after": a,
+            }
+        diff_result[device] = device_diff
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(diff_result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return diff_result
+
+
 def main() -> None:
     """CLI 入口函数。
 
@@ -373,7 +416,11 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(description="采集防火墙系统信息快照")
     parser.add_argument("device", nargs="?", help="设备名（如 hg3250-51）")
-    parser.add_argument("--phase", required=True, choices=["before", "after"], help="采集阶段")
+    parser.add_argument("--phase", choices=["before", "after"], help="采集阶段（collect 模式必填，diff 模式忽略）")
+    parser.add_argument("--diff", action="store_true", help="对比 before/after 快照（P2-10，产出 snapshot-diff.json）")
+    parser.add_argument("--before-dir", help="snapshot-before/ 目录（--diff 模式必填）")
+    parser.add_argument("--after-dir", help="snapshot-after/ 目录（--diff 模式必填）")
+    parser.add_argument("--output", help="snapshot-diff.json 输出路径（--diff 模式，默认 runs/<run-id>/snapshot-diff.json）")
     parser.add_argument("--all", action="store_true", help="采集所有设备")
     parser.add_argument("--host", help="直接指定设备 IP")
     parser.add_argument("--port", type=int, default=22, help="SSH 端口（默认 22）")
@@ -382,7 +429,7 @@ def main() -> None:
     parser.add_argument("--telnet-host", help="Telnet 主机（回退用）")
     parser.add_argument("--telnet-port", type=int, default=23, help="Telnet 端口（默认 23）")
     parser.add_argument("--config", default="devices.yaml", help="设备配置文件路径")
-    parser.add_argument("--run-id", required=True, help="运行 ID（快照存储路径用）")
+    parser.add_argument("--run-id", help="运行 ID（collect 模式必填，快照存储路径用）")
     parser.add_argument("--workspace", default=".", help="工作区根目录（默认当前目录）")
     args = parser.parse_args()
 
@@ -391,6 +438,38 @@ def main() -> None:
         Path(args.config) if Path(args.config).is_absolute()
         else workspace / args.config
     )
+
+    # P2-10 diff 模式：对比 before/after 快照，产出 snapshot-diff.json
+    if args.diff:
+        if not args.before_dir or not args.after_dir:
+            parser.error("--diff 模式需要 --before-dir 和 --after-dir")
+        before_dir = Path(args.before_dir)
+        after_dir = Path(args.after_dir)
+        if not before_dir.is_dir():
+            print(f"错误: before 目录不存在: {before_dir}", file=sys.stderr)
+            sys.exit(1)
+        if not after_dir.is_dir():
+            print(f"错误: after 目录不存在: {after_dir}", file=sys.stderr)
+            sys.exit(1)
+        output = (
+            Path(args.output) if args.output
+            else before_dir.parent / "snapshot-diff.json"
+        )
+        diff_result = diff_snapshots(before_dir, after_dir, output)
+        changed = sum(
+            1 for d in diff_result.values()
+            for dim in d["dimensions"].values()
+            if dim["changed"]
+        )
+        print(f"快照对比完成: {len(diff_result)} 设备, {changed} 个维度变化")
+        print(f"diff 已保存: {output}")
+        return
+
+    # collect 模式：--phase 和 --run-id 必填
+    if not args.phase:
+        parser.error("collect 模式需要 --phase（before|after），或使用 --diff 进入对比模式")
+    if not args.run_id:
+        parser.error("collect 模式需要 --run-id（快照存储路径用）")
 
     # --host 直接指定 IP 模式（不依赖 devices.yaml）
     if args.host:

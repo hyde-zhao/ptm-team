@@ -49,7 +49,7 @@ language: zh-CN
 
 ```bash
 # 独立执行单条命令（password-env 是环境变量名，不是明文密码）
-uv run python scripts/ssh_exec.py <host> <user> <password-env> <command> [--port 22] [--timeout 15]
+uv run --python 3.12 --with "paramiko>=3.0,<4.0" --with "pyyaml>=6.0" python scripts/ssh_exec.py <host> <user> <password-env> <command> [--port 22] [--timeout 15]
 ```
 
 函数签名：
@@ -63,13 +63,13 @@ uv run python scripts/ssh_exec.py <host> <user> <password-env> <command> [--port
 
 ```bash
 # 采集指定设备快照
-uv run python scripts/collect_sysinfo.py <设备名> --phase before --run-id <run-id>
+uv run --python 3.12 --with "paramiko>=3.0,<4.0" --with "pyyaml>=6.0" python scripts/collect_sysinfo.py <设备名> --phase before --run-id <run-id>
 
 # 采集所有设备快照
-uv run python scripts/collect_sysinfo.py --all --phase after --run-id <run-id>
+uv run --python 3.12 --with "paramiko>=3.0,<4.0" --with "pyyaml>=6.0" python scripts/collect_sysinfo.py --all --phase after --run-id <run-id>
 
 # 直接指定 IP 采集（需 --password-env 传环境变量名）
-uv run python scripts/collect_sysinfo.py --host <IP_ADDRESS> --password-env FW_SSH_PASSWORD --phase before --run-id <run-id>
+uv run --python 3.12 --with "paramiko>=3.0,<4.0" --with "pyyaml>=6.0" python scripts/collect_sysinfo.py --host <IP_ADDRESS> --password-env FW_SSH_PASSWORD --phase before --run-id <run-id>
 ```
 
 ## 采集命令（4 维度，全部只读）
@@ -81,11 +81,19 @@ uv run python scripts/collect_sysinfo.py --host <IP_ADDRESS> --password-env FW_S
 | disk | `df -h` | 磁盘使用 |
 | processes | `ps -ef \| grep opt` | 进程（防火墙 opt 目录进程） |
 
-## Python 版本
+## Python 版本与依赖声明（P1-6）
 
-`requires-python >=3.9,<3.13`（telnetlib 在 Python 3.13 移除，脚本头 docstring 声明）。
+- **解释器**：`requires-python >=3.9,<3.13`（telnetlib 在 Python 3.13 移除，脚本头 docstring 声明）。运行时统一用 `uv run --python 3.12`（3.12 在约束区间内且稳定）。
+- **依赖声明**：本 skill 不自带 `pyproject.toml`（避免安装到目标项目污染其依赖空间），改用 `uv run --with` 临时声明依赖：
 
-依赖：paramiko（SSH）、telnetlib（标准库）、yaml（PyYAML）。无额外第三方依赖。
+| 依赖 | 版本约束 | 用途 |
+|------|---------|------|
+| paramiko | `>=3.0,<4.0` | SSH 连接 |
+| pyyaml | `>=6.0` | YAML 解析（devices.yaml） |
+| telnetlib | 标准库 | Telnet 回退（仅 `<3.13` 可用） |
+
+- **运行命令模板**：所有脚本调用统一为 `uv run --python 3.12 --with "paramiko>=3.0,<4.0" --with "pyyaml>=6.0" python scripts/<script>.py ...`
+- **备选**：若 `--with` 出现版本漂移问题，改在 skill 内放 `pyproject.toml` + `uv run --project skills/device-connection`（切换条件：版本冲突实际发生时）。
 
 ## 快照输出
 

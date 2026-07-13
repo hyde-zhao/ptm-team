@@ -14,6 +14,7 @@
 | v1.9 | 2026-06-12 | current Codex session | [CR-018 P3 / CR-019 follow-up] GATE-4 PC 检查升级为标准 16 列表头、逐行恰好 16 列、`case_steps`、`atomic_op.op_id` 与 `action_source_refs` 回链检查 |
 | v1.10 | 2026-06-12 | current Codex session | [CR-018 P4] GATE-2 machine-baseline 增加逐场景正常链 / 异常链契约检查，避免 confirmed-scenarios 只有文件级字段或缺失链路仍通过 |
 | v1.11 | 2026-06-12 | current Codex session | [CR-018 P5] GATE-2 增加正常/异常链逐步骤原子操作回链检查；GATE-3 增加候选测试因子和候选原子操作用户确认状态检查 |
+| v1.12 | 2026-07-13 | host-orchestrator（主进程） | [CR-026] GATE-4 P2 扩展：`atomic_op.op_id` 必须命中 `ptm-atomic list --format json` 真实清单（ptm-atomic 不可用时降级 warning，不阻断）；配套 ptm-tde.md 新增 op_id 选择规则与前缀语义（capture/verify 禁令） |
 
 ## 概述
 
@@ -320,7 +321,7 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 | # | 检查项 | 通过条件 |
 |---|--------|----------|
 | P1 | PPDCS 设计过程完整 | `ppdcs/ppdcs/` 下每个 LC 都有设计过程文件，PPDCS 方法与 plan 推荐一致 |
-| P2 | PC 文件完整 | `ppdcs/pc/` 下每个 LC 都有物理用例文件；PC 表头等于标准 16 列，所有数据行恰好 16 列；每条 PC 包含 `case_steps`，每一步同时包含 `step_name` 与 `atomic_op.op_id`，且 op_id 回链到 `action_source_refs` |
+| P2 | PC 文件完整 | `ppdcs/pc/` 下每个 LC 都有物理用例文件；PC 表头等于标准 16 列，所有数据行恰好 16 列；每条 PC 包含 `case_steps`，每一步同时包含 `step_name` 与 `atomic_op.op_id`，且 op_id 回链到 `action_source_refs`；`atomic_op.op_id` 必须命中 `ptm-atomic list --format json` 真实清单（ptm-atomic 不可用时降级 warning，不阻断；未命中且未登记为候选 -> FAIL）；`atomic_op.preconditions`（op 级）在 op yaml 有定义时必须透传，`step_preconditions`（step 级）允许用例自填，16 列表"预置条件"列由两者并集渲染；`args` 值禁止占位符（`<xxx>`/`TBD`/`待填`；`[待确认]` 为合法 needs-confirmation 标记，须配 `fact_status=needs-confirmation`），必须覆盖 op yaml required 业务参数（`ptm-atomic show <op_id>` 取 required 集合做差集，嵌套型降级 warning），值类型对齐 op yaml `parameters.*.type` |
 | P3 | PC 拓扑绑定回链 | PC 中所有真实设备、端口、链路能回链到 LC `topology_bindings` → `kym/scenarios/confirmed-scenarios.md` |
 | P4 | 双层覆盖率验证 | `ppdcs/coverage/` 存在覆盖率报告：需求覆盖 = 100%，测试点覆盖 ≥ 95% |
 | P5 | 因子覆盖验证 | 所有 `factor_bindings` 的因子在 PC 中有覆盖 |

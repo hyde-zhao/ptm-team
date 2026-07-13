@@ -395,6 +395,89 @@ def probe_ptm_atomic() -> tuple[bool, str]:
     return False, f"ptm-atomic returned {completed.returncode}: {stderr}"
 
 
+def fetch_ptm_atomic_op_ids() -> tuple[bool, set[str], str]:
+    """Fetch the canonical op_id set from `ptm-atomic list --format json`.
+
+    Returns (ok, op_id_set, evidence). When ptm-atomic is unavailable or
+    returns non-zero / unparseable output, ok=False and op_id_set is empty;
+    callers must degrade the hit-check to a non-blocking warning.
+    [CR-026] P0-2: op_id 真实清单命中校验的真相源获取。
+    """
+    import json
+
+    executable = shutil.which("ptm-atomic")
+    if not executable:
+        return False, set(), "ptm-atomic 不可用：命令未找到，op_id 命中校验降级 warning"
+    try:
+        completed = subprocess.run(
+            [executable, "list", "--format", "json"],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, set(), f"ptm-atomic list 调用失败：{exc}"
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip() or completed.stdout.strip()
+        return False, set(), f"ptm-atomic list 返回 {completed.returncode}：{stderr}"
+    try:
+        payload = json.loads(completed.stdout or "[]")
+    except json.JSONDecodeError as exc:
+        return False, set(), f"ptm-atomic list JSON 解析失败：{exc}"
+
+    def _collect_op_ids(items) -> None:
+        for item in items:
+            if isinstance(item, str):
+                op_ids.add(item)
+            elif isinstance(item, dict):
+                for k in ("op_id", "id", "name"):
+                    v = item.get(k)
+                    if isinstance(v, str) and v:
+                        op_ids.add(v)
+                        break
+
+    op_ids: set[str] = set()
+    if isinstance(payload, list):
+        _collect_op_ids(payload)
+    elif isinstance(payload, dict):
+        for list_key in ("ops", "operations", "items", "data"):
+            items = payload.get(list_key)
+            if isinstance(items, list):
+                _collect_op_ids(items)
+    if not op_ids:
+        return False, set(), "ptm-atomic list 返回空 op_id 集合"
+    return True, op_ids, f"ptm-atomic list 获取 {len(op_ids)} 个 op_id"
+
+
+def fetch_ptm_atomic_op_contract(op_id: str) -> tuple[bool, dict, str]:
+    """Fetch the full op contract from `ptm-atomic show <op_id> --format json`.
+
+    Returns (ok, contract_dict, evidence). contract_dict contains
+    parameters/inputs/preconditions for args & preconditions validation.
+    [CR-026] P1-3: args required 差集与 preconditions 透传校验的真相源。
+    """
+    import json
+
+    executable = shutil.which("ptm-atomic")
+    if not executable:
+        return False, {}, "ptm-atomic 不可用"
+    try:
+        completed = subprocess.run(
+            [executable, "show", op_id, "--format", "json"],
+            check=False, capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, {}, f"ptm-atomic show 调用失败：{exc}"
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip() or completed.stdout.strip()
+        return False, {}, f"ptm-atomic show 返回 {completed.returncode}：{stderr}"
+    try:
+        contract = json.loads(completed.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        return False, {}, f"ptm-atomic show JSON 解析失败：{exc}"
+    if not contract:
+        return False, {}, f"ptm-atomic show 返回空契约：{op_id}"
+    return True, contract, f"op 契约获取成功：{op_id}"
+
+
 def probe_factor_libraries() -> tuple[bool, str]:
     """Check whether public factor-libraries are accessible.
 
@@ -1544,6 +1627,102 @@ def add_pc_step_contract_check(
     return ok
 
 
+def add_pc_op_id_hit_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    files: list[Path],
+    op_id_set: set[str],
+    ptm_atomic_ok: bool,
+    ptm_atomic_evidence: str,
+) -> bool:
+    """Check every case_steps[].atomic_op.op_id hits the ptm-atomic canonical set.
+
+    [CR-026] P0-2: op_id 未命中真实清单且未登记为候选 -> BLOCKING；
+    ptm-atomic 不可用时降级 WARN（非阻断），复用 probe 降级约定。
+    """
+    if not files:
+        checks.append((len(checks) + 1, label, "WARN", "无可检查 PC 文件"))
+        return True
+    if not ptm_atomic_ok or not op_id_set:
+        checks.append((
+            len(checks) + 1, label, "WARN",
+            f"ptm-atomic 不可用，op_id 命中校验降级：{ptm_atomic_evidence}",
+        ))
+        return True
+    misses: list[str] = []
+    total = 0
+    for path in files:
+        op_ids = extract_op_ids(read_text(path))
+        total += len(op_ids)
+        for op_id in op_ids:
+            if op_id not in op_id_set:
+                misses.append(f"{path.name}: {op_id}")
+    if not misses:
+        checks.append((
+            len(checks) + 1, label, "PASS",
+            f"已校验 {total} 个 op_id 全部命中 ptm-atomic 清单（{len(op_id_set)} 个）",
+        ))
+        return True
+    checks.append((
+        len(checks) + 1, label, "BLOCKING",
+        f"{len(misses)} 个 op_id 未命中 ptm-atomic 清单且未登记为候选：{'；'.join(misses[:5])}",
+    ))
+    return False
+
+
+# 占位符正则：TBD / 待填 / <待填>，排除 [待确认]（合法 needs-confirmation 标记）
+_ARGS_PLACEHOLDER_RE = re.compile(r"\bTBD\b|待填|<待填>")
+
+
+def add_pc_args_contract_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    files: list[Path],
+    ptm_atomic_ok: bool,
+) -> bool:
+    """Check PC args for placeholders and preconditions passthrough.
+
+    [CR-026] P1-3 ①: args 占位符扫描（TBD/待填/<待填>，排除 [待确认] 合法标记）-> BLOCKING；
+    P1-4 遗留: preconditions 透传（op yaml 有 preconditions 时 PC 须含 preconditions 字段）-> WARN（文件级，精确 step 级留人工确认）。
+    ptm-atomic 不可用时 preconditions 检查降级，占位符扫描仍执行。
+    """
+    if not files:
+        checks.append((len(checks) + 1, label, "WARN", "无可检查 PC 文件"))
+        return True
+    placeholder_hits: list[str] = []
+    precondition_gaps: list[str] = []
+    contract_cache: dict[str, dict] = {}
+    for path in files:
+        text = read_text(path)
+        for m in _ARGS_PLACEHOLDER_RE.finditer(text):
+            placeholder_hits.append(f"{path.name}: {m.group()}")
+        if ptm_atomic_ok:
+            for op_id in set(extract_op_ids(text)):
+                if op_id not in contract_cache:
+                    ok_c, contract, _ = fetch_ptm_atomic_op_contract(op_id)
+                    contract_cache[op_id] = contract if ok_c else {}
+                contract = contract_cache[op_id]
+                if (contract.get("preconditions") or []) and "preconditions:" not in text:
+                    precondition_gaps.append(f"{path.name}: {op_id}")
+    if placeholder_hits:
+        checks.append((
+            len(checks) + 1, label, "BLOCKING",
+            f"{len(placeholder_hits)} 处 args 占位符残留（TBD/待填/<待填>，[待确认] 为合法标记）：{'；'.join(placeholder_hits[:5])}",
+        ))
+        return False
+    if precondition_gaps:
+        checks.append((
+            len(checks) + 1, label, "WARN",
+            f"{len(precondition_gaps)} 处 preconditions 未透传（op yaml 有定义但 PC 缺 preconditions 字段，需人工确认 step 级透传）：{'；'.join(precondition_gaps[:5])}",
+        ))
+        return True
+    checks.append((
+        len(checks) + 1, label, "PASS",
+        f"已校验 {len(files)} 个 PC 文件，无 args 占位符残留，preconditions 透传完整（或 op yaml 无 preconditions）",
+    ))
+    return True
+
+
 def result_file_passed(path: Path) -> bool:
     """Check whether a prior Gate result explicitly records PASS."""
     return nonempty_file(path) and bool(re.search(r"结论[：:]\s*`?PASS`?", read_text(path)))
@@ -2276,6 +2455,21 @@ def run_gate_4(args: argparse.Namespace) -> int:
             checks,
             "P2: PC case_steps 原子操作回链检查",
             pc_files,
+        )
+        ptm_atomic_ok, op_id_set, ptm_atomic_evidence = fetch_ptm_atomic_op_ids()
+        add_pc_op_id_hit_check(
+            checks,
+            "P2: PC op_id 命中 ptm-atomic 真实清单",
+            pc_files,
+            op_id_set,
+            ptm_atomic_ok,
+            ptm_atomic_evidence,
+        )
+        add_pc_args_contract_check(
+            checks,
+            "P2: PC args 占位符与 preconditions 透传检查",
+            pc_files,
+            ptm_atomic_ok,
         )
         checks.append((
             len(checks) + 1, "P3: PC 拓扑绑定字段保留",

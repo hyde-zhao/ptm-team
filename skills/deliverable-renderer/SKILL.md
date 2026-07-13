@@ -149,9 +149,13 @@ step_id: STEP-001
 step_name: 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
 target: DUT
 atomic_op:
-  op_id: config-policy-route
+  op_id: fw_config_policy_route
   args:
-    src-addr: OBJ_SRC_WEB
+    source_network: OBJ_SRC_WEB
+  preconditions:          # op 级：透传自 op yaml inputs.preconditions
+    - External orchestration holds a valid session_ref.
+step_preconditions:        # step 级：用例自填的前置数据/状态
+  - 源地址对象 OBJ_SRC_WEB 已创建
 expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
 ```
 
@@ -160,13 +164,13 @@ expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
 ```text
 1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
    执行对象：DUT
-   原子操作：config-policy-route src-addr=OBJ_SRC_WEB
+   原子操作：fw_config_policy_route source_network=OBJ_SRC_WEB
 ```
 
 Markdown 表格单元格中使用 `<br>` 换行：
 
 ```text
-1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB<br>执行对象：DUT<br>原子操作：config-policy-route src-addr=OBJ_SRC_WEB
+1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB<br>执行对象：DUT<br>原子操作：fw_config_policy_route source_network=OBJ_SRC_WEB
 ```
 
 规则：
@@ -174,7 +178,16 @@ Markdown 表格单元格中使用 `<br>` 换行：
 - `atomic_op.op_id` 必须进入 `action_source_refs`；
 - 缺 `step_name`、缺 `atomic_op` 或 `atomic_op` 无法回链时，在交付物中显式输出 `pc_step_contract_gap`，不得静默省略；
 - 若存在 `pc_step_contract_gap`，GATE-4 不得通过；必须回到 PC 生成阶段补齐步骤契约或显式变更范围；
-- 最终 16 列表不新增“步骤名称”列，避免破坏既有交付格式。
+- 最终 16 列表不新增"步骤名称"列，避免破坏既有交付格式。
+
+**PC 预置条件渲染规则**（[CR-026] P1-4）：
+
+16 列表"预置条件"列由 PC `case_steps` 的两层 preconditions 并集渲染，与"测试步骤*"列同样从结构化字段渲染，不得手工填：
+
+- `atomic_op.preconditions`（op 级）：透传自 op yaml `inputs.preconditions`，表达 op 执行硬前置（session/参数合法性）；
+- `step_preconditions`（step 级）：用例自填，表达步骤执行前的前置数据/状态（如"对象 OBJ_SRC_WEB 已创建""策略路由 ID=pr-001 已存在"）。
+
+渲染到"预置条件"列：按 step 聚合，`atomic_op.preconditions` + `step_preconditions` 用 `<br>` 分隔；多步骤的 preconditions 合并去重后填入单元格。`fact_status=needs-confirmation` 的前置条件追加 ` ⚠️待确认`。
 
 #### 3b. 各 LC 详情（全文后部）
 

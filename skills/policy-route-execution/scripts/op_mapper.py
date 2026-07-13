@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -79,19 +80,19 @@ ARGS_TO_FLAGS: Dict[str, Dict[str, str]] = {
     },
     "fw_config_policy_route": {
         # config 使用 _add_common_args
-        # 三层不一致：src_addr -> source_network -> --source-network
-        "src_addr": "--source-network",
-        "dst_addr": "--dst-network",
-        "next_hop": "--next-hop-ip",
-        "in_interface": "--in-interface",  # 第 2/3 层仅连字符差异
-        "type": "--policy-route-type",  # 第 3 层加前缀
+        # CR-025 后 args key 对齐 op yaml params（source_network 等），三层退化为两层
+        "source_network": "--source-network",
+        "dst_network": "--dst-network",
+        "next_hop_ip": "--next-hop-ip",
+        "in_interface": "--in-interface",  # params 与 flag 仅连字符差异
+        "type": "--policy-route-type",  # flag 加前缀，需显式
     },
     "fw_update_policy_route": {
         # update 使用 _add_common_args + _require_arg(id)
         # 与 config 相同的 5 个 flag + 额外 --id（从 verify 查询获取目标策略路由 id）
-        "src_addr": "--source-network",
-        "dst_addr": "--dst-network",
-        "next_hop": "--next-hop-ip",
+        "source_network": "--source-network",
+        "dst_network": "--dst-network",
+        "next_hop_ip": "--next-hop-ip",
         "in_interface": "--in-interface",
         "type": "--policy-route-type",
         "id": "--id",  # 注意：CLI help 未暴露 --id（O-08 风险，见 Gotcha #10）
@@ -325,6 +326,83 @@ def _check_required_flags(op_id: str, flag_list: List[str]) -> None:
             )
 
 
+# ===== 参数合法性预检（P2-11）=====
+
+
+class ValidationError(Exception):
+    """参数合法性预检失败（error_type=PARAM_INVALID）。"""
+
+
+# 占位符正则：<xxx> / TBD / N/A / 待补 / 占位（不区分大小写）
+_PLACEHOLDER_RE = re.compile(r"^(<[^>]*>|TBD|N/?A|待补|占位)$", re.IGNORECASE)
+# 对象名正则：字母开头 + 字母/数字/下划线
+_OBJ_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+def _is_ipv4(val: str) -> bool:
+    """粗判是否为 IPv4 地址（x.x.x.x）。"""
+    parts = val.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        return all(0 <= int(p) <= 255 for p in parts)
+    except ValueError:
+        return False
+
+
+def validate_args(op_id: str, args: dict) -> None:
+    """参数合法性预检（build_command 前调用）。
+
+    预检维度（静态格式，不触网）：
+    - 占位符检测：值非 <xxx>/TBD/N/A/待补/占位（需具体值）
+    - 对象名格式：source_network/dst_network 若非 CIDR/IP 则视为对象名，校验命名规范
+    - IP 格式：next_hop_ip 需为合法 IPv4
+
+    预检失败抛 ValidationError，调用方转为 envelope error_type=PARAM_INVALID。
+    引用对象存在性（config 前 verify 查询对象是否存在）留 v2，此处只做静态格式预检。
+
+    Args:
+        op_id: 原子操作 ID
+        args: ptm-tde PC 的 atomic_op.args dict
+
+    Raises:
+        ValidationError: 参数格式非法或占位
+    """
+    if not isinstance(args, dict):
+        raise ValidationError(f"args 不是 dict: {type(args).__name__}")
+
+    for key, value in args.items():
+        if value is None or not isinstance(value, str):
+            continue
+        val = value.strip()
+        if _PLACEHOLDER_RE.match(val):
+            raise ValidationError(
+                f"op_id {op_id} 参数 '{key}' 值 '{val}' 是占位符，需填具体值"
+            )
+
+    # 对象名参数格式校验（source_network/dst_network 若非 CIDR/IP 视为对象名）
+    for key in ("source_network", "dst_network"):
+        if key in args and isinstance(args[key], str):
+            val = args[key].strip()
+            if not val:
+                continue
+            if "/" in val or _is_ipv4(val):
+                continue  # CIDR/IP 跳过对象名校验
+            if not _OBJ_NAME_RE.match(val):
+                raise ValidationError(
+                    f"op_id {op_id} 参数 '{key}' 值 '{val}' 非合法对象名"
+                    f"（需字母开头标识符）也非 CIDR/IP"
+                )
+
+    # next_hop_ip 格式校验
+    if "next_hop_ip" in args and isinstance(args["next_hop_ip"], str):
+        val = args["next_hop_ip"].strip()
+        if val and not _is_ipv4(val):
+            raise ValidationError(
+                f"op_id {op_id} 参数 'next_hop_ip' 值 '{val}' 非合法 IPv4"
+            )
+
+
 # ===== 命令构建 =====
 
 
@@ -348,7 +426,7 @@ def build_command(
         op_id: 原子操作 ID
         args: 参数 dict
         base_url: 设备 Web 管理地址，如 "https://<IP_ADDRESS>"
-        session_file: session.json 路径
+        session_file: session-<run-id>.json 路径
         dry_run: 是否干跑模式（默认 True）
 
     Returns:
@@ -361,6 +439,7 @@ def build_command(
     family, action = map_op_id_to_subcommand(op_id)
     flags = map_args_to_flags(op_id, args)
     _check_required_flags(op_id, flags)
+    validate_args(op_id, args)  # P2-11 参数合法性预检
     command: List[str] = [
         "ptm-atomic",
         "run",
@@ -389,12 +468,14 @@ def _build_envelope(
     data: dict,
     error_type: str,
     diag_snapshot_ref: str = "",
+    runtime_authorization: Optional[dict] = None,
 ) -> dict:
     """构建标准 envelope dict。
 
     envelope 字段：op_id / step_name / status / data / error_type / diag_snapshot_ref
+    P2-9: dry_run=False 时附加 runtime_authorization（who/scope/authorized_at/reason）用于审计。
     """
-    return {
+    envelope = {
         "op_id": op_id,
         "step_name": step_name,
         "status": status,
@@ -402,6 +483,38 @@ def _build_envelope(
         "error_type": error_type,
         "diag_snapshot_ref": diag_snapshot_ref,
     }
+    if runtime_authorization is not None:
+        envelope["runtime_authorization"] = runtime_authorization
+    return envelope
+
+
+def _build_exec_env(base_url: str) -> dict:
+    """构建 subprocess 环境变量，确保设备直连不走代理（P2-12）。
+
+    WSL2 等代理环境下，ptm-atomic 的 HTTPS 调用可能误走 HTTP_PROXY/HTTPS_PROXY。
+    本函数从 base_url 提取设备 IP/主机，加入 NO_PROXY，保留其他环境变量。
+
+    Args:
+        base_url: 设备 Web 管理地址，如 "https://<IP_ADDRESS>"
+
+    Returns:
+        env dict（os.environ 副本 + NO_PROXY 含设备 IP）
+    """
+    env = dict(os.environ)
+    # 从 base_url 提取主机（去协议和端口）
+    host = base_url
+    for prefix in ("https://", "http://"):
+        if host.startswith(prefix):
+            host = host[len(prefix):]
+            break
+    host = host.split("/")[0].split(":")[0]
+    # 合并到 NO_PROXY（保留已有值）
+    existing_no_proxy = env.get("NO_PROXY", "")
+    no_proxy_parts = [p.strip() for p in existing_no_proxy.split(",") if p.strip()]
+    if host not in no_proxy_parts:
+        no_proxy_parts.append(host)
+    env["NO_PROXY"] = ",".join(no_proxy_parts)
+    return env
 
 
 def _append_exec_log(log_path: str, record: dict) -> None:
@@ -474,7 +587,7 @@ def _reconnect_and_retry(
 
     Args:
         base_url: 设备 Web 管理地址
-        session_file: session.json 路径
+        session_file: session-<run-id>.json 路径
         username: 登录用户名
         password_env: 密码环境变量名
         retry_command: 待重试的完整命令列表
@@ -503,7 +616,8 @@ def _reconnect_and_retry(
     ]
     try:
         login_proc = subprocess.run(
-            login_cmd, capture_output=True, text=True, timeout=timeout
+            login_cmd, capture_output=True, text=True, timeout=timeout,
+            env=_build_exec_env(base_url),
         )
         login_envelope = _parse_atomic_output(login_proc.stdout)
         if login_envelope is None or login_envelope.get("status") != "success":
@@ -527,7 +641,8 @@ def _reconnect_and_retry(
     # [2] 重试原命令
     try:
         proc = subprocess.run(
-            retry_command, capture_output=True, text=True, timeout=timeout
+            retry_command, capture_output=True, text=True, timeout=timeout,
+            env=_build_exec_env(base_url),
         )
         envelope = _parse_atomic_output(proc.stdout)
         if envelope is None:
@@ -582,7 +697,7 @@ def execute_op(
         op_id: 原子操作 ID
         args: 参数 dict
         base_url: 设备 Web 管理地址
-        session_file: session.json 路径
+        session_file: session-<run-id>.json 路径
         step_name: 用例步骤名（写入 envelope）
         dry_run: 是否干跑（默认 True）
         authorized: --execute 写操作授权标记（dry_run=False 时必须为 True）
@@ -604,6 +719,10 @@ def execute_op(
         return _build_envelope(
             op_id, step_name, "error", {"reason": str(e)}, "OP_NOT_FOUND", diag_snapshot_ref
         )
+    except ValidationError as e:
+        return _build_envelope(
+            op_id, step_name, "error", {"reason": str(e)}, "PARAM_INVALID", diag_snapshot_ref
+        )
     except ValueError as e:
         return _build_envelope(
             op_id, step_name, "error", {"reason": str(e)}, "VALIDATION_FAILED", diag_snapshot_ref
@@ -620,12 +739,23 @@ def execute_op(
             diag_snapshot_ref,
         )
 
+    # P2-9 授权落盘审计（dry_run=False 时记录 who/scope/authorized_at）
+    runtime_auth = None
+    if not dry_run:
+        runtime_auth = {
+            "who": os.environ.get("USER", os.environ.get("USERNAME", "unknown")),
+            "scope": f"{op_id} on {base_url}",
+            "authorized_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "reason": "dry_run=False 用户单次授权（ADR-04 dry-run 默认门）",
+        }
+
     # [3] 执行
     start_time = time.time()
     exit_code = -1
     try:
         proc = subprocess.run(
-            command, capture_output=True, text=True, timeout=timeout
+            command, capture_output=True, text=True, timeout=timeout,
+            env=_build_exec_env(base_url),
         )
         exit_code = proc.returncode
         stdout, stderr = proc.stdout, proc.stderr
@@ -639,6 +769,8 @@ def execute_op(
             "EXEC_FAILED",
             diag_snapshot_ref,
         )
+        if runtime_auth is not None:
+            envelope["runtime_authorization"] = runtime_auth
         if exec_log_path:
             _append_exec_log(
                 exec_log_path,
@@ -692,6 +824,10 @@ def execute_op(
         if "diag_snapshot_ref" not in envelope:
             envelope["diag_snapshot_ref"] = diag_snapshot_ref
 
+    # P2-9 附加授权审计（dry_run=False 时，覆盖正常/解析失败/重连路径）
+    if runtime_auth is not None and "runtime_authorization" not in envelope:
+        envelope["runtime_authorization"] = runtime_auth
+
     # [6] 写入 exec-log
     if exec_log_path:
         record = {
@@ -734,7 +870,7 @@ def handle_rollback(
         op_id: 原子操作 ID
         args: 原操作参数（用于 inverse_op 时提取 id 等清理参数）
         base_url: 设备 Web 管理地址
-        session_file: session.json 路径
+        session_file: session-<run-id>.json 路径
         pre_snapshot: 操作前快照（restore_snapshot 类必需）
         authorized: --execute 授权标记
         timeout: 超时秒数
@@ -979,9 +1115,9 @@ def _cli_main(argv: Optional[List[str]] = None) -> int:
 
     用法：
         python op_mapper.py validate
-        python op_mapper.py map --op-id fw_config_policy_route --args '{"src_addr":"<IP_ADDRESS>/24"}'
+        python op_mapper.py map --op-id fw_config_policy_route --args '{"source_network":"<IP_ADDRESS>/24"}'
         python op_mapper.py execute --op-id fw_config_policy_route --base-url https://<IP_ADDRESS> \\
-            --session-file /path/session.json --args '{"src_addr":"<IP_ADDRESS>/24"}' --dry-run
+            --session-file /path/session-<run-id>.json --args '{"source_network":"<IP_ADDRESS>/24"}' --dry-run
     """
     parser = argparse.ArgumentParser(
         description="策略路由双层映射 + 执行 + 回滚（op_mapper）"
@@ -995,11 +1131,11 @@ def _cli_main(argv: Optional[List[str]] = None) -> int:
     map_parser = sub.add_parser("map", help="打印映射结果（不执行）")
     map_parser.add_argument("--op-id", required=True, help="原子操作 ID")
     map_parser.add_argument(
-        "--args", default="{}", help='参数 JSON，如 \'{"src_addr":"<IP_ADDRESS>/24"}\''
+        "--args", default="{}", help='参数 JSON，如 \'{"source_network":"<IP_ADDRESS>/24"}\''
     )
     map_parser.add_argument("--base-url", default="https://localhost")
     map_parser.add_argument(
-        "--session-file", default="~/.local/state/ptm-atomic/ngfw/session.json"
+        "--session-file", default="~/.local/state/ptm-atomic/ngfw/session-<run-id>.json"
     )
     map_parser.add_argument("--dry-run", action="store_true", default=True)
     map_parser.add_argument("--execute", dest="dry_run", action="store_false")
@@ -1008,10 +1144,10 @@ def _cli_main(argv: Optional[List[str]] = None) -> int:
     exec_parser = sub.add_parser("execute", help="执行单条原子操作")
     exec_parser.add_argument("--op-id", required=True, help="原子操作 ID")
     exec_parser.add_argument(
-        "--args", default="{}", help='参数 JSON，如 \'{"src_addr":"<IP_ADDRESS>/24"}\''
+        "--args", default="{}", help='参数 JSON，如 \'{"source_network":"<IP_ADDRESS>/24"}\''
     )
     exec_parser.add_argument("--base-url", required=True, help="设备 Web 管理地址")
-    exec_parser.add_argument("--session-file", required=True, help="session.json 路径")
+    exec_parser.add_argument("--session-file", required=True, help="session-<run-id>.json 路径")
     exec_parser.add_argument("--dry-run", action="store_true", default=True)
     exec_parser.add_argument("--execute", dest="dry_run", action="store_false")
     exec_parser.add_argument("--authorized", action="store_true", default=False)
@@ -1053,7 +1189,7 @@ def _cli_main(argv: Optional[List[str]] = None) -> int:
             }
             print(json.dumps(output, ensure_ascii=False, indent=2))
             return 0
-        except (OpNotFoundError, ValueError) as e:
+        except (OpNotFoundError, ValueError, ValidationError) as e:
             print(f"映射失败: {e}", file=sys.stderr)
             return 1
 
