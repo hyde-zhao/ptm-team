@@ -29,14 +29,16 @@ uv tool install .
 安装后可直接使用：
 
 ```shell
-# 安装 ptm-tde agent 及其所有 skills 到 Claude Code
-ptm-team install claude --agent ptm-tde
+# 安装 agent 到 Claude Code（--agent 支持 ptm-tde / ptm-te 等）
+ptm-team install claude --agent ptm-tde    # 测试设计工程师（MFQ&PPDCS 三阶段框架）
+ptm-team install claude --agent ptm-te     # 测试执行工程师（设备管理 + 策略路由用例执行）
 
-# 安装到 Codex
+# 安装到 Codex / Qoder
 ptm-team install codex --agent ptm-tde
+ptm-team install qoder --agent ptm-te
 
 # 预览安装内容（不实际修改文件）
-ptm-team install claude --agent ptm-tde --dry-run
+ptm-team install claude --agent ptm-te --dry-run
 
 # 交互式选择安装 skill
 ptm-team install claude --skill
@@ -62,7 +64,7 @@ ptm-team uninstall claude
 > uv tool install . --reinstall
 > ```
 
-安装 `ptm-tde` agent 时会同步安装它关联的公共 resources。公共因子库归档在仓库 `resource/factor-libraries/`，默认安装到 `~/.ptm-team/resource/factor-libraries/`，可通过 `PTM_TEAM_RESOURCE_HOME` 指向团队共享资源目录。
+安装 `ptm-tde` agent 时会同步安装它关联的公共 resources。公共因子库归档在仓库 `resource/factor-libraries/`，默认安装到 `~/.ptm-team/resource/factor-libraries/`，可通过 `PTM_TEAM_RESOURCE_HOME` 指向团队共享资源目录。安装 `ptm-te` agent 时同步安装其 3 个关联 skill（device-management / device-connection / policy-route-execution），详见 `docs/ptm-te/README.md`。
 
 ### 开发模式安装
 

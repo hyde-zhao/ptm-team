@@ -1,0 +1,1085 @@
+#!/usr/bin/env python3
+"""op_mapper.py - 策略路由双层映射 + 执行 + 回滚。
+
+真相源锁定三处：
+1. run_policy_route.py build_subtree() - 子命令名（config/update/delete/verify/reset-hitcount/verify-hitcount/priority）
+2. op yaml inputs.params - 参数名（source_network/dst_network/next_hop_ip/in_interface/type/id）
+3. ptm-atomic run ... --help - CLI flag（--source-network 等）
+
+CLI 调用格式（嵌套子命令，非扁平）：
+    ptm-atomic run --base-url <url> [--session-file <path>] [--format json] <family> <action> [flags] [--execute]
+
+对应 HLD-CR-024 §4 三层映射 + §9 回滚策略。
+LLD: process/stories/STORY-024-03-policy-route-execution-LLD.md
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+
+# ===== 异常与类型定义 =====
+
+
+class OpNotFoundError(Exception):
+    """op_id 未在映射表中。"""
+
+
+class ValidationResult:
+    """映射表一致性校验结果。"""
+
+    def __init__(self, passed: bool, mismatches: List[str]):
+        self.passed = passed
+        self.mismatches = mismatches
+
+    def __str__(self) -> str:
+        if self.passed:
+            return "ValidationResult: PASS (8 op_id 全覆盖，三表一致)"
+        lines = ["ValidationResult: FAIL"]
+        for m in self.mismatches:
+            lines.append(f"  - {m}")
+        return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        return {"passed": self.passed, "mismatch_count": len(self.mismatches), "mismatches": self.mismatches}
+
+
+# ===== 映射表常量（模块级真相源，单点维护） =====
+
+# 第一层映射：op_id -> (family, action) CLI 子命令
+# 真相源：run_policy_route.py build_subtree() + run_auth.py
+# 共 8 个 op_id（1 auth + 7 policy-route）
+OP_ID_TO_SUBCOMMAND: Dict[str, Tuple[str, str]] = {
+    # auth 族（来源 run_auth.py）
+    "fw_login_web_management": ("auth", "login"),
+    # policy-route 族（来源 run_policy_route.py build_subtree()，7 个）
+    "fw_config_policy_route": ("policy-route", "config"),
+    "fw_update_policy_route": ("policy-route", "update"),
+    "fw_delete_policy_route": ("policy-route", "delete"),
+    "fw_verify_policy_route": ("policy-route", "verify"),
+    "fw_update_policy_route_priority": ("policy-route", "priority"),
+    "fw_reset_policy_route_hitcount": ("policy-route", "reset-hitcount"),
+    "fw_verify_policy_route_hitcount": ("policy-route", "verify-hitcount"),
+}
+
+# 第二层映射：args key -> CLI flag（per op_id）
+# 三层命名翻译 centralize 在此：ptm-tde PC args -> op yaml params -> CLI flag
+# 真相源：run_policy_route.py _add_*_args() + op yaml inputs.params + CLI --help
+ARGS_TO_FLAGS: Dict[str, Dict[str, str]] = {
+    "fw_login_web_management": {
+        # login 签名：--username + --password-env（禁止明文密码，HLD §7）
+        "username": "--username",
+        "password_env": "--password-env",  # 默认值 "FW_WEB_PASSWORD"
+    },
+    "fw_config_policy_route": {
+        # config 使用 _add_common_args
+        # 三层不一致：src_addr -> source_network -> --source-network
+        "src_addr": "--source-network",
+        "dst_addr": "--dst-network",
+        "next_hop": "--next-hop-ip",
+        "in_interface": "--in-interface",  # 第 2/3 层仅连字符差异
+        "type": "--policy-route-type",  # 第 3 层加前缀
+    },
+    "fw_update_policy_route": {
+        # update 使用 _add_common_args + _require_arg(id)
+        # 与 config 相同的 5 个 flag + 额外 --id（从 verify 查询获取目标策略路由 id）
+        "src_addr": "--source-network",
+        "dst_addr": "--dst-network",
+        "next_hop": "--next-hop-ip",
+        "in_interface": "--in-interface",
+        "type": "--policy-route-type",
+        "id": "--id",  # 注意：CLI help 未暴露 --id（O-08 风险，见 Gotcha #10）
+    },
+    "fw_delete_policy_route": {
+        # delete 使用 _add_delete_args
+        "id": "--id",
+        "type": "--policy-route-type",
+    },
+    "fw_verify_policy_route": {
+        # verify 使用 _add_verify_args（无 required）
+        "type": "--policy-route-type",
+        "page": "--page",
+        "size": "--size",
+    },
+    "fw_update_policy_route_priority": {
+        # priority 使用 _add_priority_args
+        "type": "--policy-route-type",
+        "moveid": "--moveid",
+        "targetid": "--targetid",
+        "targetsite": "--targetsite",
+    },
+    "fw_reset_policy_route_hitcount": {
+        # reset-hitcount 使用 _add_delete_args
+        "id": "--id",
+        "type": "--policy-route-type",
+    },
+    "fw_verify_policy_route_hitcount": {
+        # verify-hitcount 使用 _add_verify_args（无 required）
+        "type": "--policy-route-type",
+        "page": "--page",
+        "size": "--size",
+    },
+}
+
+# required flag 校验表（来源 run_policy_route.py _add_*_args 的 required=True）
+# build_command 时校验，缺失则抛 ValueError
+REQUIRED_FLAGS: Dict[str, List[str]] = {
+    "fw_login_web_management": [],
+    "fw_config_policy_route": ["--source-network", "--in-interface"],
+    "fw_update_policy_route": ["--source-network", "--in-interface", "--id"],
+    "fw_delete_policy_route": ["--id"],
+    "fw_verify_policy_route": [],
+    "fw_update_policy_route_priority": ["--targetsite", "--targetid", "--moveid"],
+    "fw_reset_policy_route_hitcount": ["--id"],
+    "fw_verify_policy_route_hitcount": [],
+}
+
+# 回滚策略表（真相源：ptm-atomic list 2026-07-10 实测 rollback 字段）
+# ROLLBACK_STRATEGY.type 与 OP_METADATA.rollback 交叉一致
+ROLLBACK_STRATEGY: Dict[str, Dict[str, Any]] = {
+    "fw_login_web_management": {
+        "type": "none",
+        "reason": "observation，只读，建立 session，不回滚",
+    },
+    "fw_config_policy_route": {
+        "type": "inverse_op",
+        "inverse_op_id": "fw_delete_policy_route",
+        "inverse_args_key": "id",  # 从 config 返回 data.policy_route_id 取 id
+        "snapshot_required": False,
+    },
+    "fw_update_policy_route": {
+        "type": "restore_snapshot",
+        "snapshot_source": "full_config",
+        "restore_op_id": "fw_update_policy_route",
+        "snapshot_required": True,
+    },
+    "fw_delete_policy_route": {
+        "type": "restore_snapshot",
+        "snapshot_source": "full_config",
+        "restore_op_id": "fw_config_policy_route",
+        "snapshot_required": True,
+        "as_cleanup_skip": True,  # 作为 config 清理动作时不触发回滚
+    },
+    "fw_verify_policy_route": {
+        "type": "none",
+        "reason": "observation，只读，不回滚",
+    },
+    "fw_update_policy_route_priority": {
+        "type": "none",
+        "reason": "无 rollback 元数据，由用例设计决定是否恢复原优先级",
+    },
+    "fw_reset_policy_route_hitcount": {
+        "type": "irreversible",
+        "reason": "命中计数清零不可恢复，不回滚",
+    },
+    "fw_verify_policy_route_hitcount": {
+        "type": "none",
+        "reason": "observation，只读，不回滚",
+    },
+}
+
+# OP 元数据缓存（来源 ptm-atomic list 实测，2026-07-10）
+# 字段名与 ptm-atomic list 输出一致：side_effect / rollback / idempotent
+OP_METADATA: Dict[str, Dict[str, Any]] = {
+    "fw_config_policy_route": {
+        "side_effect": "state_mutation",
+        "rollback": "inverse_op:fw_delete_policy_route",
+        "idempotent": True,
+    },
+    "fw_update_policy_route": {
+        "side_effect": "state_mutation",
+        "rollback": "restore_snapshot",
+        "idempotent": True,
+    },
+    "fw_delete_policy_route": {
+        "side_effect": "destructive",
+        "rollback": "restore_snapshot",
+        "idempotent": False,
+    },
+    "fw_verify_policy_route": {
+        "side_effect": "observation",
+        "rollback": "",
+        "idempotent": True,
+    },
+    "fw_update_policy_route_priority": {
+        "side_effect": "",
+        "rollback": "",
+        "idempotent": True,
+    },
+    "fw_reset_policy_route_hitcount": {
+        "side_effect": "state_mutation",
+        "rollback": "irreversible",
+        "idempotent": True,
+    },
+    "fw_verify_policy_route_hitcount": {
+        "side_effect": "observation",
+        "rollback": "",
+        "idempotent": True,
+    },
+    "fw_login_web_management": {
+        "side_effect": "observation",
+        "rollback": "",
+        "idempotent": True,
+    },
+}
+
+# 预期 op_id 总数（校验基准）
+EXPECTED_OP_COUNT = 8
+
+
+# ===== 第一层映射 =====
+
+
+def map_op_id_to_subcommand(op_id: str) -> Tuple[str, str]:
+    """第一层映射：op_id -> (family, action) CLI 子命令。
+
+    Args:
+        op_id: ptm-tde PC 中的 atomic_op.op_id，如 "fw_config_policy_route"
+
+    Returns:
+        (family, action) 元组，如 ("policy-route", "config")
+
+    Raises:
+        OpNotFoundError: op_id 不在 OP_ID_TO_SUBCOMMAND 中时抛出
+    """
+    if op_id not in OP_ID_TO_SUBCOMMAND:
+        raise OpNotFoundError(
+            f"未识别的 op_id: {op_id}，当前映射表覆盖 {len(OP_ID_TO_SUBCOMMAND)} 个 op_id。"
+            f"请反馈 ptm-tae 检查工具覆盖。"
+        )
+    return OP_ID_TO_SUBCOMMAND[op_id]
+
+
+# ===== 第二层映射 =====
+
+
+def map_args_to_flags(op_id: str, args: dict) -> List[str]:
+    """第二层映射：args dict -> CLI flag 列表。
+
+    三层命名翻译 centralize 在此：args key -> flag name 取自 ARGS_TO_FLAGS[op_id]。
+    args 中多余 key 忽略并记录 warning 到 stderr。
+
+    Args:
+        op_id: 原子操作 ID
+        args: ptm-tde PC 的 atomic_op.args dict
+
+    Returns:
+        CLI flag 列表，如 ["--source-network", "<IP_ADDRESS>/24", "--in-interface", "GE0_12"]
+
+    Raises:
+        OpNotFoundError: op_id 不在 ARGS_TO_FLAGS 中
+    """
+    if op_id not in ARGS_TO_FLAGS:
+        raise OpNotFoundError(f"op_id {op_id} 无 args->flag 映射表")
+    flag_map = ARGS_TO_FLAGS[op_id]
+    result: List[str] = []
+    for args_key, cli_flag in flag_map.items():
+        if args_key in args and args[args_key] is not None:
+            value = args[args_key]
+            # password_env 特殊处理：空值时默认 FW_WEB_PASSWORD
+            if args_key == "password_env" and not value:
+                value = "FW_WEB_PASSWORD"
+            result.append(cli_flag)
+            result.append(str(value))
+        elif args_key == "password_env" and op_id == "fw_login_web_management":
+            # login 的 password_env 默认值补全
+            result.append(cli_flag)
+            result.append("FW_WEB_PASSWORD")
+    # 检查多余 key，记录 warning
+    for key in args:
+        if key not in flag_map:
+            print(
+                f"[op_mapper] WARNING: args key '{key}' 不在 {op_id} 映射表中，已忽略",
+                file=sys.stderr,
+            )
+    return result
+
+
+# ===== required flag 校验 =====
+
+
+def _check_required_flags(op_id: str, flag_list: List[str]) -> None:
+    """校验 required flag 是否存在（如 config 的 --source-network / --in-interface）。
+
+    Args:
+        op_id: 原子操作 ID
+        flag_list: 已生成的 flag 列表（含值，如 ["--source-network", "<IP_ADDRESS>/24", ...]）
+
+    Raises:
+        ValueError: required flag 缺失
+    """
+    required = REQUIRED_FLAGS.get(op_id, [])
+    # flag_list 是 [flag, value, flag, value, ...] 交替格式
+    # 只取偶数索引位置（flag 名）
+    present_flags = set(flag_list[::2])
+    for req in required:
+        if req not in present_flags:
+            raise ValueError(
+                f"op_id {op_id} 缺少 required flag: {req}。" f"当前 flag 列表: {flag_list}"
+            )
+
+
+# ===== 命令构建 =====
+
+
+def build_command(
+    op_id: str,
+    args: dict,
+    base_url: str,
+    session_file: str,
+    *,
+    dry_run: bool = True,
+) -> List[str]:
+    """组装完整的 ptm-atomic run 嵌套子命令列表。
+
+    命令格式（嵌套子命令，非扁平）：
+        ptm-atomic run --base-url <url> [--session-file <path>] --format json <family> <action> [flags] [--execute]
+
+    dry_run=True 时不加 --execute（默认干跑）。
+    dry_run=False 时加 --execute。
+
+    Args:
+        op_id: 原子操作 ID
+        args: 参数 dict
+        base_url: 设备 Web 管理地址，如 "https://<IP_ADDRESS>"
+        session_file: session.json 路径
+        dry_run: 是否干跑模式（默认 True）
+
+    Returns:
+        命令列表
+
+    Raises:
+        OpNotFoundError: op_id 未识别
+        ValueError: required flag 缺失
+    """
+    family, action = map_op_id_to_subcommand(op_id)
+    flags = map_args_to_flags(op_id, args)
+    _check_required_flags(op_id, flags)
+    command: List[str] = [
+        "ptm-atomic",
+        "run",
+        "--base-url",
+        base_url,
+        "--session-file",
+        session_file,
+        "--format",
+        "json",  # 统一 JSON 输出便于解析
+        family,
+        action,
+        *flags,
+    ]
+    if not dry_run:
+        command.append("--execute")
+    return command
+
+
+# ===== 工具函数 =====
+
+
+def _build_envelope(
+    op_id: str,
+    step_name: str,
+    status: str,
+    data: dict,
+    error_type: str,
+    diag_snapshot_ref: str = "",
+) -> dict:
+    """构建标准 envelope dict。
+
+    envelope 字段：op_id / step_name / status / data / error_type / diag_snapshot_ref
+    """
+    return {
+        "op_id": op_id,
+        "step_name": step_name,
+        "status": status,
+        "data": data,
+        "error_type": error_type,
+        "diag_snapshot_ref": diag_snapshot_ref,
+    }
+
+
+def _append_exec_log(log_path: str, record: dict) -> None:
+    """向 exec-log.jsonl 追加一条记录（JSON Lines 格式）。
+
+    Args:
+        log_path: exec-log.jsonl 文件路径
+        record: 日志记录 dict
+    """
+    try:
+        # 确保目录存在
+        log_dir = os.path.dirname(log_path)
+        if log_dir and not os.path.isdir(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"[op_mapper] WARNING: 写入 exec-log 失败: {e}", file=sys.stderr)
+
+
+def _parse_atomic_output(stdout: str) -> Optional[dict]:
+    """解析 ptm-atomic CLI 输出（JSON 或 YAML）为 dict。
+
+    op_mapper 统一使用 --format json，优先 json.loads。
+    若 JSON 解析失败，尝试 YAML（兼容 ptm-atomic 默认 yaml 输出场景）。
+
+    Args:
+        stdout: ptm-atomic CLI 的标准输出
+
+    Returns:
+        解析后的 dict，解析失败返回 None
+    """
+    if not stdout or not stdout.strip():
+        return None
+    # 优先 JSON 解析
+    try:
+        return json.loads(stdout)
+    except (json.JSONDecodeError, ValueError):
+        pass
+    # 兼容 YAML（ptm-atomic 默认 --format yaml）
+    try:
+        import yaml  # type: ignore[import-untyped]
+
+        return yaml.safe_load(stdout)
+    except ImportError:
+        # yaml 不可用时，尝试简单提取（不依赖第三方包）
+        return None
+    except Exception:
+        return None
+
+
+# ===== session 重连 =====
+
+
+def _reconnect_and_retry(
+    base_url: str,
+    session_file: str,
+    username: str,
+    password_env: str,
+    retry_command: List[str],
+    timeout: int,
+) -> dict:
+    """STATE_INVALID 自动重连：重新 auth login 后重试原命令。
+
+    流程：
+    1. 执行 auth login（--username --password-env --session-file --execute）
+    2. login 成功 -> 重试原 retry_command
+    3. login 失败 -> 返回 error_type=AUTH_FAILED，不重试原命令
+    4. 重试上限：1 次（避免无限循环）
+
+    Args:
+        base_url: 设备 Web 管理地址
+        session_file: session.json 路径
+        username: 登录用户名
+        password_env: 密码环境变量名
+        retry_command: 待重试的完整命令列表
+        timeout: 超时秒数
+
+    Returns:
+        重试后的 envelope dict
+    """
+    # [1] 重新 login
+    login_cmd: List[str] = [
+        "ptm-atomic",
+        "run",
+        "--base-url",
+        base_url,
+        "--session-file",
+        session_file,
+        "--format",
+        "json",
+        "auth",
+        "login",
+        "--username",
+        username,
+        "--password-env",
+        password_env,
+        "--execute",
+    ]
+    try:
+        login_proc = subprocess.run(
+            login_cmd, capture_output=True, text=True, timeout=timeout
+        )
+        login_envelope = _parse_atomic_output(login_proc.stdout)
+        if login_envelope is None or login_envelope.get("status") != "success":
+            return _build_envelope(
+                "",
+                "",
+                "error",
+                {
+                    "reason": "重连登录失败",
+                    "login_stdout": login_proc.stdout[:500],
+                    "login_stderr": login_proc.stderr[:500],
+                },
+                "AUTH_FAILED",
+                "",
+            )
+    except subprocess.TimeoutExpired:
+        return _build_envelope(
+            "", "", "error", {"reason": "重连登录超时"}, "AUTH_FAILED", ""
+        )
+
+    # [2] 重试原命令
+    try:
+        proc = subprocess.run(
+            retry_command, capture_output=True, text=True, timeout=timeout
+        )
+        envelope = _parse_atomic_output(proc.stdout)
+        if envelope is None:
+            return _build_envelope(
+                "",
+                "",
+                "error",
+                {
+                    "reason": "重试后仍无法解析输出",
+                    "stdout": proc.stdout[:500],
+                    "stderr": proc.stderr[:500],
+                },
+                "UNKNOWN_ERROR",
+                "",
+            )
+        return envelope
+    except subprocess.TimeoutExpired:
+        return _build_envelope(
+            "", "", "error", {"reason": "重试执行超时"}, "EXEC_FAILED", ""
+        )
+
+
+# ===== 执行 =====
+
+
+def execute_op(
+    op_id: str,
+    args: dict,
+    base_url: str,
+    session_file: str,
+    *,
+    step_name: str = "",
+    dry_run: bool = True,
+    authorized: bool = False,
+    timeout: int = 30,
+    username: str = "admin",
+    password_env: str = "FW_WEB_PASSWORD",
+    exec_log_path: Optional[str] = None,
+    diag_snapshot_ref: str = "",
+) -> dict:
+    """执行单条原子操作，返回 envelope dict。
+
+    流程：
+    1. build_command 组装命令
+    2. dry_run=False 且 authorized=False 时拒绝执行（返回 error_type=EXEC_FAILED）
+    3. subprocess 调用 ptm-atomic CLI
+    4. 解析输出为 envelope
+    5. 检测 STATE_INVALID -> _reconnect_and_retry（最多 1 次）
+    6. 写入 exec-log.jsonl（若 exec_log_path 提供）
+
+    Args:
+        op_id: 原子操作 ID
+        args: 参数 dict
+        base_url: 设备 Web 管理地址
+        session_file: session.json 路径
+        step_name: 用例步骤名（写入 envelope）
+        dry_run: 是否干跑（默认 True）
+        authorized: --execute 写操作授权标记（dry_run=False 时必须为 True）
+        timeout: 超时秒数（默认 30，与 op yaml timeout_ms 一致）
+        username: 登录用户名（STATE_INVALID 重连用）
+        password_env: 密码环境变量名（STATE_INVALID 重连用）
+        exec_log_path: 执行日志路径（None 则不写日志）
+        diag_snapshot_ref: 诊断快照引用路径
+
+    Returns:
+        envelope dict，含 op_id/step_name/status/data/error_type/diag_snapshot_ref
+    """
+    # [1] 构建命令
+    try:
+        command = build_command(
+            op_id, args, base_url, session_file, dry_run=dry_run
+        )
+    except OpNotFoundError as e:
+        return _build_envelope(
+            op_id, step_name, "error", {"reason": str(e)}, "OP_NOT_FOUND", diag_snapshot_ref
+        )
+    except ValueError as e:
+        return _build_envelope(
+            op_id, step_name, "error", {"reason": str(e)}, "VALIDATION_FAILED", diag_snapshot_ref
+        )
+
+    # [2] 授权检查（dry-run 默认门，ADR-04）
+    if not dry_run and not authorized:
+        return _build_envelope(
+            op_id,
+            step_name,
+            "error",
+            {"reason": "dry_run=False 需要 authorized=True 授权标记"},
+            "EXEC_FAILED",
+            diag_snapshot_ref,
+        )
+
+    # [3] 执行
+    start_time = time.time()
+    exit_code = -1
+    try:
+        proc = subprocess.run(
+            command, capture_output=True, text=True, timeout=timeout
+        )
+        exit_code = proc.returncode
+        stdout, stderr = proc.stdout, proc.stderr
+    except subprocess.TimeoutExpired:
+        duration_ms = int((time.time() - start_time) * 1000)
+        envelope = _build_envelope(
+            op_id,
+            step_name,
+            "error",
+            {"reason": f"执行超时 ({timeout}s)", "command": command},
+            "EXEC_FAILED",
+            diag_snapshot_ref,
+        )
+        if exec_log_path:
+            _append_exec_log(
+                exec_log_path,
+                {
+                    "step_name": step_name,
+                    "op_id": op_id,
+                    "mode": "dry-run" if dry_run else "execute",
+                    "command": command,
+                    "exit_code": -1,
+                    "envelope": envelope,
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                    "duration_ms": duration_ms,
+                },
+            )
+        return envelope
+
+    duration_ms = int((time.time() - start_time) * 1000)
+
+    # [4] 解析输出
+    envelope = _parse_atomic_output(stdout)
+    if envelope is None:
+        envelope = _build_envelope(
+            op_id,
+            step_name,
+            "error",
+            {
+                "reason": "无法解析 ptm-atomic 输出",
+                "stdout": stdout[:500],
+                "stderr": stderr[:500],
+                "exit_code": exit_code,
+            },
+            "UNKNOWN_ERROR",
+            diag_snapshot_ref,
+        )
+    else:
+        # 补全 envelope 字段
+        envelope["op_id"] = op_id
+        envelope["step_name"] = step_name
+        if "error_type" not in envelope:
+            envelope["error_type"] = "NONE" if envelope.get("status") == "success" else "UNKNOWN_ERROR"
+        if "diag_snapshot_ref" not in envelope:
+            envelope["diag_snapshot_ref"] = diag_snapshot_ref
+
+    # [5] STATE_INVALID 自动重连（仅 execute 模式，最多 1 次）
+    if envelope.get("error_type") == "STATE_INVALID" and not dry_run:
+        envelope = _reconnect_and_retry(
+            base_url, session_file, username, password_env, command, timeout
+        )
+        envelope["op_id"] = op_id
+        envelope["step_name"] = step_name
+        if "diag_snapshot_ref" not in envelope:
+            envelope["diag_snapshot_ref"] = diag_snapshot_ref
+
+    # [6] 写入 exec-log
+    if exec_log_path:
+        record = {
+            "step_name": step_name,
+            "op_id": op_id,
+            "mode": "dry-run" if dry_run else "execute",
+            "command": command,
+            "exit_code": exit_code,
+            "envelope": envelope,
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "duration_ms": duration_ms,
+        }
+        _append_exec_log(exec_log_path, record)
+
+    return envelope
+
+
+# ===== 回滚清理 =====
+
+
+def handle_rollback(
+    op_id: str,
+    args: dict,
+    base_url: str,
+    session_file: str,
+    *,
+    pre_snapshot: Optional[dict] = None,
+    authorized: bool = False,
+    timeout: int = 30,
+) -> dict:
+    """按 op 的 rollback 策略执行回滚清理。
+
+    策略路由（ROLLBACK_STRATEGY）：
+    - inverse_op: 执行 inverse_op 清理（如 config -> delete）
+    - restore_snapshot: 按 pre_snapshot 恢复（如 update -> 恢复原值）
+    - irreversible: 不回滚，返回豁免说明 envelope
+    - none: 不回滚，返回无需回滚 envelope
+
+    Args:
+        op_id: 原子操作 ID
+        args: 原操作参数（用于 inverse_op 时提取 id 等清理参数）
+        base_url: 设备 Web 管理地址
+        session_file: session.json 路径
+        pre_snapshot: 操作前快照（restore_snapshot 类必需）
+        authorized: --execute 授权标记
+        timeout: 超时秒数
+
+    Returns:
+        回滚结果 envelope dict
+    """
+    if op_id not in ROLLBACK_STRATEGY:
+        return _build_envelope(
+            op_id,
+            "rollback",
+            "error",
+            {"reason": f"op_id {op_id} 无回滚策略"},
+            "OP_NOT_FOUND",
+            "",
+        )
+
+    strategy = ROLLBACK_STRATEGY[op_id]
+    rtype = strategy["type"]
+
+    if rtype == "inverse_op":
+        # config -> delete 清理
+        inverse_op_id = strategy["inverse_op_id"]
+        # 从原操作返回结果提取 id（config 返回 data.policy_route_id）
+        inverse_args: dict = {}
+        if "id" in args:
+            inverse_args["id"] = args["id"]
+        if "type" in args:
+            inverse_args["type"] = args["type"]
+        return execute_op(
+            inverse_op_id,
+            inverse_args,
+            base_url,
+            session_file,
+            step_name=f"rollback-{op_id}",
+            dry_run=False,
+            authorized=authorized,
+            timeout=timeout,
+        )
+
+    elif rtype == "restore_snapshot":
+        # update / delete -> 按快照恢复
+        if strategy.get("as_cleanup_skip"):
+            # delete 作为 config 清理动作时不触发回滚
+            return _build_envelope(
+                op_id,
+                "rollback",
+                "success",
+                {"rollback": "skipped", "reason": "作为清理动作不触发回滚"},
+                "NONE",
+                "",
+            )
+        if pre_snapshot is None:
+            return _build_envelope(
+                op_id,
+                "rollback",
+                "error",
+                {"reason": "restore_snapshot 需要 pre_snapshot"},
+                "EXEC_FAILED",
+                "",
+            )
+        restore_op_id = strategy["restore_op_id"]
+        snapshot_source = strategy.get("snapshot_source", "full_config")
+        restore_args = pre_snapshot.get(snapshot_source, pre_snapshot)
+        return execute_op(
+            restore_op_id,
+            restore_args,
+            base_url,
+            session_file,
+            step_name=f"rollback-{op_id}",
+            dry_run=False,
+            authorized=authorized,
+            timeout=timeout,
+        )
+
+    elif rtype == "irreversible":
+        # reset-hitcount：不回滚
+        return _build_envelope(
+            op_id,
+            "rollback",
+            "success",
+            {"rollback": "waived", "reason": strategy["reason"]},
+            "NONE",
+            "",
+        )
+
+    else:
+        # none：只读或无元数据，不回滚
+        return _build_envelope(
+            op_id,
+            "rollback",
+            "success",
+            {"rollback": "not_required", "reason": strategy.get("reason", "")},
+            "NONE",
+            "",
+        )
+
+
+# ===== 映射表一致性校验 =====
+
+
+def validate_mapping_consistency() -> ValidationResult:
+    """校验映射表与三处真相源的一致性（CP7 static 校验入口）。
+
+    三处真相源：
+    1. run_policy_route.py build_subtree() - 7 个 policy-route 子命令名
+    2. op yaml inputs.params - 参数名（source_network/dst_network/next_hop_ip/in_interface/type/id）
+    3. ptm-atomic run ... --help - CLI flag 名（--source-network 等）
+
+    校验维度：
+    - 8 个 op_id 在 OP_ID_TO_SUBCOMMAND / ARGS_TO_FLAGS / ROLLBACK_STRATEGY 三表全覆盖
+    - op_id 数量 == 8
+    - flag 名格式正确（-- 前缀）
+    - ROLLBACK_STRATEGY.type 与 OP_METADATA.rollback 交叉一致
+    - policy-route 族子命令名与 run_policy_route.py build_subtree() 一致（嵌入式校验）
+    - required flag 与 ARGS_TO_FLAGS 映射不矛盾
+
+    Returns:
+        ValidationResult: passed=True/False, mismatches=list[str]
+    """
+    mismatches: List[str] = []
+
+    # [1] 三表 op_id 一致性
+    ops_in_sub = set(OP_ID_TO_SUBCOMMAND.keys())
+    ops_in_args = set(ARGS_TO_FLAGS.keys())
+    ops_in_rollback = set(ROLLBACK_STRATEGY.keys())
+    ops_in_meta = set(OP_METADATA.keys())
+
+    if ops_in_sub != ops_in_args:
+        mismatches.append(
+            f"OP_ID_TO_SUBCOMMAND 与 ARGS_TO_FLAGS 的 op_id 集合不一致: "
+            f"差集={ops_in_sub.symmetric_difference(ops_in_args)}"
+        )
+    if ops_in_sub != ops_in_rollback:
+        mismatches.append(
+            f"OP_ID_TO_SUBCOMMAND 与 ROLLBACK_STRATEGY 的 op_id 集合不一致: "
+            f"差集={ops_in_sub.symmetric_difference(ops_in_rollback)}"
+        )
+    if ops_in_sub != ops_in_meta:
+        mismatches.append(
+            f"OP_ID_TO_SUBCOMMAND 与 OP_METADATA 的 op_id 集合不一致: "
+            f"差集={ops_in_sub.symmetric_difference(ops_in_meta)}"
+        )
+
+    # [2] op_id 数量校验
+    if len(ops_in_sub) != EXPECTED_OP_COUNT:
+        mismatches.append(
+            f"OP_ID_TO_SUBCOMMAND 应覆盖 {EXPECTED_OP_COUNT} 个 op_id，实际 {len(ops_in_sub)} 个"
+        )
+
+    # [3] flag 格式校验（所有 flag 必须以 -- 开头）
+    for op_id, flag_map in ARGS_TO_FLAGS.items():
+        for args_key, cli_flag in flag_map.items():
+            if not cli_flag.startswith("--"):
+                mismatches.append(
+                    f"{op_id}.{args_key} 的 flag '{cli_flag}' 缺少 -- 前缀"
+                )
+
+    # [4] ROLLBACK_STRATEGY 与 OP_METADATA 交叉一致性校验
+    for op_id, meta in OP_METADATA.items():
+        strategy = ROLLBACK_STRATEGY.get(op_id, {})
+        meta_rollback = meta.get("rollback", "")
+        strategy_type = strategy.get("type", "")
+
+        # inverse_op:fw_xxx -> type=inverse_op
+        if meta_rollback.startswith("inverse_op:") and strategy_type != "inverse_op":
+            mismatches.append(
+                f"{op_id}: OP_METADATA.rollback='{meta_rollback}' "
+                f"但 ROLLBACK_STRATEGY.type='{strategy_type}'"
+            )
+        # restore_snapshot -> type=restore_snapshot
+        elif meta_rollback == "restore_snapshot" and strategy_type != "restore_snapshot":
+            mismatches.append(
+                f"{op_id}: OP_METADATA.rollback='restore_snapshot' "
+                f"但 ROLLBACK_STRATEGY.type='{strategy_type}'"
+            )
+        # irreversible -> type=irreversible
+        elif meta_rollback == "irreversible" and strategy_type != "irreversible":
+            mismatches.append(
+                f"{op_id}: OP_METADATA.rollback='irreversible' "
+                f"但 ROLLBACK_STRATEGY.type='{strategy_type}'"
+            )
+        # 空 rollback -> type=none
+        elif meta_rollback == "" and strategy_type not in ("none",):
+            mismatches.append(
+                f"{op_id}: OP_METADATA.rollback 为空 "
+                f"但 ROLLBACK_STRATEGY.type='{strategy_type}'"
+            )
+
+    # [5] policy-route 族子命令名与 run_policy_route.py build_subtree() 一致性校验
+    # build_subtree() 返回 7 个 CommandSpec: config/update/delete/verify/reset-hitcount/verify-hitcount/priority
+    expected_policy_route_actions = {
+        "config", "update", "delete", "verify",
+        "reset-hitcount", "verify-hitcount", "priority",
+    }
+    actual_policy_route_actions = {
+        action for (family, action) in OP_ID_TO_SUBCOMMAND.values()
+        if family == "policy-route"
+    }
+    if actual_policy_route_actions != expected_policy_route_actions:
+        missing = expected_policy_route_actions - actual_policy_route_actions
+        extra = actual_policy_route_actions - expected_policy_route_actions
+        if missing:
+            mismatches.append(f"policy-route 子命令缺失: {missing}")
+        if extra:
+            mismatches.append(f"policy-route 子命令多余: {extra}")
+
+    # [6] auth 族子命令校验
+    auth_ops = {
+        op_id: (f, a) for op_id, (f, a) in OP_ID_TO_SUBCOMMAND.items() if f == "auth"
+    }
+    if "fw_login_web_management" not in auth_ops:
+        mismatches.append("缺少 fw_login_web_management -> auth login 映射")
+    elif auth_ops["fw_login_web_management"] != ("auth", "login"):
+        mismatches.append(
+            f"fw_login_web_management 映射错误: 期望 ('auth', 'login')，"
+            f"实际 {auth_ops['fw_login_web_management']}"
+        )
+
+    # [7] required flag 与 ARGS_TO_FLAGS 一致性校验
+    # required flag 必须在对应 op 的 ARGS_TO_FLAGS 值集合中
+    for op_id, req_flags in REQUIRED_FLAGS.items():
+        if op_id not in ARGS_TO_FLAGS:
+            mismatches.append(f"REQUIRED_FLAGS 中的 {op_id} 不在 ARGS_TO_FLAGS 中")
+            continue
+        available_flags = set(ARGS_TO_FLAGS[op_id].values())
+        for req in req_flags:
+            if req not in available_flags:
+                mismatches.append(
+                    f"{op_id}: required flag '{req}' 不在 ARGS_TO_FLAGS 值集合中"
+                )
+
+    passed = len(mismatches) == 0
+    return ValidationResult(passed=passed, mismatches=mismatches)
+
+
+# ===== CLI 入口 =====
+
+
+def _cli_main(argv: Optional[List[str]] = None) -> int:
+    """op_mapper.py CLI 入口（便于测试和手动验证）。
+
+    用法：
+        python op_mapper.py validate
+        python op_mapper.py map --op-id fw_config_policy_route --args '{"src_addr":"<IP_ADDRESS>/24"}'
+        python op_mapper.py execute --op-id fw_config_policy_route --base-url https://<IP_ADDRESS> \\
+            --session-file /path/session.json --args '{"src_addr":"<IP_ADDRESS>/24"}' --dry-run
+    """
+    parser = argparse.ArgumentParser(
+        description="策略路由双层映射 + 执行 + 回滚（op_mapper）"
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # validate 子命令
+    sub.add_parser("validate", help="映射表一致性校验")
+
+    # map 子命令
+    map_parser = sub.add_parser("map", help="打印映射结果（不执行）")
+    map_parser.add_argument("--op-id", required=True, help="原子操作 ID")
+    map_parser.add_argument(
+        "--args", default="{}", help='参数 JSON，如 \'{"src_addr":"<IP_ADDRESS>/24"}\''
+    )
+    map_parser.add_argument("--base-url", default="https://localhost")
+    map_parser.add_argument(
+        "--session-file", default="~/.local/state/ptm-atomic/ngfw/session.json"
+    )
+    map_parser.add_argument("--dry-run", action="store_true", default=True)
+    map_parser.add_argument("--execute", dest="dry_run", action="store_false")
+
+    # execute 子命令
+    exec_parser = sub.add_parser("execute", help="执行单条原子操作")
+    exec_parser.add_argument("--op-id", required=True, help="原子操作 ID")
+    exec_parser.add_argument(
+        "--args", default="{}", help='参数 JSON，如 \'{"src_addr":"<IP_ADDRESS>/24"}\''
+    )
+    exec_parser.add_argument("--base-url", required=True, help="设备 Web 管理地址")
+    exec_parser.add_argument("--session-file", required=True, help="session.json 路径")
+    exec_parser.add_argument("--dry-run", action="store_true", default=True)
+    exec_parser.add_argument("--execute", dest="dry_run", action="store_false")
+    exec_parser.add_argument("--authorized", action="store_true", default=False)
+    exec_parser.add_argument("--timeout", type=int, default=30)
+    exec_parser.add_argument("--step-name", default="")
+    exec_parser.add_argument("--exec-log-path", default=None)
+    exec_parser.add_argument("--diag-snapshot-ref", default="")
+
+    args_ns = parser.parse_args(argv)
+
+    if args_ns.command == "validate":
+        result = validate_mapping_consistency()
+        print(result)
+        return 0 if result.passed else 1
+
+    elif args_ns.command == "map":
+        try:
+            args_dict = json.loads(args_ns.args)
+        except json.JSONDecodeError as e:
+            print(f"参数 JSON 解析失败: {e}", file=sys.stderr)
+            return 2
+        try:
+            family, action = map_op_id_to_subcommand(args_ns.op_id)
+            flags = map_args_to_flags(args_ns.op_id, args_dict)
+            cmd = build_command(
+                args_ns.op_id,
+                args_dict,
+                args_ns.base_url,
+                args_ns.session_file,
+                dry_run=args_ns.dry_run,
+            )
+            output = {
+                "op_id": args_ns.op_id,
+                "family": family,
+                "action": action,
+                "flags": flags,
+                "command": cmd,
+                "dry_run": args_ns.dry_run,
+            }
+            print(json.dumps(output, ensure_ascii=False, indent=2))
+            return 0
+        except (OpNotFoundError, ValueError) as e:
+            print(f"映射失败: {e}", file=sys.stderr)
+            return 1
+
+    elif args_ns.command == "execute":
+        try:
+            args_dict = json.loads(args_ns.args)
+        except json.JSONDecodeError as e:
+            print(f"参数 JSON 解析失败: {e}", file=sys.stderr)
+            return 2
+        envelope = execute_op(
+            args_ns.op_id,
+            args_dict,
+            args_ns.base_url,
+            args_ns.session_file,
+            step_name=args_ns.step_name,
+            dry_run=args_ns.dry_run,
+            authorized=args_ns.authorized,
+            timeout=args_ns.timeout,
+            exec_log_path=args_ns.exec_log_path,
+            diag_snapshot_ref=args_ns.diag_snapshot_ref,
+        )
+        print(json.dumps(envelope, ensure_ascii=False, indent=2))
+        return 0 if envelope.get("status") == "success" else 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(_cli_main())

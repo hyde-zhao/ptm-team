@@ -60,6 +60,8 @@ PTM_TDE_RULE_FILES = {
 AGENT_ALIASES = {
     "tde": "ptm-tde",
     "ptm-tde": "ptm-tde",
+    "te": "ptm-te",
+    "ptm-te": "ptm-te",
 }
 
 # ptm-tde referenced skills (from docs/ptm-tde/skill-references.md)
@@ -88,6 +90,13 @@ PMT_TDE_SKILLS = [
     # Extension skills
     "change-impact-analyzer",
     "bug-gap-analyzer",
+]
+
+# ptm-te referenced skills（设备管理 + 策略路由执行）
+PTM_TE_SKILLS = [
+    "device-management",
+    "device-connection",
+    "policy-route-execution",
 ]
 
 # Platform directory mapping
@@ -408,6 +417,8 @@ def get_agent_skills(agent_name: str) -> list[str]:
     """Get the list of skills referenced by an agent."""
     if agent_name == "ptm-tde":
         return PMT_TDE_SKILLS
+    if agent_name == "ptm-te":
+        return PTM_TE_SKILLS
     return []
 
 
