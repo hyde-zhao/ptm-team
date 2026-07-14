@@ -111,5 +111,44 @@ class InstallMappingTests(unittest.TestCase):
         self.assertFalse(mod.has_other_platform_rule({"installs": []}, "qoder", "ptm-tde"))
 
 
+class PtmTeRuleBlockTests(unittest.TestCase):
+    """ptm-te 规则块（CR-029 新增）：两 install.py 一致 + registry + rule body。"""
+
+    def _both_modules(self):
+        return [
+            load_module(REPO_ROOT / "script/install.py", "script_install_te"),
+            load_module(REPO_ROOT / "script/ptm_team/install.py", "package_install_te"),
+        ]
+
+    def test_ptm_te_skills_consistent(self) -> None:
+        for mod in self._both_modules():
+            skills = mod.get_agent_skills("ptm-te")
+            self.assertEqual(skills, ["device-management", "device-connection", "policy-route-execution"])
+
+    def test_ptm_te_rule_block_registry(self) -> None:
+        for mod in self._both_modules():
+            self.assertEqual(mod.AGENT_RULE_BLOCK["ptm-te"], "ptm-te-workflow")
+            self.assertIn("ptm-te-workflow", mod.RULE_BLOCK_RENDERERS)
+            self.assertEqual(mod.PTM_TE_RULE_BLOCK_ID, "ptm-te-workflow")
+
+    def test_render_ptm_te_rule_body_contains_key_rules(self) -> None:
+        mod = load_module(REPO_ROOT / "script/install.py", "script_install_te_body")
+        body = mod.render_ptm_te_rule_body("claude")
+        self.assertIn("ptm-te 工作流程规则", body)
+        self.assertIn("dry-run 默认门", body)
+        self.assertIn("policy_route_id", body)
+        self.assertIn("Claude Code", body)
+        body_codex = mod.render_ptm_te_rule_body("codex")
+        self.assertIn("Codex", body_codex)
+        self.assertIn("Qoder", body_codex)
+
+    def test_ptm_te_rule_file_same_as_tde(self) -> None:
+        """ptm-te 与 ptm-tde 共用同一规则文件（CLAUDE.md/AGENTS.md）。"""
+        mod = load_module(REPO_ROOT / "script/install.py", "script_install_te_file")
+        self.assertEqual(mod.RULE_FILES["claude"], "CLAUDE.md")
+        self.assertEqual(mod.RULE_FILES["codex"], "AGENTS.md")
+        self.assertEqual(mod.PTM_TDE_RULE_FILES, mod.RULE_FILES)
+
+
 if __name__ == "__main__":
     unittest.main()

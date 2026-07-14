@@ -76,7 +76,7 @@ CLI 格式：`ptm-atomic run --base-url <url> [--session-file <path>] --format j
 | `next_hop` | `--next-hop-ip` | 否 | 下一跳 IP |
 | `in_interface` | `--in-interface` | 是 | 入接口 |
 | `type` | `--policy-route-type` | 否（默认 ipv4） | 地址族（ipv4/ipv6） |
-| `id` | `--id` | update 必需 | 策略路由 ID（update 专用，从 verify 查询获取） |
+| `id` | `--id` | update 必需 | 策略路由 ID（优先从 config 响应 `data.policy_route_id` 取，verify 查询兜底） |
 
 **delete / reset-hitcount**（`_add_delete_args`）：
 
@@ -237,9 +237,9 @@ ptm-atomic run --base-url https://<IP_ADDRESS> \
 
 7. **login 签名是 --password-env 不是 --password**：`auth login --username admin --password-env FW_WEB_PASSWORD`，禁止命令行明文密码。`ARGS_TO_FLAGS` login 映射 `password_env -> --password-env`，默认值 `FW_WEB_PASSWORD`。
 
-8. **update 需要 --id（从 verify 查询获取）**：`policy-route update` 必须带 `--id`（从 verify 查询获取目标策略路由 id），不能直接按内容更新。id 的获取由 ptm-te agent 编排流程在 verify 后提取并传入 args。
+8. **update/delete 的 --id 优先从 config 响应取**：`config` 创建策略路由成功后，响应 `data.policy_route_id` 直接返回新建的 id（真相源 `atoms/fw/fw_config_policy_route.yaml returns`）。`update`/`delete`/`reset-hitcount` 的 `--id` 优先从 config 响应取，verify 查询仅作兜底（config 响应未返回 id 或操作前已存在的路由）。id 由 ptm-te 编排在 config 后从 `envelope.data.policy_route_id` 提取并传入后续 op 的 args；`handle_rollback` 通过 `result_envelope` 参数接收 config 返回，自动提取 `policy_route_id` 作 inverse_op 的 id。
 
-9. **update --id 在 CLI help 未暴露**（O-08 风险）：`run_policy_route.py` 中 update 使用 `_add_common_args`，但 `_run_update` 调用 `_require_arg(args, "id")`。当前 `_add_common_args` 未定义 `--id` argparse 参数（CLI `--help` 未暴露 `--id`），疑似 ptm-atomic 侧待修复。op_mapper 按 HLD §4.4 仍生成 `--id` flag（update 需要 id 定位策略）。CP7 runtime 验证时确认 ptm-atomic 侧是否需修复。如 ptm-atomic argparse 报错则反馈 ptm-atomic 侧修复，临时跳过 update runtime 验证。
+9. **update --id 已注册可用**（原 O-08 风险已消除）：ptm-atomic 0.1.0 实测 `policy-route update --help` 已暴露 `--id ID`（required），`run_policy_route.py _run_update` 的 `_require_arg(args, "id")` 正常工作。原"update --id 未注册 / 抛 AttributeError"已过时，update runtime 验证可正常执行。
 
 10. **入接口必须路由模式**：`ePolicyRouteInIfModeError` 表示 `in_interface` 非路由模式，需人工 Web 改接口模式后重试。op_mapper 不自动修复。SKILL 错误表明示此子错误码。
 
@@ -309,6 +309,8 @@ python scripts/op_mapper.py execute \
 }
 ```
 
+> `data.policy_route_id` 是 config 创建策略路由成功后返回的新建 id（真相源 `atoms/fw/fw_config_policy_route.yaml returns`），供后续 `update`/`delete`/`reset-hitcount` 的 `--id` 与 `handle_rollback` 回滚取用。
+
 ## 相邻对象边界
 
 | 职责 | 归属 | 差异界定 |
@@ -327,3 +329,12 @@ python scripts/op_mapper.py execute \
 1. **`run_policy_route.py` `build_subtree()`** - 7 个 policy-route 子命令名（config/update/delete/verify/reset-hitcount/verify-hitcount/priority）
 2. **op yaml `inputs.params`** - 参数名（source_network/dst_network/next_hop_ip/in_interface/type/id）
 3. **`ptm-atomic run ... --help`** - CLI flag 名（--source-network 等）
+4. **op yaml `returns.data`** - config 返回的 id 字段名（`policy_route_id`），供 inverse_op 回滚与 update/delete 取用
+
+## 修订记录
+
+| 版本 | 日期 | 修订人 | 变更要点 |
+|------|------|--------|---------|
+| v1.0 | 2026-07-13 | host-orchestrator（CR-024） | policy-route-execution skill v1 初始交付（8 op 双层映射 + 执行 + 回滚） |
+| v1.1 | 2026-07-13 | host-orchestrator（CR-028） | op_mapper 扩展至 15 op（5 族）；op 覆盖矩阵文档 |
+| v1.2 | 2026-07-14 | host-orchestrator | Gotcha #8 刷新：id 来源优先 config 响应 `data.policy_route_id`（真相源 `fw_config_policy_route.yaml returns`），verify 查询仅兜底；Gotcha #9 刷新：update --id 已注册可用（ptm-atomic 0.1.0 修复，原 O-08 风险消除）；op_mapper `handle_rollback` 增加 `result_envelope` 参数从 config 响应提取 id；真相源锁定增加第 4 处 `returns.data`。注：CR-025 后 args key 对齐 op yaml params（source_network 等），但本 SKILL 映射表示例仍含旧 src_addr 命名，留 follow-up 同步。 |

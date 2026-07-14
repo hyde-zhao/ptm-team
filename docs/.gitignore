@@ -25,6 +25,10 @@
 !ptm-tde/runtime-artifacts.md
 !ptm-tde/data-flow-spec.md
 
+# ptm-te 交付文档（执行指导 + op 覆盖矩阵）
+!ptm-te/执行指导.md
+!ptm-te/op-coverage-matrix.md
+
 # 部署检查清单（安装安全验证）
 !release/DEPLOY-CHECKLIST.md
 

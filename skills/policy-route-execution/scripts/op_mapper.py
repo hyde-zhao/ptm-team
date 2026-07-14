@@ -1006,6 +1006,28 @@ def execute_op(
 # ===== 回滚清理 =====
 
 
+def _extract_inverse_id(result_envelope: Optional[dict], op_id: str) -> Optional[Any]:
+    """从原操作返回 envelope.data 提取 inverse_op 所需 id。
+
+    真相源：atoms/fw/fw_config_policy_route.yaml returns.data.policy_route_id。
+    - fw_config_policy_route -> data.policy_route_id（config execute 返回创建的策略路由 id）
+    - fw_config_interface -> returns.data 无 id 字段（已知限制，兜底 args["id"]）
+    查找顺序 policy_route_id -> interface_id -> id，跳过 None/""/0 占位。
+    """
+    if not result_envelope:
+        return None
+    if not isinstance(result_envelope, dict):
+        return None
+    data = result_envelope.get("data")
+    if not isinstance(data, dict):
+        return None
+    for key in ("policy_route_id", "interface_id", "id"):
+        val = data.get(key)
+        if val not in (None, "", 0):
+            return val
+    return None
+
+
 def handle_rollback(
     op_id: str,
     args: dict,
@@ -1015,6 +1037,7 @@ def handle_rollback(
     pre_snapshot: Optional[dict] = None,
     authorized: bool = False,
     timeout: int = 30,
+    result_envelope: Optional[dict] = None,
 ) -> dict:
     """按 op 的 rollback 策略执行回滚清理。
 
@@ -1026,12 +1049,13 @@ def handle_rollback(
 
     Args:
         op_id: 原子操作 ID
-        args: 原操作参数（用于 inverse_op 时提取 id 等清理参数）
+        args: 原操作参数（inverse_op 兜底 id 来源；type 来源）
         base_url: 设备 Web 管理地址
         session_file: session-<run-id>.json 路径
         pre_snapshot: 操作前快照（restore_snapshot 类必需）
         authorized: --execute 授权标记
         timeout: 超时秒数
+        result_envelope: 原操作返回 envelope（inverse_op 优先从中提取 data.policy_route_id 作 id）
 
     Returns:
         回滚结果 envelope dict
@@ -1052,9 +1076,13 @@ def handle_rollback(
     if rtype == "inverse_op":
         # config -> delete 清理
         inverse_op_id = strategy["inverse_op_id"]
-        # 从原操作返回结果提取 id（config 返回 data.policy_route_id）
+        # 优先从原操作返回 envelope.data 提取 id（config 返回 data.policy_route_id，
+        # 真相源 atoms/fw/fw_config_policy_route.yaml returns）；兜底调用方 args 传入（interface 族）
         inverse_args: dict = {}
-        if "id" in args:
+        rid = _extract_inverse_id(result_envelope, op_id)
+        if rid is not None:
+            inverse_args["id"] = rid
+        elif "id" in args:
             inverse_args["id"] = args["id"]
         if "type" in args:
             inverse_args["type"] = args["type"]
