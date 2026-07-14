@@ -41,7 +41,7 @@ class ValidationResult:
 
     def __str__(self) -> str:
         if self.passed:
-            return "ValidationResult: PASS (8 op_id 全覆盖，三表一致)"
+            return f"ValidationResult: PASS ({EXPECTED_OP_COUNT} op_id 全覆盖，三表一致)"
         lines = ["ValidationResult: FAIL"]
         for m in self.mismatches:
             lines.append(f"  - {m}")
@@ -54,8 +54,10 @@ class ValidationResult:
 # ===== 映射表常量（模块级真相源，单点维护） =====
 
 # 第一层映射：op_id -> (family, action) CLI 子命令
-# 真相源：run_policy_route.py build_subtree() + run_auth.py
-# 共 8 个 op_id（1 auth + 7 policy-route）
+# 真相源：run_policy_route.py / run_auth.py / run_object.py / run_interface.py / run_operation_log.py build_subtree()
+# 共 15 个 op_id（1 auth + 7 policy-route + 1 operation-log + 1 object + 5 interface）
+# 注：安装版 ptm-atomic 0.1.0 的 object 族仅暴露 config；update/delete/delete-batch/verify 源码已定义但安装版未暴露，
+#     记入 op 覆盖矩阵 gap（docs/ptm-te/op-coverage-matrix.md），ptm-atomic 升级后可激活。
 OP_ID_TO_SUBCOMMAND: Dict[str, Tuple[str, str]] = {
     # auth 族（来源 run_auth.py）
     "fw_login_web_management": ("auth", "login"),
@@ -67,6 +69,17 @@ OP_ID_TO_SUBCOMMAND: Dict[str, Tuple[str, str]] = {
     "fw_update_policy_route_priority": ("policy-route", "priority"),
     "fw_reset_policy_route_hitcount": ("policy-route", "reset-hitcount"),
     "fw_verify_policy_route_hitcount": ("policy-route", "verify-hitcount"),
+    # operation-log 族（来源 run_operation_log.py，1 个）
+    "fw_capture_operation_log": ("operation-log", "capture"),
+    # object 族（来源 run_object.py；安装版 0.1.0 仅 config 可用）
+    "fw_config_object": ("object", "config"),
+    # interface 族（来源 run_interface.py，5 个）
+    # 注意：fw_config_interface 的 op_id 含 "config" 但 CLI action 是 "create"（run_interface.py _run_create 确认）
+    "fw_config_interface": ("interface", "create"),
+    "fw_update_interface": ("interface", "update"),
+    "fw_delete_interface": ("interface", "delete"),
+    "fw_delete_batch_interface": ("interface", "delete-batch"),
+    "fw_verify_interface": ("interface", "verify"),
 }
 
 # 第二层映射：args key -> CLI flag（per op_id）
@@ -126,6 +139,69 @@ ARGS_TO_FLAGS: Dict[str, Dict[str, str]] = {
         "page": "--page",
         "size": "--size",
     },
+    # operation-log 族（fw_capture_operation_log）
+    # args key 对齐 op yaml params：page/size/timetype/starttime/endtime
+    "fw_capture_operation_log": {
+        "page": "--page",
+        "size": "--size",
+        "timetype": "--timetype",
+        "starttime": "--starttime",
+        "endtime": "--endtime",
+    },
+    # object 族（fw_config_object，安装版 0.1.0 仅 config 可用）
+    # args key 对齐 op yaml params：object_name/ipaddr/mask/object_desc
+    "fw_config_object": {
+        "object_name": "--object-name",
+        "ipaddr": "--ipaddr",
+        "mask": "--mask",
+        "object_desc": "--object-desc",
+    },
+    # interface 族
+    # 注：op yaml params 是嵌套 val.{name,type,mode,ip_addresses}，CLI flag 是扁平 --name/--interface-kind/--mode/--ip-address
+    # args key 采用 CLI flag 的 snake_case（interface_kind/ip_address），对应 params.val.type / params.val.ip_addresses
+    # 已知限制：params.val.type 是数字（如 14=bvi），--interface-kind 是枚举 {bvi,sub,physical,bond,tunnel}，
+    #           ptm-tde 产出 PC 时应直接给枚举字符串；布尔 flag（--interface-enabled/--interface-disabled）留 follow-up
+    "fw_config_interface": {
+        "id": "--id",
+        "interface_kind": "--interface-kind",
+        "mode": "--mode",
+        "name": "--name",
+        "desc": "--desc",
+        "ip_address": "--ip-address",
+        "parent_name": "--parent-name",
+        "sub_id": "--sub-id",
+        "bvi_instance": "--bvi-instance",
+        "bond_id": "--bond-id",
+        "bond_member": "--bond-member",
+    },
+    "fw_update_interface": {
+        # update 与 create 共享参数集
+        "id": "--id",
+        "interface_kind": "--interface-kind",
+        "mode": "--mode",
+        "name": "--name",
+        "desc": "--desc",
+        "ip_address": "--ip-address",
+        "parent_name": "--parent-name",
+        "sub_id": "--sub-id",
+        "bvi_instance": "--bvi-instance",
+        "bond_id": "--bond-id",
+        "bond_member": "--bond-member",
+    },
+    "fw_delete_interface": {
+        # delete 使用 _add_delete_args：--id 或 --payload-file/--payload-json
+        "id": "--id",
+        "payload_file": "--payload-file",
+        "payload_json": "--payload-json",
+    },
+    "fw_delete_batch_interface": {
+        "id": "--id",
+        "payload_file": "--payload-file",
+        "payload_json": "--payload-json",
+    },
+    "fw_verify_interface": {
+        "id": "--id",
+    },
 }
 
 # required flag 校验表（来源 run_policy_route.py _add_*_args 的 required=True）
@@ -139,6 +215,14 @@ REQUIRED_FLAGS: Dict[str, List[str]] = {
     "fw_update_policy_route_priority": ["--targetsite", "--targetid", "--moveid"],
     "fw_reset_policy_route_hitcount": ["--id"],
     "fw_verify_policy_route_hitcount": [],
+    # operation-log / object / interface 族（CR-028 扩展）
+    "fw_capture_operation_log": ["--page", "--size", "--timetype"],
+    "fw_config_object": ["--object-name", "--ipaddr", "--mask"],
+    "fw_config_interface": ["--interface-kind"],
+    "fw_update_interface": ["--id", "--interface-kind"],
+    "fw_delete_interface": ["--id"],
+    "fw_delete_batch_interface": ["--id"],
+    "fw_verify_interface": ["--id"],
 }
 
 # 回滚策略表（真相源：ptm-atomic list 2026-07-10 实测 rollback 字段）
@@ -180,6 +264,42 @@ ROLLBACK_STRATEGY: Dict[str, Dict[str, Any]] = {
         "reason": "命中计数清零不可恢复，不回滚",
     },
     "fw_verify_policy_route_hitcount": {
+        "type": "none",
+        "reason": "observation，只读，不回滚",
+    },
+    # operation-log 族（CR-028 扩展）
+    "fw_capture_operation_log": {
+        "type": "none",
+        "reason": "observation，只读查询，不回滚",
+    },
+    # object 族
+    "fw_config_object": {
+        "type": "none",
+        "reason": "inverse_op=fw_delete_object 安装版 0.1.0 未暴露 object delete，回滚待 ptm-atomic 升级",
+    },
+    # interface 族
+    "fw_config_interface": {
+        "type": "inverse_op",
+        "inverse_op_id": "fw_delete_interface",
+        "inverse_args_key": "id",
+        "snapshot_required": False,
+    },
+    "fw_update_interface": {
+        "type": "restore_snapshot",
+        "snapshot_source": "full_config",
+        "restore_op_id": "fw_update_interface",
+        "snapshot_required": True,
+    },
+    "fw_delete_interface": {
+        "type": "none",
+        "reason": "fw_delete_interface.yaml 无 rollback_strategy 字段（源码未定义，2026-07-13 实测），由用例设计承担；作为 config 清理动作时不触发回滚",
+        "as_cleanup_skip": True,
+    },
+    "fw_delete_batch_interface": {
+        "type": "irreversible",
+        "reason": "批量删除，无 rollback 元数据，由用例设计承担",
+    },
+    "fw_verify_interface": {
         "type": "none",
         "reason": "observation，只读，不回滚",
     },
@@ -228,10 +348,48 @@ OP_METADATA: Dict[str, Dict[str, Any]] = {
         "rollback": "",
         "idempotent": True,
     },
+    # operation-log 族（CR-028 扩展，真相源 atoms/fw/ yaml）
+    "fw_capture_operation_log": {
+        "side_effect": "observation",
+        "rollback": "",
+        "idempotent": True,
+    },
+    # object 族
+    "fw_config_object": {
+        "side_effect": "state_mutation",
+        "rollback": "",  # inverse_op=fw_delete_object 安装版未暴露，暂标空
+        "idempotent": True,
+    },
+    # interface 族
+    "fw_config_interface": {
+        "side_effect": "state_mutation",
+        "rollback": "inverse_op:fw_delete_interface",
+        "idempotent": True,
+    },
+    "fw_update_interface": {
+        "side_effect": "state_mutation",
+        "rollback": "restore_snapshot",
+        "idempotent": True,
+    },
+    "fw_delete_interface": {
+        "side_effect": "destructive",
+        "rollback": "",  # yaml 无 rollback_strategy 字段（2026-07-13 实测）
+        "idempotent": False,
+    },
+    "fw_delete_batch_interface": {
+        "side_effect": "destructive",
+        "rollback": "irreversible",
+        "idempotent": False,
+    },
+    "fw_verify_interface": {
+        "side_effect": "observation",
+        "rollback": "",
+        "idempotent": True,
+    },
 }
 
-# 预期 op_id 总数（校验基准）
-EXPECTED_OP_COUNT = 8
+# 预期 op_id 总数（校验基准）：8（v1）+ 7（CR-028 新增 operation-log/object/interface）= 15
+EXPECTED_OP_COUNT = 15
 
 
 # ===== 第一层映射 =====
@@ -981,8 +1139,8 @@ def validate_mapping_consistency() -> ValidationResult:
     3. ptm-atomic run ... --help - CLI flag 名（--source-network 等）
 
     校验维度：
-    - 8 个 op_id 在 OP_ID_TO_SUBCOMMAND / ARGS_TO_FLAGS / ROLLBACK_STRATEGY 三表全覆盖
-    - op_id 数量 == 8
+    - 15 个 op_id 在 OP_ID_TO_SUBCOMMAND / ARGS_TO_FLAGS / ROLLBACK_STRATEGY 三表全覆盖
+    - op_id 数量 == 15（5 族：auth/policy-route/operation-log/object/interface）
     - flag 名格式正确（-- 前缀）
     - ROLLBACK_STRATEGY.type 与 OP_METADATA.rollback 交叉一致
     - policy-route 族子命令名与 run_policy_route.py build_subtree() 一致（嵌入式校验）
@@ -1089,6 +1247,38 @@ def validate_mapping_consistency() -> ValidationResult:
             f"fw_login_web_management 映射错误: 期望 ('auth', 'login')，"
             f"实际 {auth_ops['fw_login_web_management']}"
         )
+
+    # [5b] operation-log 族子命令校验（CR-028）
+    expected_operation_log_actions = {"capture"}
+    actual_operation_log_actions = {
+        action for (family, action) in OP_ID_TO_SUBCOMMAND.values()
+        if family == "operation-log"
+    }
+    if actual_operation_log_actions != expected_operation_log_actions:
+        mismatches.append(f"operation-log 子命令不一致: {actual_operation_log_actions} != {expected_operation_log_actions}")
+
+    # [5c] object 族子命令校验（安装版 0.1.0 仅 config；update/delete/delete-batch/verify 源码有但未暴露，记 gap）
+    expected_object_actions = {"config"}
+    actual_object_actions = {
+        action for (family, action) in OP_ID_TO_SUBCOMMAND.values()
+        if family == "object"
+    }
+    if actual_object_actions != expected_object_actions:
+        mismatches.append(f"object 子命令不一致: {actual_object_actions} != {expected_object_actions}")
+
+    # [5d] interface 族子命令校验（CR-028，5 个子命令）
+    expected_interface_actions = {"create", "update", "delete", "delete-batch", "verify"}
+    actual_interface_actions = {
+        action for (family, action) in OP_ID_TO_SUBCOMMAND.values()
+        if family == "interface"
+    }
+    if actual_interface_actions != expected_interface_actions:
+        missing = expected_interface_actions - actual_interface_actions
+        extra = actual_interface_actions - expected_interface_actions
+        if missing:
+            mismatches.append(f"interface 子命令缺失: {missing}")
+        if extra:
+            mismatches.append(f"interface 子命令多余: {extra}")
 
     # [7] required flag 与 ARGS_TO_FLAGS 一致性校验
     # required flag 必须在对应 op 的 ARGS_TO_FLAGS 值集合中
