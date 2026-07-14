@@ -1592,6 +1592,14 @@ def parse_args() -> argparse.Namespace:
     uninstall_parser.add_argument("--skill", action="store_true", help="卸载 skill (交互式)")
     uninstall_parser.add_argument("--dry-run", action="store_true", help="预览模式")
 
+    # reinstall subcommand: 先卸载再安装
+    reinstall_parser = subparsers.add_parser("reinstall", help="先卸载再安装 agent")
+    reinstall_parser.add_argument("platform", choices=VALID_PLATFORMS, help="目标平台")
+    reinstall_parser.add_argument("--agent", nargs="?", const="", help="reinstall agent (可指定名称)")
+    reinstall_parser.add_argument("--dry-run", action="store_true", help="预览模式")
+    reinstall_parser.add_argument("--no-recommended-resources", action="store_true", help="安装 agent 时跳过 recommended resources")
+    reinstall_parser.add_argument("--resource", action="append", default=[], help="安装 agent 时额外指定 resource id")
+
     # check subcommand
     check_parser = subparsers.add_parser("check", help="检查已安装资产是否漂移")
     check_parser.add_argument("platform", choices=VALID_PLATFORMS, help="目标平台")
@@ -1731,6 +1739,49 @@ def main() -> None:
 
         # Uninstall all
         uninstall_all(args.platform, workspace_root, manifest, args.dry_run)
+
+    elif args.command == "reinstall":
+        # reinstall = 卸载（若已安装）+ 安装
+        if args.agent is None:
+            fail("reinstall 目前仅支持 --agent，请指定 --agent <名称>")
+
+        agent_name = args.agent if args.agent else "ptm-tde"
+        agent_name = resolve_agent_name(agent_name)
+
+        # 1. 卸载：仅当该 agent 已安装时执行，避免 uninstall_agent 对"未找到记录"fail
+        existing = find_install_record(manifest, args.platform)
+        if existing and existing.get("status") == "installed" and any(
+            e.get("kind") == "agent" and e.get("name") == agent_name
+            for e in existing.get("entries", [])
+        ):
+            print(f"\n=== reinstall: 卸载 {agent_name} ===")
+            uninstall_agent(args.platform, agent_name, workspace_root, manifest, args.dry_run)
+        else:
+            print(f"未安装 {agent_name}，跳过卸载，直接安装")
+
+        # 2. 安装
+        print(f"\n=== reinstall: 安装 {agent_name} ===")
+        entries = install_agent(
+            args.platform, agent_name, source_dir, workspace_root,
+            commit, generated, args.dry_run,
+            include_recommended_resources=not args.no_recommended_resources,
+            explicit_resources=args.resource,
+        )
+
+        # 3. 更新 manifest（与 install 分支一致）
+        if not args.dry_run and entries:
+            record = find_install_record(manifest, args.platform) or {
+                "platform": args.platform,
+                "scope": "project",
+                "status": "installed",
+                "installed_at": generated,
+                "workspace_root": str(workspace_root),
+                "entries": [],
+            }
+            record["entries"].extend([manifest_entry_to_dict(e) for e in entries])
+            upsert_install_record(manifest, record)
+            save_manifest(manifest_path, manifest)
+        return
 
     elif args.command == "check":
         agent_name = ""

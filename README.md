@@ -51,6 +51,11 @@ ptm-team install claude --list
 
 # 卸载
 ptm-team uninstall claude
+
+# 重装（先卸载再安装，清理残留并保持 manifest 不膨胀）
+ptm-team reinstall claude --agent ptm-tde
+ptm-team reinstall claude --agent ptm-te   # --agent 支持别名（te / tde）
+ptm-team reinstall claude --agent ptm-tde --dry-run
 ```
 
 > **⚠️ 更新后必须重装**：`ptm-team` 通过 `uv tool` 安装到隔离环境，源代码修改不会自动生效。以下情况必须重新安装：
