@@ -132,10 +132,10 @@ status: active
 
 **汇总规则**：
 
-1. 遍历 `ppdcs/pc/*.md`，优先从 PC 的结构化字段（`physical_case_id / logic_case_id / case_steps / action_source_refs / topology_bindings / fact_status`）装配 PC 行；不得把已有 Markdown 表格行作为唯一事实源直接拼接
+1. 遍历 `ppdcs/pc/*.md`，优先从 PC 的结构化字段（`physical_case_id / logic_case_id / case_title / case_steps / action_source_refs / topology_bindings / fact_status`）装配 PC 行；"用例名称*"列必须取自 `case_title`，不得用 `physical_case_id` 兜底；不得把已有 Markdown 表格行作为唯一事实源直接拼接
 2. 按 `三级目录 → 四级目录 → 五级目录 → 用例编号` 排序
 3. 同一 LC 的 PC 行连续排列，中间不插入分页或重复表头
-4. PC 行中 `fact_status=needs-confirmation` 的，在用例名称末尾追加 ` ⚠️待确认`
+4. "用例名称*"列取 `case_title`；PC 缺失 `case_title` 时输出 `⚠️pc_name_gap` 并在汇总表后追加缺失清单，不得用 `physical_case_id` 静默填充；`fact_status=needs-confirmation` 的在用例名称末尾追加 ` ⚠️待确认`
 5. `测试步骤*` 列必须由 PC `case_steps` 渲染；每一步同时展示步骤名称和原子操作
 6. 所有 Markdown 表格单元格中的 `|` 必须转义为 `\|`；多行内容必须使用 `<br>`，不得在表格行中写裸换行
 7. 汇总表表头只出现一次，放在全文最前；表头必须等于标准 16 列，所有数据行必须恰好 16 列
@@ -359,6 +359,8 @@ Markdown 表格单元格中使用 `<br>` 换行：
 - [ ] 汇总表 `测试步骤*` 列由 `case_steps` 渲染，每一步同时包含步骤名称和 `原子操作：<op_id> <args...>`
 - [ ] 各 LC 详情不重复渲染 PC 表（改为 PC 编号引用行）
 - [ ] `fact_status=needs-confirmation` 的 PC 在用例名称末尾标注 ` ⚠️待确认`
+- [ ] "用例名称*"列取自 PC `case_title`，confirmed 行的用例名称不得等于用例编号（`physical_case_id`）
+- [ ] 缺失 `case_title` 的 PC 在用例名称列显式标注 `⚠️pc_name_gap`，不静默用 `physical_case_id` 占位
 - [ ] 原子操作候选对比表包含 op_id、描述、match_attempt（L1-L4+score）、现有库匹配、匹配结果 ✅/⚠️/❌、来源场景；按 未匹配→已匹配 排序
 - [ ] 原子操作候选对比表表后摘要含统计（总计/已匹配/部分匹配/未匹配）+ 未匹配列表 + 建议提交 ptm-tae
 - [ ] 原子操作候选无数据时不生成空表，输出"未发现新候选"

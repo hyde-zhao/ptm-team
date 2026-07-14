@@ -1627,6 +1627,70 @@ def add_pc_step_contract_check(
     return ok
 
 
+def extract_pc_field_value(text: str, field: str) -> str:
+    """提取 PC 结构化字段的第一个标量值。
+
+    支持 `field: value`、`field: "value"` 与字段表 `| field | value |` 三种形态。
+    """
+    patterns = [
+        rf"(?m)^\s*`?{field}`?\s*:\s*[`\"']?(.+?)\s*[`\"']?\s*(?:\||$)",
+        rf"\|\s*`?{field}`?\s*\|\s*(.+?)\s*\|",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1).strip().strip("`\"' ")
+    return ""
+
+
+def validate_pc_case_title(text: str) -> list[str]:
+    """[P1-6 整改] 校验 PC 含非空 case_title 且不得等于 physical_case_id。
+
+    用例名称列不得用 PC-ID 兜底；缺失计入 pc_name_gap，缺失项数=0 方可放行。
+    """
+    errors: list[str] = []
+    if "case_title" not in text:
+        errors.append("缺少 case_title 结构化字段")
+        return errors
+    case_title = extract_pc_field_value(text, "case_title")
+    if not case_title:
+        errors.append("case_title 为空")
+    physical_case_id = extract_pc_field_value(text, "physical_case_id")
+    if case_title and physical_case_id and case_title == physical_case_id:
+        errors.append(f"case_title 不得等于 physical_case_id（{physical_case_id}）")
+    return errors
+
+
+def add_pc_case_title_check(
+    checks: list[tuple[int, str, str, str]],
+    label: str,
+    files: list[Path],
+    status_if_missing: str = "BLOCKING",
+) -> bool:
+    """[P1-6 整改] 逐 PC 文件校验 case_title 完整性（非空且不等于 PC-ID）。"""
+    if not files:
+        checks.append((
+            len(checks) + 1,
+            label,
+            status_if_missing,
+            "无可检查文件",
+        ))
+        return False
+    failures: list[str] = []
+    for path in files:
+        errors = validate_pc_case_title(read_text(path))
+        if errors:
+            failures.append(f"{path}: {'; '.join(errors[:4])}")
+    ok = not failures
+    checks.append((
+        len(checks) + 1,
+        label,
+        "PASS" if ok else status_if_missing,
+        f"已检查 {len(files)} 个文件" if ok else "；".join(failures[:5]),
+    ))
+    return ok
+
+
 def add_pc_op_id_hit_check(
     checks: list[tuple[int, str, str, str]],
     label: str,
@@ -2454,6 +2518,11 @@ def run_gate_4(args: argparse.Namespace) -> int:
         add_pc_step_contract_check(
             checks,
             "P2: PC case_steps 原子操作回链检查",
+            pc_files,
+        )
+        add_pc_case_title_check(
+            checks,
+            "P2: PC case_title 完整性检查",
             pc_files,
         )
         ptm_atomic_ok, op_id_set, ptm_atomic_evidence = fetch_ptm_atomic_op_ids()

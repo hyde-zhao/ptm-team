@@ -201,6 +201,25 @@ C-Combination 是 PPDCS 五特征之一：
 
 再输出物理用例：
 
+**PC 结构化字段**（必填，交付装配的结构化事实源）：
+
+| 字段 | 说明 |
+|------|------|
+| `physical_case_id` | 物理用例编号 |
+| `logic_case_id` | 所属 LC |
+| `case_title` | 必填；业务可读自然语言；不得等于 `physical_case_id` 或其子串；不得为空；同 LC 内唯一；无法生成时标注 `case_title_gap` 并说明原因，不得用 PC-ID 占位 |
+| `case_steps` | 结构化步骤清单 |
+| `action_source_refs` | ptm-atomic `op_id` |
+| `fact_status` | `confirmed / needs-confirmation` |
+
+**case_title 生成规则**（combination-design 方法特定）：
+
+- 格式：`<组合因子值串联>-<验证目标>`，如 `源NAT+R01南向+未持久化组合验证`、`4台服务器并发外发组合验证`
+- 禁止用 `physical_case_id` 或 `combo_id` 占位
+- 同 LC 内多条组合 PC 的 case_title 必须可区分（不同因子组合或不同验证目标）
+
+16 列表"用例名称*"列必须取自 `case_title`，不得用 `physical_case_id` 兜底。
+
 PC 必须保留 `case_steps` 结构化步骤清单，并将其渲染到 16 列表的 `测试步骤*` 列。每一步必须同时包含：
 
 - `step_name`：面向测试人员的动作意图；
@@ -305,3 +324,4 @@ combo/data_row 分配表直接决定 PC 生成（combo_id → data_row → PC）
 - [ ] `needs-confirmation` / `confirmation_gap_refs` 未被静默折叠
 - [ ] 默认 Pairwise 未纳入 `topology_role`；若纳入，已记录明确测试目标和升级原因；真实端口未作为组合因子值
 - [ ] 每条物理用例包含 `case_steps`，并在 `测试步骤*` 中渲染步骤名称与原子操作
+- [ ] 每条物理用例含非空 `case_title`，且不等于 `physical_case_id`；同 LC 内唯一；16 列表"用例名称*"列取自 `case_title`
