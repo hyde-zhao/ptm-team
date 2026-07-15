@@ -1,30 +1,37 @@
-# docs/.gitignore — 默认忽略全部，仅白名单放行
+# docs/.gitignore - 默认忽略全部，仅白名单放行
 *
+# 取消忽略一层目录，使下方 !path 白名单能重新包含文件
+# （git 规则：父目录被 * 排除则子文件无法 unignore，需先 !*/ 放行目录本身）
+!*/
 
 # === 白名单 ===
 
-# 各 Agent README（入口文档）
+# 各 Agent README（入口文档，通用规则）
 !*/README.md
 !README.md
 
-# 用户手册
+# 用户手册（通用规则，各 persona 均可放行）
 !*/USER-MANUAL.md
 
 # 项目蓝图（架构入口）
 !ptm-team-blueprint.md
 
-# 组件手册（主流程 + Skill 调用关系）
-!ptm-tde/component-manual.md
-
-# Gate & Checkpoint 规约（安全门控）
+# ptm-tde 组件规约类交付文档
+!ptm-tde/RELEASE-NOTES.md
+!ptm-tde/skill-references.md
 !ptm-tde/gate-spec.md
 !ptm-tde/checkpoint-spec.md
-
-# Skill 映射表（运行时依赖清单）
-!ptm-tde/skill-references.md
-
-# 运行产物契约（产物目录结构）
+!ptm-tde/component-manual.md
 !ptm-tde/runtime-artifacts.md
+!ptm-tde/data-flow-spec.md
 
 # 部署检查清单（安装安全验证）
 !release/DEPLOY-CHECKLIST.md
+
+# 质量运营仪表盘
+!quality/EVAL-RELEASE-CHECK.md
+!quality/EVAL-SUITE-HEALTH.md
+!quality/FIELD-QUALITY-DASHBOARD.md
+
+# 注：docs/design、docs/product、docs/features 是指向 meta-flow-artifacts 的
+# ignored symlink，被上方 * 规则自动忽略，无需额外规则。

@@ -1504,3 +1504,45 @@
 - 确认 checkpoint-manager 公共因子库检查补充中 GATE-4 条目已引用 P5
 - 确认未引入新的 Gate 编号（GATE-1~GATE-5 体系不变）
 2026-06-05/06 | user + meta-po（po-zhao） | 根因分析 + CR 创建：发现 m-analyzer 两类资源消费缺口——① atomic-ops 库 74 个 op 完全未查询（CR-016），② 因子库 9 个只扫了 2 个（CR-017）。同一根因：m-analyzer 消费表声明消费 X但未提供发现/查询 X 的机制。CR-016 需等 atomic-ops 仓库 P0+P1（list 输出增加 tags + parameters_summary），CR-017 无外部依赖可立即启动。两 CR 共享 Step 1.5 资源发现设计模式，推荐 CR-017 先于 CR-016。双 CR 合计 7 项待人工决策 + 4 项历史 CP8 待处理。恢复入口：@meta-po 推进，读取 STATE.md pending_gate 和 pending_decision_ids。
+
+---
+
+## docs 重组：交付文档与过程文档分离（2026-07-09）
+
+**执行时间**：2026-07-09
+**执行模式**：host-orchestrator 直接执行（用户显式调度）
+**背景**：ptm-team/docs/ 混杂交付文档与过程产物，按双项目归档策略分离
+
+### 决策
+
+- **交付文档（20 个）留 ptm-team/docs/**：README、USER-MANUAL、RELEASE-NOTES、组件规约（skill-references/gate-spec/checkpoint-spec/component-manual/runtime-artifacts/data-flow-spec）、质量运营仪表盘（EVAL-*/FIELD-*）、DEPLOY-CHECKLIST
+- **过程文档（25 个）移 meta-flow-artifacts/docs/ptm-team/**：design/（4）、product/（7）、quality 过程报告（4）、release/FEEDBACK（1）、ptm-tde 设计产物（7）、ptm-te 草案（2）
+
+### 分类标准
+
+- 交付文档：使用者/维护者持续查阅，或被运行时 Skill/Agent/安装器引用
+- 过程文档：开发迭代快照，零运行时引用
+
+### 交叉引用处理
+
+- 全局核查：交付文档零引用过程文件路径，无断链
+- data-flow-spec.md 原计划移走，因 skill-references.md 引用改为保留
+- component-manual.md / runtime-artifacts.md 与 skill-references.md 同属组件规约类，同进同退保留
+
+### 连接机制（ignored symlink 保持旧路径可读）
+
+- **纯过程目录（3 个目录级 symlink）**：`docs/design`、`docs/product`、`docs/features` 整目录 symlink，路径 `../../meta-flow-artifacts/docs/ptm-team/<dir>`
+- **混合目录（12 个文件级 symlink）**：`quality/`（4）、`release/`（1）、`ptm-tde/`（7）含交付文件不能整目录 symlink，改为逐文件 symlink，路径 `../../../meta-flow-artifacts/docs/ptm-team/<dir>/<file>`（比目录级深一层）
+- **纯交付目录**：`ptm-qa/`、`ptm-tae/`、`ptm-te/`、`ptm-tm/`、`ptm-tse/` 无过程文件，无需 symlink
+- 全部 15 个 symlink 被 `*` 规则自动忽略，git 不跟踪，git status 不受影响
+
+### 路由元数据
+
+- artifact repo: `docs/ptm-team/.meta-flow-docs.yaml`（routing_mode=symlink，retained_in_source 记录 20 个交付文件）
+- process symlink: `process/ -> ../meta-flow-artifacts/process/ptm-team/`（不变，运行时状态归档）
+
+### .gitignore 变更
+
+- 保留通用 `!*/README.md`、`!*/USER-MANUAL.md` 规则
+- 新增 `!ptm-tde/RELEASE-NOTES.md`、`!ptm-tde/data-flow-spec.md`
+- 移除已迁走的 component-manual/runtime-artifacts 白名单（注：后修正为保留，两者仍为交付文档）
