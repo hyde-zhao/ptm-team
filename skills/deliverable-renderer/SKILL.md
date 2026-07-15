@@ -132,10 +132,10 @@ status: active
 
 **汇总规则**：
 
-1. 遍历 `ppdcs/pc/*.md`，优先从 PC 的结构化字段（`physical_case_id / logic_case_id / case_steps / action_source_refs / topology_bindings / fact_status`）装配 PC 行；不得把已有 Markdown 表格行作为唯一事实源直接拼接
+1. 遍历 `ppdcs/pc/*.md`，优先从 PC 的结构化字段（`physical_case_id / logic_case_id / case_title / case_steps / action_source_refs / topology_bindings / fact_status`）装配 PC 行；"用例名称*"列必须取自 `case_title`，不得用 `physical_case_id` 兜底；不得把已有 Markdown 表格行作为唯一事实源直接拼接
 2. 按 `三级目录 → 四级目录 → 五级目录 → 用例编号` 排序
 3. 同一 LC 的 PC 行连续排列，中间不插入分页或重复表头
-4. PC 行中 `fact_status=needs-confirmation` 的，在用例名称末尾追加 ` ⚠️待确认`
+4. "用例名称*"列取 `case_title`；PC 缺失 `case_title` 时输出 `⚠️pc_name_gap` 并在汇总表后追加缺失清单，不得用 `physical_case_id` 静默填充；`fact_status=needs-confirmation` 的在用例名称末尾追加 ` ⚠️待确认`
 5. `测试步骤*` 列必须由 PC `case_steps` 渲染；每一步同时展示步骤名称和原子操作
 6. 所有 Markdown 表格单元格中的 `|` 必须转义为 `\|`；多行内容必须使用 `<br>`，不得在表格行中写裸换行
 7. 汇总表表头只出现一次，放在全文最前；表头必须等于标准 16 列，所有数据行必须恰好 16 列
@@ -149,9 +149,13 @@ step_id: STEP-001
 step_name: 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
 target: DUT
 atomic_op:
-  op_id: config-policy-route
+  op_id: fw_config_policy_route
   args:
-    src-addr: OBJ_SRC_WEB
+    source_network: OBJ_SRC_WEB
+  preconditions:          # op 级：透传自 op yaml inputs.preconditions
+    - External orchestration holds a valid session_ref.
+step_preconditions:        # step 级：用例自填的前置数据/状态
+  - 源地址对象 OBJ_SRC_WEB 已创建
 expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
 ```
 
@@ -160,13 +164,13 @@ expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
 ```text
 1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
    执行对象：DUT
-   原子操作：config-policy-route src-addr=OBJ_SRC_WEB
+   原子操作：fw_config_policy_route source_network=OBJ_SRC_WEB
 ```
 
 Markdown 表格单元格中使用 `<br>` 换行：
 
 ```text
-1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB<br>执行对象：DUT<br>原子操作：config-policy-route src-addr=OBJ_SRC_WEB
+1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB<br>执行对象：DUT<br>原子操作：fw_config_policy_route source_network=OBJ_SRC_WEB
 ```
 
 规则：
@@ -174,7 +178,16 @@ Markdown 表格单元格中使用 `<br>` 换行：
 - `atomic_op.op_id` 必须进入 `action_source_refs`；
 - 缺 `step_name`、缺 `atomic_op` 或 `atomic_op` 无法回链时，在交付物中显式输出 `pc_step_contract_gap`，不得静默省略；
 - 若存在 `pc_step_contract_gap`，GATE-4 不得通过；必须回到 PC 生成阶段补齐步骤契约或显式变更范围；
-- 最终 16 列表不新增“步骤名称”列，避免破坏既有交付格式。
+- 最终 16 列表不新增"步骤名称"列，避免破坏既有交付格式。
+
+**PC 预置条件渲染规则**（[CR-026] P1-4）：
+
+16 列表"预置条件"列由 PC `case_steps` 的两层 preconditions 并集渲染，与"测试步骤*"列同样从结构化字段渲染，不得手工填：
+
+- `atomic_op.preconditions`（op 级）：透传自 op yaml `inputs.preconditions`，表达 op 执行硬前置（session/参数合法性）；
+- `step_preconditions`（step 级）：用例自填，表达步骤执行前的前置数据/状态（如"对象 OBJ_SRC_WEB 已创建""策略路由 ID=pr-001 已存在"）。
+
+渲染到"预置条件"列：按 step 聚合，`atomic_op.preconditions` + `step_preconditions` 用 `<br>` 分隔；多步骤的 preconditions 合并去重后填入单元格。`fact_status=needs-confirmation` 的前置条件追加 ` ⚠️待确认`。
 
 #### 3b. 各 LC 详情（全文后部）
 
@@ -346,6 +359,8 @@ Markdown 表格单元格中使用 `<br>` 换行：
 - [ ] 汇总表 `测试步骤*` 列由 `case_steps` 渲染，每一步同时包含步骤名称和 `原子操作：<op_id> <args...>`
 - [ ] 各 LC 详情不重复渲染 PC 表（改为 PC 编号引用行）
 - [ ] `fact_status=needs-confirmation` 的 PC 在用例名称末尾标注 ` ⚠️待确认`
+- [ ] "用例名称*"列取自 PC `case_title`，confirmed 行的用例名称不得等于用例编号（`physical_case_id`）
+- [ ] 缺失 `case_title` 的 PC 在用例名称列显式标注 `⚠️pc_name_gap`，不静默用 `physical_case_id` 占位
 - [ ] 原子操作候选对比表包含 op_id、描述、match_attempt（L1-L4+score）、现有库匹配、匹配结果 ✅/⚠️/❌、来源场景；按 未匹配→已匹配 排序
 - [ ] 原子操作候选对比表表后摘要含统计（总计/已匹配/部分匹配/未匹配）+ 未匹配列表 + 建议提交 ptm-tae
 - [ ] 原子操作候选无数据时不生成空表，输出"未发现新候选"

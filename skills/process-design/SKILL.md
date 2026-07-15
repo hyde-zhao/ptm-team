@@ -184,7 +184,7 @@ PC 由 `覆盖策略选中的 path × data_overlay_set` 生成。
 | `logic_case_id` | 所属 LC |
 | `requirement_ids` | 关联需求 / SR |
 | `feature_tags` | 功能分类标签 |
-| `case_title` | 用例标题 |
+| `case_title` | 必填结构化字段；业务可读自然语言；不得等于 `physical_case_id` 或其子串；不得为空；同 LC 内唯一（可区分不同规则/分支）；无法生成时标注 `case_title_gap` 并说明原因，不得用 PC-ID 占位 |
 | `priority` | 优先级 |
 | `preconditions` | 前置条件 |
 | `case_steps` | 结构化步骤清单；每步必须包含 `step_name` 与 `atomic_op` |
@@ -203,6 +203,13 @@ PC 由 `覆盖策略选中的 path × data_overlay_set` 生成。
 
 > 若某条 PC 依赖未确认路径条件或未确认 TD，`test_steps / expected_results / trigger_data` 必须显式保留 `[待确认]`，不得写成确定语气。
 
+**case_title 生成规则**（process-design 方法特定）：
+
+- 格式：`<路径类型>-<流程语义>`
+- 示例：`正常路径-批量创建100条并分页查询启停删除全流程`、`异常路径-并发冲突下的状态回滚`
+- 禁止用 `physical_case_id` 或 `path_id` 占位；禁止保留路径表内部编号（如 `P1-Step3:`）作为标题主体
+- 同 LC 内多条路径 PC 的 case_title 必须可区分（不同路径类型或不同分支）
+
 **PC 步骤结构化契约**：
 
 ```yaml
@@ -211,9 +218,13 @@ case_steps:
     step_name: 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
     target: DUT
     atomic_op:
-      op_id: config-policy-route
+      op_id: fw_config_policy_route
       args:
-        src-addr: OBJ_SRC_WEB
+        source_network: OBJ_SRC_WEB
+      preconditions:          # op 级：透传自 op yaml inputs.preconditions
+        - External orchestration holds a valid session_ref.
+    step_preconditions:        # step 级：用例自填的前置数据/状态
+      - 源地址对象 OBJ_SRC_WEB 已创建
     expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
     trace_refs:
       - TP-001
@@ -225,7 +236,7 @@ case_steps:
 ```text
 1. 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
    执行对象：DUT
-   原子操作：config-policy-route src-addr=OBJ_SRC_WEB
+   原子操作：fw_config_policy_route source_network=OBJ_SRC_WEB
 ```
 
 规则：
@@ -354,3 +365,4 @@ flowchart TD
 - [ ] 输出采用 `ppdcs/ppdcs/<basename>.md` 与 `ppdcs/pc/<basename>.md`
 - [ ] 已消费 LC `topology_bindings`；真实端口物化保留来源和 `fact_status`，且未进入 factor/data/state value
 - [ ] 每条 PC 的 `case_steps` 均包含 `step_name`、`atomic_op.op_id`、`atomic_op.args` 与步骤级 `expected_result`
+- [ ] 每条 PC 含非空 `case_title`，且不等于 `physical_case_id`；同 LC 内唯一

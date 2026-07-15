@@ -25,7 +25,7 @@ skills/checkpoint-manager/scripts/run_checkpoint.py
 
 不得把 checkpoint 脚本放到仓库根 `scripts/`。
 
-当前脚本执行的是 **machine-baseline + 字段级结构检查**：除目录和文件存在性外，还会检查关键字段是否存在，例如 GATE-2 的 `normal_path / abnormal_path / action_source_refs / confirmation_gaps`，并逐 `scenario_id` / 场景标题校验每条 confirmed scenario 的正常链、异常链、逐步骤原子操作回链、`minimal_logic_chain` 和 atomic/action 来源；GATE-3 的 CAE、trace、`factor_bindings / topology_bindings`、PPDCS 方法字段，以及候选测试因子 / 候选原子操作的用户确认状态；GATE-4 的标准 16 列 PC 表、`case_steps`、`atomic_op.op_id`、`action_source_refs` 回链和交付 trace 字段。语义质量、风险接受和业务合理性仍由独立 manual Gate 草稿承载。
+当前脚本执行的是 **machine-baseline + 字段级结构检查**：除目录和文件存在性外，还会检查关键字段是否存在，例如 GATE-2 的 `normal_path / abnormal_path / action_source_refs / confirmation_gaps`，并逐 `scenario_id` / 场景标题校验每条 confirmed scenario 的正常链、异常链、逐步骤原子操作回链、`minimal_logic_chain` 和 atomic/action 来源；GATE-3 的 CAE、trace、`factor_bindings / topology_bindings`、PPDCS 方法字段，以及候选测试因子 / 候选原子操作的用户确认状态；GATE-4 的标准 16 列 PC 表、`case_title`、`case_steps`、`atomic_op.op_id`、`action_source_refs` 回链和交付 trace 字段，且 `case_title` 不得等于 `physical_case_id`。语义质量、风险接受和业务合理性仍由独立 manual Gate 草稿承载。
 
 ---
 

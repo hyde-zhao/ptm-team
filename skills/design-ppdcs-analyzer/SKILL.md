@@ -149,9 +149,13 @@ case_steps:
     step_name: 配置策略路由的匹配源地址对象 OBJ_SRC_WEB
     target: DUT
     atomic_op:
-      op_id: config-policy-route
+      op_id: fw_config_policy_route
       args:
-        src-addr: OBJ_SRC_WEB
+        source_network: OBJ_SRC_WEB
+      preconditions:          # op 级：透传自 op yaml inputs.preconditions
+        - External orchestration holds a valid session_ref.
+    step_preconditions:        # step 级：用例自填的前置数据/状态
+      - 源地址对象 OBJ_SRC_WEB 已创建
     expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
     trace_refs:
       - TP-001

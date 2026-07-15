@@ -584,7 +584,11 @@ case_steps:
     atomic_op:
       op_id: fw_config_policy_route
       args:
-        src_addr: OBJ_SRC_WEB
+        source_network: OBJ_SRC_WEB
+      preconditions:          # op 级：透传自 op yaml inputs.preconditions
+        - External orchestration holds a valid session_ref.
+    step_preconditions:        # step 级：用例自填的前置数据/状态
+      - 源地址对象 OBJ_SRC_WEB 已创建
     expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
 ```
 
@@ -592,7 +596,21 @@ case_steps:
 - `step_name` 表达测试动作意图，不能只复制 `atomic_op.op_id`。
 - `atomic_op.op_id` 必须同步进入 PC 的 `action_source_refs`。
 - `测试步骤*` 单元格必须渲染出 `原子操作：<op_id> <args>`，不得只保留自然语言步骤。
-- 缺 `case_steps`、缺 `step_name`、缺 `atomic_op.op_id` 或 op_id 无法回链 `action_source_refs` 时，GATE-4 必须阻断。
+- 缺 `case_steps`、缺 `step_name`、缺 `atomic_op.op_id`、op_id 无法回链 `action_source_refs`，或 op_id 未命中 `ptm-atomic list` 真实清单且未登记为候选原子操作时，GATE-4 必须阻断。
+- `atomic_op.op_id` 必须从 ptm-atomic 真实清单选取，**禁止自行发明或凭记忆命名**。步骤：① `ptm-atomic list --format json` 按语义关键词定位候选 op_id；② `ptm-atomic show <op_id>` 核对 `description` 与 `inputs.params`；③ 无法命中时写入 `candidate-ptm-atomic.yaml` 走 ptm-tae 候选流程，不得在 PC 里自创 op_id。
+- **op_id 前缀语义**（非穷举，以 op yaml `description`/`side_effect` 为准）：`capture_*`=抓取/采集日志（observation，如 `fw_capture_operation_log`）、`verify_*`=校验状态（observation，如 `fw_verify_policy_route`）、`config_*/update_*/delete_*`=状态变更/破坏性、`login_*`=建立 session、`check_*`=只读查询、`reset_*`=不可逆重置。**禁令**：抓取/采集日志类操作必须使用 `capture_*` 前缀，禁止误用 `verify_*` 前缀（如 `fw_verify_operation_log` 为错误命名，正确为 `fw_capture_operation_log`）。
+- `args` 字段名必须从 ptm-atomic op yaml 的 `inputs.params` 查询获取，**禁止自行发明或凭记忆命名**。步骤：① `ptm-atomic show <op_id>` 获取 `inputs.params` 字段名（ptm-tde 仓库无 atoms/fw/ 副本，一律通过运行时 CLI 访问，禁止拷贝或跨仓库软链）；② `args` 的 key 必须与 `inputs.params` 字段名完全一致（snake_case），不得使用别名、缩写或 kebab-case（如 `src_addr`/`src-addr` 不得代替 `source_network`）。op yaml 是 args 字段名的唯一真相源。
+- **preconditions 双层**（[CR-026] P1-4）：
+  - `atomic_op.preconditions`（op 级）：透传自 op yaml `inputs.preconditions`（通过 `ptm-atomic show <op_id>` 获取），表达 op 执行的硬前置（如 session 已建立、timetype=custom 须带 starttime/endtime）；op yaml 无 preconditions 时可省略。
+  - `step_preconditions`（step 级）：用例自填，表达测试步骤执行前的前置数据/状态（如"源地址对象 OBJ_SRC_WEB 已创建""策略路由 ID=pr-001 已存在"）。
+  - 16 列表"预置条件"列由 `atomic_op.preconditions` + `step_preconditions` 并集渲染。
+  - **三者正交**：`atomic_op.preconditions`=op 执行前置（session/参数合法性，透传 op yaml）；`step_preconditions`=用例数据前置（前置数据/状态，用例自填）；`depends_on`（见 P1-3）=step 间控制流依赖（STEP-2 取 STEP-1 产出的 id）。分别管 op/数据/控制流三个维度，不得混用。
+- 缺 `atomic_op.preconditions`（op yaml 有定义时）或 preconditions 与 op yaml 不一致时，GATE-4 必须阻断。
+- **args 可执行四约束**（[CR-026] P1-3）：
+  - ①具体值：`args` 值禁止占位（`<xxx>`/`TBD`/`待填`），必须实例化（如 `source_network: OBJ_SRC_WEB`，非 `source_network: <待填>`）；`[待确认]` 是合法 needs-confirmation 标记（须配 `fact_status=needs-confirmation`，GATE-4 追加 ⚠️待确认），不算占位符；含非法占位符时 GATE-4 阻断。
+  - ②完整性：`args` 必须覆盖 op yaml 中 `required: true` 的业务参数；通过 `ptm-atomic show <op_id>` 取 `parameters` 的 required 集合做差集，缺失 required 参数时 GATE-4 阻断（嵌套型 `params` 容器整体 required 时，业务参数 required 从 `description` 推断或人工确认，降级为 warning）。
+  - ③语义对齐：`args` 值类型对齐 op yaml `parameters.*.type` 与 `description`；对象名参数填对象名（`OBJ_SRC_WEB`）非裸 CIDR，IP 参数填 IP，枚举参数取合法值；不一致时 GATE-4 阻断。
+  - ④`depends_on`：step 间产出依赖显式声明（如 STEP-002 取 STEP-001 产出的 `id`，须写 `depends_on: STEP-001` + 取值来源）；`depends_on` 与 `preconditions`/`step_preconditions` 正交（见前述三者正交说明）。
 
 ## 追踪链
 
@@ -622,7 +640,7 @@ v2 追踪链:
 | Model(LC) → Factor | 已有（隐式） | Factor 作为显式节点（factor_type 标注） | 后续因子库 CR |
 | Factor → CAE-R | 已有（CAE） | CAE → CAE-R（增加 R 追溯） | CR-012/013 |
 | CAE-R → PC | 已有（CAE → PC） | CAE-R 实例化为 PC | CR-013 |
-| PC → 原子操作 | 已实现（CR-019） | PC `case_steps[].atomic_op.op_id` 显式映射原子操作并回链 `action_source_refs` | CR-019 / CR-018 P3 |
+| PC → 原子操作 | 已实现（CR-019 + CR-026） | PC `case_steps[].atomic_op.op_id` 显式映射原子操作并回链 `action_source_refs`；case_steps → 16 列渲染已闭环（deliverable-renderer）；GATE-4 P2 已纳入 op_id 命中校验 + args 占位符/preconditions 透传校验 | CR-019 / CR-018 P3 / CR-026 |
 
 > **CR-011 定位**：CR-011 覆盖追踪链最前端（需求文档 → KYM → 场景发现），确立 KYM 产出作为所有下游消费的起点。
 
