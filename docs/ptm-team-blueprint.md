@@ -61,7 +61,7 @@ Step 1                   Step 2                   Step 3                   Step 
       当前阶段
 
 Agent 就绪:
-tde ✓ + te 🔄 + tae 🔄    三大 Agent 持续优化       +tm +tse +qa 补齐六大     全自动闭环
+tde ✓ + te ⬜ + tae 🔄(38%)   三大 Agent 持续优化       +tm +tse +qa 补齐六大     全自动闭环
 ```
 
 ---
