@@ -14,6 +14,8 @@
 | v1.9 | 2026-06-12 | current Codex session | [CR-018 P3 / CR-019 follow-up] GATE-4 PC 检查升级为标准 16 列表头、逐行恰好 16 列、`case_steps`、`atomic_op.op_id` 与 `action_source_refs` 回链检查 |
 | v1.10 | 2026-06-12 | current Codex session | [CR-018 P4] GATE-2 machine-baseline 增加逐场景正常链 / 异常链契约检查，避免 confirmed-scenarios 只有文件级字段或缺失链路仍通过 |
 | v1.11 | 2026-06-12 | current Codex session | [CR-018 P5] GATE-2 增加正常/异常链逐步骤原子操作回链检查；GATE-3 增加候选测试因子和候选原子操作用户确认状态检查 |
+| v1.12 | 2026-07-13 | host-orchestrator（主进程） | [CR-026] GATE-4 P2 扩展：`atomic_op.op_id` 必须命中 `ptm-atomic list --format json` 真实清单（ptm-atomic 不可用时降级 warning，不阻断）；配套 ptm-tde.md 新增 op_id 选择规则与前缀语义（capture/verify 禁令） |
+| v1.13 | 2026-07-14 | host-orchestrator（主进程） | [P1-6 整改] 用例名称规范断裂根治：5 个 PPDCS 设计 SKILL 统一 `case_title` 必填结构化字段与方法生成规则；deliverable-renderer 字段清单追加 `case_title`、渲染规则禁止用 PC-ID 兜底并暴露 `⚠️pc_name_gap`；GATE-4 P2/P7 增加每条 PC `case_title` 非空且不等于 `physical_case_id` 的完整性卡口；GATE-5 增加用例名称不得等于用例编号的交付卡口 |
 
 ## 概述
 
@@ -73,7 +75,7 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 - GATE-2：`confirmed-scenarios.md` 必须包含输入分类、`normal_path`、`abnormal_path`、`action_source_refs`、`confirmation_gaps`、`minimal_logic_chain` 等可消费字段；自动 Gate 还会按 `scenario_id` / 场景标题逐场景校验 `normal_path` 字段集、合法 `necessity`、`abnormal_path.related_normal_steps` 或明确 N/A 理由、`minimal_logic_chain` 和 atomic/action 来源，并阻断正常链 / 异常链中缺少步骤级原子操作引用或无法回链 `action_source_refs` 的条目。不能只在文件级出现关键词。
 - GATE-3：M/F/Q 测试点必须包含 CAE 字段和 trace / 耦合 / 质量维度；LC 必须包含 `source_tp_ids`、`factor_bindings`、`topology_bindings`；设计计划必须包含 LC 与 PPDCS 方法字段。
 - GATE-3：若存在候选测试因子或候选原子操作来源文件，必须存在 `mfq/candidates/` 下的候选汇总文件。候选归集可先写 `decision=pending-review`，但 pending 只表示待评审；通过态门禁必须逐项包含最终 `decision=confirmed/rejected/modified` 或等价确认结果，缺最终确认结果时不得发起通过态门禁。
-- GATE-4：PC 必须包含标准 16 列 Markdown 表头，所有数据行必须恰好 16 列；`测试步骤*` 必须渲染 `原子操作：<op_id>`；PC 源文件必须包含 `case_steps[].step_name`、`case_steps[].atomic_op.op_id`，且 op_id 必须回链到 `action_source_refs`；交付测试用例必须只有一张标准 16 列 PC 汇总表，并保留 `logic_case_id`、`physical_case_id`、`case_steps`、`action_source_refs` 和 trace / topology / fact status 字段。
+- GATE-4：PC 必须包含标准 16 列 Markdown 表头，所有数据行必须恰好 16 列；`测试步骤*` 必须渲染 `原子操作：<op_id>`；PC 源文件必须包含 `case_title`、`case_steps[].step_name`、`case_steps[].atomic_op.op_id`，且 op_id 必须回链到 `action_source_refs`，且 `case_title` 不得等于 `physical_case_id`；交付测试用例必须只有一张标准 16 列 PC 汇总表，并保留 `logic_case_id`、`physical_case_id`、`case_title`、`case_steps`、`action_source_refs` 和 trace / topology / fact status 字段。
 
 这些检查仍属于 machine-baseline：只能证明结构上可消费，不能替代 GATE-2/3/4 的人工语义确认。
 
@@ -320,12 +322,12 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 | # | 检查项 | 通过条件 |
 |---|--------|----------|
 | P1 | PPDCS 设计过程完整 | `ppdcs/ppdcs/` 下每个 LC 都有设计过程文件，PPDCS 方法与 plan 推荐一致 |
-| P2 | PC 文件完整 | `ppdcs/pc/` 下每个 LC 都有物理用例文件；PC 表头等于标准 16 列，所有数据行恰好 16 列；每条 PC 包含 `case_steps`，每一步同时包含 `step_name` 与 `atomic_op.op_id`，且 op_id 回链到 `action_source_refs` |
+| P2 | PC 文件完整 | `ppdcs/pc/` 下每个 LC 都有物理用例文件；PC 表头等于标准 16 列，所有数据行恰好 16 列；每条 PC 包含 `case_steps`，每一步同时包含 `step_name` 与 `atomic_op.op_id`，且 op_id 回链到 `action_source_refs`；`atomic_op.op_id` 必须命中 `ptm-atomic list --format json` 真实清单（ptm-atomic 不可用时降级 warning，不阻断；未命中且未登记为候选 -> FAIL）；`atomic_op.preconditions`（op 级）在 op yaml 有定义时必须透传，`step_preconditions`（step 级）允许用例自填，16 列表"预置条件"列由两者并集渲染；`args` 值禁止占位符（`<xxx>`/`TBD`/`待填`；`[待确认]` 为合法 needs-confirmation 标记，须配 `fact_status=needs-confirmation`），必须覆盖 op yaml required 业务参数（`ptm-atomic show <op_id>` 取 required 集合做差集，嵌套型降级 warning），值类型对齐 op yaml `parameters.*.type`；每条 PC 必须含非空 `case_title` 且不得等于 `physical_case_id`（缺失计入 `pc_name_gap`，缺失项数=0 方可放行） |
 | P3 | PC 拓扑绑定回链 | PC 中所有真实设备、端口、链路能回链到 LC `topology_bindings` → `kym/scenarios/confirmed-scenarios.md` |
 | P4 | 双层覆盖率验证 | `ppdcs/coverage/` 存在覆盖率报告：需求覆盖 = 100%，测试点覆盖 ≥ 95% |
 | P5 | 因子覆盖验证 | 所有 `factor_bindings` 的因子在 PC 中有覆盖 |
 | P6 | 交付物完整 | `ppdcs/delivery/` 包含测试方案和测试用例；测试用例全文只有一张标准 16 列 PC 汇总表，且 `测试步骤*` 单元格包含 `原子操作：<op_id>` |
-| P7 | 交付物字段保留 | 交付物保留 `logic_case_id / physical_case_id / case_steps / action_source_refs / topology_bindings / topology_role / source / fact_status` |
+| P7 | 交付物字段保留 | 交付物保留 `logic_case_id / physical_case_id / case_title / case_steps / action_source_refs / topology_bindings / topology_role / source / fact_status` |
 
 ### 人工确认项
 
@@ -373,6 +375,7 @@ GATE-2 / GATE-3 / GATE-4 的自动自检必须读取当前 `feature_workspace_ro
 | 2 | 交付字段保留 | 交付物保留 `topology_bindings / topology_role / source / fact_status` | 渲染前修正字段 |
 | 3 | 公共库记录 | 测试方案记录公共库 `library_id / version / checksum` 和样本策略摘要 | 缺失时补充 |
 | 4 | 不可提升状态 | 交付物中 `needs-confirmation` 未被提升为 `confirmed` | 发现提升时修正 |
+| 5 | 用例名称语义 | 交付测试用例"用例名称*"列不得等于"用例编号"列（PC-ID）；缺失 `case_title` 显式标注 `⚠️pc_name_gap` | 渲染前回 PC 补 `case_title` |
 
 ### Exit Criteria
 

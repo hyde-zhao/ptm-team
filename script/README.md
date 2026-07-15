@@ -48,6 +48,21 @@ uv run python script/install.py uninstall claude --skill
 uv run python script/install.py uninstall claude --dry-run
 ```
 
+### 重装
+
+`reinstall` = 先 `uninstall` 再 `install`，用于 agent 资产更新后干净重装：先按 manifest 卸载旧文件 / 规则块 / skills（保留其他平台共享的规则块），再重新安装。未安装时自动跳过卸载、直接安装。
+
+```shell
+# 重装指定 agent（支持别名，如 te -> ptm-te）
+uv run python script/install.py reinstall claude --agent ptm-tde
+uv run python script/install.py reinstall claude --agent te
+
+# 预览模式
+uv run python script/install.py reinstall claude --agent ptm-tde --dry-run
+```
+
+相比直接重复 `install`，`reinstall` 会先卸载已移除的旧资产，并避免 manifest 条目重复累积。
+
 ### 列出已安装内容
 
 ```shell

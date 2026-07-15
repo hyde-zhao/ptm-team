@@ -170,6 +170,25 @@ P-Parameter 是 PPDCS 五特征之一：
 
 ### 第五步：物理用例输出
 
+**PC 结构化字段**（必填，交付装配的结构化事实源）：
+
+| 字段 | 说明 |
+|------|------|
+| `physical_case_id` | 物理用例编号 |
+| `logic_case_id` | 所属 LC |
+| `case_title` | 必填；业务可读自然语言；不得等于 `physical_case_id` 或其子串；不得为空；同 LC 内唯一；无法生成时标注 `case_title_gap` 并说明原因，不得用 PC-ID 占位 |
+| `case_steps` | 结构化步骤清单 |
+| `action_source_refs` | ptm-atomic `op_id` |
+| `fact_status` | `confirmed / needs-confirmation` |
+
+**case_title 生成规则**（parameter-design 方法特定）：
+
+- 格式：`<操作语义>-<条件因子取值>-<预期>`，如 `创建策略路由-有效参数-策略ID不存在-创建成功`
+- 禁止保留判定表内部编号（如 `Rule R1:`）作为标题主体；禁止用 `physical_case_id` 占位
+- 同 LC 内多条规则 PC 的 case_title 必须可区分（不同规则或不同条件因子取值）
+
+16 列表"用例名称*"列必须取自 `case_title`，不得用 `physical_case_id` 兜底。
+
 PC 必须保留 `case_steps` 结构化步骤清单，并将其渲染到 16 列表的 `测试步骤*` 列。每一步必须同时包含：
 
 - `step_name`：面向测试人员的动作意图；
@@ -273,3 +292,4 @@ ppdcs/pc/<basename>.md
 - [ ] 物理用例以 16 列表格输出，且可回链到 `rule_id / td_refs / factor_refs`
 - [ ] factor catalog 只包含测试因子；拓扑角色和真实组网对象已进入 topology binding catalog，真实端口未进入参数值域或判定条件
 - [ ] 每条物理用例包含 `case_steps`，并在 `测试步骤*` 中渲染步骤名称与原子操作
+- [ ] 每条物理用例含非空 `case_title`，且不等于 `physical_case_id`；同 LC 内唯一；16 列表"用例名称*"列取自 `case_title`

@@ -193,6 +193,9 @@ cython_debug/
 process/*
 process.before-artifact-routing-*
 
+# ptm-te session 文件（run-id 隔离，仓库内禁止，P2-8）
+**/session*.json
+
 # Legacy checkpoints 目录 — 已迁移至 process/checkpoints/
 checkpoints/*
 

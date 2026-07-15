@@ -50,16 +50,21 @@ MANIFEST_FILENAME = ".ptm-team-manifest.json"
 RESOURCE_HOME_ENV = "PTM_TEAM_RESOURCE_HOME"
 DEFAULT_RESOURCE_HOME = Path.home() / ".ptm-team" / "resource"
 PTM_TDE_RULE_BLOCK_ID = "ptm-tde-workflow"
-PTM_TDE_RULE_FILES = {
+PTM_TE_RULE_BLOCK_ID = "ptm-te-workflow"
+# 平台 -> 规则文件名映射（ptm-tde 与 ptm-te 共用同一文件）
+RULE_FILES = {
     "claude": "CLAUDE.md",
     "codex": "AGENTS.md",
     "qoder": "AGENTS.md",
 }
+PTM_TDE_RULE_FILES = RULE_FILES  # legacy 兼容别名
 
 # Agent aliases
 AGENT_ALIASES = {
     "tde": "ptm-tde",
     "ptm-tde": "ptm-tde",
+    "te": "ptm-te",
+    "ptm-te": "ptm-te",
 }
 
 # ptm-tde referenced skills (from docs/ptm-tde/skill-references.md)
@@ -88,6 +93,13 @@ PMT_TDE_SKILLS = [
     # Extension skills
     "change-impact-analyzer",
     "bug-gap-analyzer",
+]
+
+# ptm-te referenced skills（设备管理 + 策略路由执行）
+PTM_TE_SKILLS = [
+    "device-management",
+    "device-connection",
+    "policy-route-execution",
 ]
 
 # Platform directory mapping
@@ -408,6 +420,8 @@ def get_agent_skills(agent_name: str) -> list[str]:
     """Get the list of skills referenced by an agent."""
     if agent_name == "ptm-tde":
         return PMT_TDE_SKILLS
+    if agent_name == "ptm-te":
+        return PTM_TE_SKILLS
     return []
 
 
@@ -429,6 +443,38 @@ def render_ptm_tde_rule_body(platform: str) -> str:
 6. **Skill 证据**：声明某个 Skill 已执行时，必须更新 `feature_workspace_root/process/execution/SKILL-CALLS.yaml`，记录 `skill_name / input_refs / output_refs / status=completed / evidence_summary`；只创建 handoff 文件不等于目标 Skill 已完成。
 7. **人工确认**：遇到 Gate / 用户确认点时，按当前平台可用交互方式发起确认；无法使用结构化选择时，使用明确文本选项 `approve`、`修改: <具体修改点>`、`reject`。
 """
+
+
+def render_ptm_te_rule_body(platform: str) -> str:
+    """Render the short platform rule block installed with ptm-te."""
+    rule_file = RULE_FILES[platform]
+    sharing = sorted(p for p, f in RULE_FILES.items() if f == rule_file)
+    labels = {"claude": "Claude Code", "codex": "Codex", "qoder": "Qoder"}
+    platform_label = " / ".join(labels[p] for p in sharing)
+    return f"""## ptm-te 工作流程规则
+
+本项目安装了 `ptm-te` 测试执行工程师 Agent。{platform_label} 中执行 `ptm-te` / `te` 相关工作时必须遵守以下规则：
+
+1. **dry-run 默认门**：默认 `--dry-run`，不修改真实设备；`--execute` 写操作必须经用户单次授权（DQ-01），作为 `runtime_authorization` 决策项独立确认，设计通过不等于运行授权。
+2. **凭据安全**：`devices.yaml` 凭据用 `${{ENV_VAR}}` 占位，禁止明文入库；Web 密码经 `--password-env FW_WEB_PASSWORD` 传环境变量名，禁止命令行明文密码。
+3. **session 路径**：`--session-file` 必须写入 `~/.local/state/ptm-atomic/` 下，禁止写入仓库目录（ptm-atomic 拒绝 `RUNNER_SESSION_INVALID`）。
+4. **执行入口**：用例从 `cases/upload/<特性名>特性测试用例.md` 读取，不直接读 ptm-tde 的 `ppdcs/delivery/`。
+5. **op_id 未识别阻塞**：op_mapper 无映射时阻塞，`error_type=OP_NOT_FOUND`，不得跳过或猜测映射，反馈 ptm-tae。
+6. **id 来源**：`config` 创建策略路由的响应 `data.policy_route_id` 直接返回 id，`update`/`delete`/`reset-hitcount` 的 `--id` 优先从 config 响应取，verify 查询仅作兜底。
+7. **清理回滚**：`config` 的 inverse_op=`delete` 用 config 返回的 `policy_route_id` 清理；`irreversible` 类（reset-hitcount）不回滚，由用例设计接受；不得凭 op 名字推断 rollback 类型。
+"""
+
+
+# block_id -> render 函数（install/uninstall/check 通用，单点扩展）
+RULE_BLOCK_RENDERERS = {
+    PTM_TDE_RULE_BLOCK_ID: render_ptm_tde_rule_body,
+    PTM_TE_RULE_BLOCK_ID: render_ptm_te_rule_body,
+}
+# agent_name -> rule block_id
+AGENT_RULE_BLOCK = {
+    "ptm-tde": PTM_TDE_RULE_BLOCK_ID,
+    "ptm-te": PTM_TE_RULE_BLOCK_ID,
+}
 
 
 def managed_block_markers(block_id: str, commit: str, generated: str) -> tuple[str, str]:
@@ -818,12 +864,13 @@ def install_agent(
         installed_hash=sha256_text(rendered),
     ))
 
-    if agent_name == "ptm-tde":
-        rule_file = workspace_root / PTM_TDE_RULE_FILES[platform]
-        rule_body = render_ptm_tde_rule_body(platform)
+    rule_block_id = AGENT_RULE_BLOCK.get(agent_name)
+    if rule_block_id:
+        rule_file = workspace_root / RULE_FILES[platform]
+        rule_body = RULE_BLOCK_RENDERERS[rule_block_id](platform)
         upsert_managed_rule_block(
             rule_file,
-            PTM_TDE_RULE_BLOCK_ID,
+            rule_block_id,
             rule_body,
             commit,
             generated,
@@ -831,10 +878,10 @@ def install_agent(
         )
         entries.append(ManifestEntry(
             kind="rule",
-            name=f"{agent_name}:{PTM_TDE_RULE_BLOCK_ID}",
+            name=f"{agent_name}:{rule_block_id}",
             path=str(rule_file.relative_to(workspace_root)),
             remove_path=str(rule_file.relative_to(workspace_root)),
-            managed_block_id=PTM_TDE_RULE_BLOCK_ID,
+            managed_block_id=rule_block_id,
             source_hash=sha256_text(rule_body),
             installed_hash=sha256_text(rule_body),
             installed_for=[agent_name],
@@ -1334,8 +1381,12 @@ def current_source_hash(entry: dict, source_dir: Path, platform: str) -> str | N
     if kind == "skill":
         source = source_dir / "skills" / name
         return sha256_directory(source) if source.is_dir() else None
-    if kind == "rule" and entry.get("managed_block_id") == PTM_TDE_RULE_BLOCK_ID:
-        return sha256_text(render_ptm_tde_rule_body(platform))
+    if kind == "rule":
+        block_id = entry.get("managed_block_id", "")
+        renderer = RULE_BLOCK_RENDERERS.get(block_id)
+        if renderer:
+            return sha256_text(renderer(platform))
+        return None
     if kind == "resource":
         type_dir = {
             "factor-library": "factor-libraries",
@@ -1581,6 +1632,14 @@ def parse_args() -> argparse.Namespace:
     uninstall_parser.add_argument("--skill", action="store_true", help="卸载 skill (交互式)")
     uninstall_parser.add_argument("--dry-run", action="store_true", help="预览模式")
 
+    # reinstall subcommand: 先卸载再安装
+    reinstall_parser = subparsers.add_parser("reinstall", help="先卸载再安装 agent")
+    reinstall_parser.add_argument("platform", choices=VALID_PLATFORMS, help="目标平台")
+    reinstall_parser.add_argument("--agent", nargs="?", const="", help="reinstall agent (可指定名称)")
+    reinstall_parser.add_argument("--dry-run", action="store_true", help="预览模式")
+    reinstall_parser.add_argument("--no-recommended-resources", action="store_true", help="安装 agent 时跳过 recommended resources")
+    reinstall_parser.add_argument("--resource", action="append", default=[], help="安装 agent 时额外指定 resource id")
+
     # check subcommand
     check_parser = subparsers.add_parser("check", help="检查已安装资产是否漂移")
     check_parser.add_argument("platform", choices=VALID_PLATFORMS, help="目标平台")
@@ -1720,6 +1779,49 @@ def main() -> None:
 
         # Uninstall all
         uninstall_all(args.platform, workspace_root, manifest, args.dry_run)
+
+    elif args.command == "reinstall":
+        # reinstall = 卸载（若已安装）+ 安装
+        if args.agent is None:
+            fail("reinstall 目前仅支持 --agent，请指定 --agent <名称>")
+
+        agent_name = args.agent if args.agent else "ptm-tde"
+        agent_name = resolve_agent_name(agent_name)
+
+        # 1. 卸载：仅当该 agent 已安装时执行，避免 uninstall_agent 对"未找到记录"fail
+        existing = find_install_record(manifest, args.platform)
+        if existing and existing.get("status") == "installed" and any(
+            e.get("kind") == "agent" and e.get("name") == agent_name
+            for e in existing.get("entries", [])
+        ):
+            print(f"\n=== reinstall: 卸载 {agent_name} ===")
+            uninstall_agent(args.platform, agent_name, workspace_root, manifest, args.dry_run)
+        else:
+            print(f"未安装 {agent_name}，跳过卸载，直接安装")
+
+        # 2. 安装
+        print(f"\n=== reinstall: 安装 {agent_name} ===")
+        entries = install_agent(
+            args.platform, agent_name, source_dir, workspace_root,
+            commit, generated, args.dry_run,
+            include_recommended_resources=not args.no_recommended_resources,
+            explicit_resources=args.resource,
+        )
+
+        # 3. 更新 manifest（与 install 分支一致）
+        if not args.dry_run and entries:
+            record = find_install_record(manifest, args.platform) or {
+                "platform": args.platform,
+                "scope": "project",
+                "status": "installed",
+                "installed_at": generated,
+                "workspace_root": str(workspace_root),
+                "entries": [],
+            }
+            record["entries"].extend([manifest_entry_to_dict(e) for e in entries])
+            upsert_install_record(manifest, record)
+            save_manifest(manifest_path, manifest)
+        return
 
     elif args.command == "check":
         agent_name = ""
