@@ -25,7 +25,7 @@ downstream: [ptm-tae]
 | 编排模式 | 编排器，按 [1]-[8] 八步流程调度 3 个 skill 执行 |
 | 关联 Skill | `device-management`（设备元数据）、`device-connection`（SSH/Telnet + 快照）、`policy-route-execution`（策略路由 op 执行） |
 | 执行入口 | `cases/upload/<特性名>特性测试用例.md` |
-| 产物输出 | `runs/<run-id>/`（机器可读 `result.json` / `exec-log.jsonl` + 人类可读 `report.md`） |
+| 产物输出 | `runs/<run-id>/`（机器可读 `result.json` / `exec-log.jsonl` / `step-refs/` + 人类可读 `report.md`） |
 
 ## 编排流程
 
@@ -86,11 +86,12 @@ downstream: [ptm-tae]
 
 ### [4] 逐条原子操作执行
 
-- **动作**：对每条 `case_step`，调用 op_mapper 将 `op_id` + `args` 翻译为 CLI 子命令 + flag 参数，执行 `ptm-atomic run --base-url <url> --session-file <path> <family> <action> [flags]`
+- **动作**：对每条 `case_step`，调用 op_mapper 将 `op_id` + `args` 翻译为 CLI 子命令 + flag 参数，执行 `ptm-atomic run --base-url <url> --session-file <path> <family> <action> [flags]`。传入 `--step-id <step_id>` 和 `--step-refs-dir runs/<run-id>/step-refs/`，启用步骤间 `${STEP-N.id}` 自动插值与 step-refs 落盘。
 - **参数预检（P2-11）**：build_command 前调用 `validate_args`，静态校验占位符（`<xxx>`/`TBD`/`N/A`）、对象名格式（`source_network`/`dst_network` 非对象名非 CIDR/IP 报错）、IP 格式（`next_hop_ip`）。预检失败 -> `error_type=PARAM_INVALID`，不执行 op。引用对象存在性校验留 v2
+- **步骤间引用**：`args` 值可用 `${STEP-N.id}` 引用前序步骤解析出的 id（由 op_mapper 按被引步骤 op 的 `id_source` 声明自动解析，支持 response/args/query/placeholder 4 模式）；`${STEP-N.<field>}` 引用 envelope.data / args 字段。无需 LLM 手动提取 policy_route_id 填入下一步。
 - **执行模式**：默认 `--dry-run`；`--execute` 需单次授权（CP2 DQ-01，ADR-04）
 - **输出**：每条 op 的 envelope
-- **id 提取**：`fw_config_policy_route` 执行成功后，从 `envelope.data.policy_route_id` 提取新建的策略路由 id，传入后续 `update`/`delete`/`reset-hitcount` 的 `args.id`，以及 [7] `handle_rollback(result_envelope=...)` 作 inverse_op 清理 id
+- **id 回滚**：`handle_rollback` 逆操作通过 `ptm-atomic show` 读前向 op 的 `rollback_strategy.id_source` 声明，按 4 模式自动解析 id（取代旧的 `_extract_inverse_id` 硬编码字段查找）
 - **session 失效处理**：遇 `STATE_INVALID` -> 自动重新 `auth login` -> 重试当前 op（最多 1 次重试）
 - **异常路径**：`op_id` 未识别 -> 阻塞，`error_type=OP_NOT_FOUND`，提示工具缺失反馈 ptm-tae
 
@@ -138,7 +139,7 @@ ptm-te 消费**结构化 `case_steps`**（CR-019 契约），不消费 16 列 PC
 |------|------|------|
 | `step_name` | `case_steps[].step_name` | 测试动作意图（不能只复制 op_id） |
 | `op_id` | `case_steps[].atomic_op.op_id` | 原子操作标识（15 个 op_id 之一，5 族） |
-| `args` | `case_steps[].atomic_op.args` | 操作参数（ptm-tde PC 字段名，由 op_mapper 翻译） |
+| `args` | `case_steps[].atomic_op.args` | 操作参数（ptm-tde PC 字段名，由 op_mapper 翻译；值可含 `${STEP-N.id}` / `${STEP-N.<field>}` 占位符引用前序步） |
 | `expected_result` | `case_steps[].expected_result` | 预期结果（用于 [5] 结果判定比对） |
 
 PC 文件中 `case_steps` 的结构示例：
@@ -153,6 +154,17 @@ case_steps:
       args:
         source_network: OBJ_SRC_WEB
     expected_result: 策略路由规则成功引用源地址对象 OBJ_SRC_WEB
+  - step_id: STEP-002
+    step_name: 更新策略路由权重
+    target: DUT
+    depends_on: STEP-001
+    atomic_op:
+      op_id: fw_update_policy_route
+      args:
+        id: ${STEP-001.id}          # 自动按 fw_config_policy_route 的 id_source=response 解析 policy_route_id
+        type: ipv4
+        weight: 200
+    expected_result: 策略路由权重更新为 200
 ```
 
 ### envelope 契约
@@ -333,6 +345,8 @@ ptm-te 执行用例时的工作目录结构（用户工作区，不入库）：
         ├── parse-result.json # 用例解析结果（机器可读）
         ├── snapshot-before/  # 设备快照 before
         ├── exec-log.jsonl    # 逐条 op 执行日志（JSONL）
+        ├── step-refs/        # 步骤间引用数据包（${STEP-N.id} 插值来源）
+        │   └── <step_id>.json # {step_id, op_id, args, envelope}
         ├── snapshot-after/   # 设备快照 after
         ├── snapshot-diff.json # before/after 快照对比（P2-10）
         ├── result.json       # 用例结果回写（机器可读）
@@ -346,6 +360,7 @@ ptm-te 执行用例时的工作目录结构（用户工作区，不入库）：
 | `runs/<run-id>/parse-result.json` | 用例解析结果 | 写 | 编排流程 [1] 产出，机器可读 |
 | `runs/<run-id>/snapshot-before/` | 设备快照 before | 写 | 编排流程 [2] 产出，device-connection 采集 |
 | `runs/<run-id>/exec-log.jsonl` | 逐条 op 执行日志 | 写 | 编排流程 [6] 产出，JSONL 格式 |
+| `runs/<run-id>/step-refs/` | 步骤间引用数据包 | 写 | 编排流程 [6] 产出，每 step 一个 `<step_id>.json`（step_id / op_id / args / envelope），供 `${STEP-N.id}` 插值 |
 | `runs/<run-id>/snapshot-after/` | 设备快照 after | 写 | 编排流程 [8] 产出，device-connection 采集 |
 | `runs/<run-id>/snapshot-diff.json` | before/after 快照对比 | 写 | 编排流程 [8] 产出，P2-10；4 维度字段级 diff |
 | `runs/<run-id>/result.json` | 用例结果回写 | 写 | 编排流程 [8] 产出，机器可读 |

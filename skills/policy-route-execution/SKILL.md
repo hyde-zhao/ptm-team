@@ -187,7 +187,7 @@ ptm-atomic run --base-url https://<IP_ADDRESS> \
 
 | rollback 类型 | 策略 | 示例 op | 清理动作 |
 |---|---|---|---|
-| `inverse_op` | 执行 inverse_op 清理 | `fw_config_policy_route` | 执行 `fw_delete_policy_route`（用 config 返回的 policy_route_id） |
+| `inverse_op` | 执行 inverse_op 清理 | `fw_config_policy_route` | 执行 `fw_delete_policy_route`（id 经 `ptm-atomic show` 读 `rollback_strategy.id_source` 声明按 4 模式解析：response/args/query/placeholder） |
 | `restore_snapshot` | 按 before 快照恢复 | `fw_update_policy_route` | 按 `pre_snapshot.full_config` 恢复原值 |
 | `restore_snapshot`（as_cleanup_skip） | 作为清理动作时不触发回滚 | `fw_delete_policy_route` | 跳过（它本身就是清理动作） |
 | `irreversible` | **不回滚**，豁免注明 | `fw_reset_policy_route_hitcount` | 返回 `rollback=waived`，用例设计者需接受副作用 |
@@ -237,7 +237,7 @@ ptm-atomic run --base-url https://<IP_ADDRESS> \
 
 7. **login 签名是 --password-env 不是 --password**：`auth login --username admin --password-env FW_WEB_PASSWORD`，禁止命令行明文密码。`ARGS_TO_FLAGS` login 映射 `password_env -> --password-env`，默认值 `FW_WEB_PASSWORD`。
 
-8. **update/delete 的 --id 优先从 config 响应取**：`config` 创建策略路由成功后，响应 `data.policy_route_id` 直接返回新建的 id（真相源 `atoms/fw/fw_config_policy_route.yaml returns`）。`update`/`delete`/`reset-hitcount` 的 `--id` 优先从 config 响应取，verify 查询仅作兜底（config 响应未返回 id 或操作前已存在的路由）。id 由 ptm-te 编排在 config 后从 `envelope.data.policy_route_id` 提取并传入后续 op 的 args；`handle_rollback` 通过 `result_envelope` 参数接收 config 返回，自动提取 `policy_route_id` 作 inverse_op 的 id。
+8. **update/delete 的 --id 按声明驱动解析**：后续 step 的 `args.id` 建议用 `${STEP-N.id}` 占位符（由 op_mapper `resolve_step_refs` 按被引 op 的 `rollback_strategy.id_source` 声明自动解析，支持 response/args/query/placeholder 4 模式）；LLM 仍可手动传 id，但占位符写法避免手动提取错误。`handle_rollback` 同样通过 `ptm-atomic show` 读声明解析 id（声明优先；无声明回退旧 `_extract_inverse_id`）。config 创建后 `data.policy_route_id` 直接返回新建的 id（真相源 `atoms/fw/fw_config_policy_route.yaml returns`，id_source=response）。
 
 9. **update --id 已注册可用**（原 O-08 风险已消除）：ptm-atomic 0.1.0 实测 `policy-route update --help` 已暴露 `--id ID`（required），`run_policy_route.py _run_update` 的 `_require_arg(args, "id")` 正常工作。原"update --id 未注册 / 抛 AttributeError"已过时，update runtime 验证可正常执行。
 
@@ -248,6 +248,13 @@ ptm-atomic run --base-url https://<IP_ADDRESS> \
 12. **priority 无 rollback 元数据**：`fw_update_policy_route_priority` 的 side_effect 和 rollback 均为空，由用例设计决定是否恢复原优先级。`ROLLBACK_STRATEGY` priority: type=none。
 
 13. **回滚类型必须以 ptm-atomic list 实测为准**：不要凭 op 名字推断 rollback 类型。`validate_mapping_consistency()` 校验 `ROLLBACK_STRATEGY.type` 与 `OP_METADATA.rollback` 交叉一致。
+
+14. **4 种 id_source 模式（声明驱动）**：op yaml 的 `rollback_strategy.id_source` 声明了 id 的获取方式，经 `ptm-atomic show` 暴露给 ptm-te：
+    - `response`（mode A）：id 来自 POST 响应（如 `policy_route_id`）— `fw_config_policy_route`
+    - `args`（mode B）：id 即 args 字段值（如 `object_name`）— `fw_config_object`（待 op 覆盖扩展后端到端）
+    - `query`（mode C）：需执行 verify GET 查询按 name 匹配获取 id — `fw_config_acl_policy`（待 op 覆盖扩展后端到端）
+    - `placeholder`（mode D）：id 为固定占位（如 "1"），真正定位靠其他字段（如 `old_name`，rollback 时 new_name↔old_name 互换）— `fw_update_acl_policy_group`（待 op 覆盖扩展后端到端）
+    `resolve_id` / `build_inverse_args` 按 `id_source` 分发，`handle_rollback` 声明优先（无声明回退旧 `_extract_inverse_id`）。
 
 ## 参数说明
 

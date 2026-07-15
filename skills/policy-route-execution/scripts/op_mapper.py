@@ -273,10 +273,16 @@ ROLLBACK_STRATEGY: Dict[str, Dict[str, Any]] = {
         "reason": "observation，只读查询，不回滚",
     },
     # object 族
+    # ptm-atomic 已补 fw_delete_object（id_source=args，id 即 object_name）；
+    # ptm-te op 覆盖扩展（OP_ID_TO_SUBCOMMAND 增 fw_delete_object）后可翻转为 inverse_op，
+    # 届时回滚经 resolve_id 模式 B 自动解析。当前未映射，保持 none 避免回滚触发 OP_NOT_FOUND。
     "fw_config_object": {
         "type": "none",
-        "reason": "inverse_op=fw_delete_object 安装版 0.1.0 未暴露 object delete，回滚待 ptm-atomic 升级",
+        "reason": "fw_delete_object 未在 ptm-te op 覆盖内，待扩展后翻转为 inverse_op（mode B）",
     },
+    # acl_policy 族 / acl_policy_group：id_source 声明已在 ptm-atomic（mode C query / mode D placeholder），
+    # 经 `ptm-atomic show` 由 resolve_id/build_inverse_args 声明驱动解析；
+    # 端到端回滚待 ptm-te op 覆盖扩展（config/update/delete/verify 映射）后激活。
     # interface 族
     "fw_config_interface": {
         "type": "inverse_op",
@@ -357,7 +363,7 @@ OP_METADATA: Dict[str, Dict[str, Any]] = {
     # object 族
     "fw_config_object": {
         "side_effect": "state_mutation",
-        "rollback": "",  # inverse_op=fw_delete_object 安装版未暴露，暂标空
+        "rollback": "",  # fw_delete_object 未在 ptm-te op 覆盖内，待扩展后标 inverse_op:fw_delete_object
         "idempotent": True,
     },
     # interface 族
@@ -693,6 +699,112 @@ def _append_exec_log(log_path: str, record: dict) -> None:
         print(f"[op_mapper] WARNING: 写入 exec-log 失败: {e}", file=sys.stderr)
 
 
+# ===== 步骤间引用（step-refs + ${STEP-N.id} 插值）=====
+#
+# 替代 LLM 手动从 envelope.data.policy_route_id 提取 id 填入下一步 args["id"]。
+# 每个 step 执行后落盘 step-refs/<step_id>.json = {step_id, op_id, args, envelope}；
+# 后续 step 的 args 可用 ${STEP-N.id}（或 ${STEP-N.<field>}）引用前序 step 的值，
+# execute_op 在 build_command 前按被引 step op 的 id_source 声明自动插值。
+
+
+_STEP_REF_RE = re.compile(r"^\$\{(STEP-[A-Za-z0-9_-]+)\.([A-Za-z0-9_]+)\}$")
+
+
+def _write_step_ref(
+    step_refs_dir: str,
+    step_id: str,
+    op_id: str,
+    args: dict,
+    envelope: dict,
+) -> None:
+    """落盘单个 step 的引用数据包到 <step_refs_dir>/<step_id>.json（仅成功 step）。"""
+    if not step_id:
+        return
+    try:
+        if not os.path.isdir(step_refs_dir):
+            os.makedirs(step_refs_dir, exist_ok=True)
+        record = {
+            "step_id": step_id,
+            "op_id": op_id,
+            "args": args,
+            "envelope": envelope,
+        }
+        path = os.path.join(step_refs_dir, f"{step_id}.json")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False, indent=2))
+    except OSError as e:
+        print(f"[op_mapper] WARNING: 写入 step-ref 失败: {e}", file=sys.stderr)
+
+
+def _read_step_ref(step_refs_dir: str, ref_step_id: str) -> Optional[dict]:
+    """读取前序 step 的引用数据包。"""
+    path = os.path.join(step_refs_dir, f"{ref_step_id}.json")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def resolve_step_refs(
+    args: dict,
+    step_refs_dir: Optional[str],
+    *,
+    base_url: str = "",
+    session_file: str = "",
+    authorized: bool = False,
+    timeout: int = 30,
+) -> dict:
+    """扫描 args 值中的 ${STEP-N.<field>} 占位符，从前序 step-ref 解析并替换。
+
+    支持：
+      ${STEP-001.id}      -> 被引 step 的 id（按其 op 的 id_source 声明经 resolve_id 解析）
+      ${STEP-001.<field>} -> 被引 step envelope.data[<field>]，缺失则 args[<field>]
+    无 step_refs_dir 或无匹配占位符 -> 原样返回（向后兼容，LLM 仍可手动传 id）。
+    占位符无法解析 -> 抛 ValueError（execute_op 捕获为 VALIDATION_FAILED envelope）。
+    """
+    if not step_refs_dir or not isinstance(args, dict):
+        return args
+    resolved: dict = {}
+    for key, val in args.items():
+        if not isinstance(val, str):
+            resolved[key] = val
+            continue
+        m = _STEP_REF_RE.match(val.strip())
+        if not m:
+            resolved[key] = val
+            continue
+        ref_step_id, field = m.group(1), m.group(2)
+        ref = _read_step_ref(step_refs_dir, ref_step_id)
+        if ref is None:
+            raise ValueError(
+                f"步骤引用 {val} 无法解析：step-refs/{ref_step_id}.json 不存在"
+            )
+        if field == "id":
+            v = resolve_id(
+                ref.get("op_id"), ref.get("envelope"), ref.get("args", {}) or {},
+                base_url=base_url, session_file=session_file,
+                authorized=authorized, timeout=timeout,
+            )
+            if v in (None, "", 0):
+                raise ValueError(
+                    f"步骤引用 {val} 未解析（被引 op 无 id_source 声明或解析失败）"
+                )
+            resolved[key] = v
+        else:
+            env = ref.get("envelope") if isinstance(ref.get("envelope"), dict) else {}
+            data = env.get("data") if isinstance(env.get("data"), dict) else {}
+            v = data.get(field)
+            if v in (None, "", 0):
+                v = (ref.get("args") or {}).get(field)
+            if v in (None, "", 0):
+                raise ValueError(f"步骤引用 {val} 字段 '{field}' 在被引 step 中不存在")
+            resolved[key] = v
+    return resolved
+
+
 def _parse_atomic_output(stdout: str) -> Optional[dict]:
     """解析 ptm-atomic CLI 输出（JSON 或 YAML）为 dict。
 
@@ -840,20 +952,24 @@ def execute_op(
     password_env: str = "FW_WEB_PASSWORD",
     exec_log_path: Optional[str] = None,
     diag_snapshot_ref: str = "",
+    step_id: str = "",
+    step_refs_dir: Optional[str] = None,
 ) -> dict:
     """执行单条原子操作，返回 envelope dict。
 
     流程：
-    1. build_command 组装命令
-    2. dry_run=False 且 authorized=False 时拒绝执行（返回 error_type=EXEC_FAILED）
-    3. subprocess 调用 ptm-atomic CLI
-    4. 解析输出为 envelope
-    5. 检测 STATE_INVALID -> _reconnect_and_retry（最多 1 次）
-    6. 写入 exec-log.jsonl（若 exec_log_path 提供）
+    1. （若 step_refs_dir）resolve_step_refs 插值 args 中的 ${STEP-N.id} 引用
+    2. build_command 组装命令
+    3. dry_run=False 且 authorized=False 时拒绝执行（返回 error_type=EXEC_FAILED）
+    4. subprocess 调用 ptm-atomic CLI
+    5. 解析输出为 envelope
+    6. 检测 STATE_INVALID -> _reconnect_and_retry（最多 1 次）
+    7. 写入 exec-log.jsonl（若 exec_log_path 提供）
+    8. 写入 step-refs/<step_id>.json（若 step_refs_dir + step_id + 成功）
 
     Args:
         op_id: 原子操作 ID
-        args: 参数 dict
+        args: 参数 dict（值可含 ${STEP-N.id} 占位符，由 resolve_step_refs 插值）
         base_url: 设备 Web 管理地址
         session_file: session-<run-id>.json 路径
         step_name: 用例步骤名（写入 envelope）
@@ -864,12 +980,21 @@ def execute_op(
         password_env: 密码环境变量名（STATE_INVALID 重连用）
         exec_log_path: 执行日志路径（None 则不写日志）
         diag_snapshot_ref: 诊断快照引用路径
+        step_id: 步骤 ID（如 STEP-001），用于 step-refs 落盘与跨步引用
+        step_refs_dir: step-refs 目录（runs/<run-id>/step-refs/，None 则不落盘不插值）
 
     Returns:
         envelope dict，含 op_id/step_name/status/data/error_type/diag_snapshot_ref
     """
-    # [1] 构建命令
+    # [1] 步骤引用插值 + 构建命令
     try:
+        if step_refs_dir:
+            # 插值 args 中的 ${STEP-N.id}（按被引 step op 的 id_source 声明解析）
+            args = resolve_step_refs(
+                args, step_refs_dir,
+                base_url=base_url, session_file=session_file,
+                authorized=authorized, timeout=timeout,
+            )
         command = build_command(
             op_id, args, base_url, session_file, dry_run=dry_run
         )
@@ -1000,14 +1125,230 @@ def execute_op(
         }
         _append_exec_log(exec_log_path, record)
 
+    # [7] 写入 step-refs（成功 step，供后续步骤 ${STEP-N.id} 引用）
+    if step_refs_dir and step_id and envelope.get("status") == "success":
+        _write_step_ref(step_refs_dir, step_id, op_id, args, envelope)
+
     return envelope
+
+
+# ===== op 声明读取 + id 解析（4 模式）=====
+#
+# 真相源：atoms/fw/*.yaml 的 rollback_strategy.id_source（经 `ptm-atomic show` 暴露）。
+# 四种 id_source 模式：
+#   response    -> 从前向 op 返回 envelope.data[id_field] 取（如 policy_route_id）
+#   args        -> 从前向 op args[id_field] 取（id 即 name，如 object_name）
+#   query       -> 执行 query_op，在 data.full_config 记录列表按 query_match 匹配，取 id_field
+#   placeholder -> id 为固定占位（如 "1"），真正定位靠 id_field（如 old_name）
+
+
+_OP_DECL_CACHE: Dict[str, Optional[dict]] = {}
+
+
+def _load_op_decl(op_id: str) -> Optional[dict]:
+    """经 `ptm-atomic show <op_id> --format json` 读 op 声明（含 rollback_strategy.id_source）。
+
+    单源真相：ptm-atomic atoms/fw/*.yaml -> show CLI。进程内 LRU 缓存（声明静态）。
+    失败（op 不存在 / CLI 异常）返回 None，不抛异常（调用方按"无声明"回退旧逻辑）。
+    """
+    if op_id in _OP_DECL_CACHE:
+        return _OP_DECL_CACHE[op_id]
+    try:
+        proc = subprocess.run(
+            ["ptm-atomic", "show", op_id, "--format", "json"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (subprocess.SubprocessError, OSError):
+        _OP_DECL_CACHE[op_id] = None
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        _OP_DECL_CACHE[op_id] = None
+        return None
+    try:
+        decl = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        _OP_DECL_CACHE[op_id] = None
+        return None
+    _OP_DECL_CACHE[op_id] = decl
+    return decl
+
+
+def _resolve_query_id(
+    query_op: str,
+    query_match: str,
+    match_val: Any,
+    id_field: str,
+    *,
+    base_url: str,
+    session_file: str,
+    authorized: bool,
+    timeout: int,
+) -> Optional[Any]:
+    """mode C：执行 query_op，在 data.full_config 记录列表按 query_match 匹配，取 id_field。
+
+    full_config 可能是 list 或 JSON 字符串，防御性解析。
+    查询过滤参数按约定传 query_match 字段名（如 name）；verify op 的 policy_name 过滤参数
+    与记录内 name 字段的精确映射待 op 覆盖扩展时确认（mode C 端到端待 acl_policy 族映射）。
+    """
+    qargs = {"page": 1, "size": 100, query_match: match_val}
+    qenv = execute_op(
+        query_op,
+        qargs,
+        base_url,
+        session_file,
+        dry_run=True,
+        authorized=authorized,
+        timeout=timeout,
+    )
+    data = qenv.get("data") if isinstance(qenv, dict) else None
+    if not isinstance(data, dict):
+        return None
+    records = data.get("full_config")
+    if isinstance(records, str):
+        try:
+            records = json.loads(records)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(records, list):
+        return None
+    for item in records:
+        if isinstance(item, dict) and item.get(query_match) == match_val:
+            val = item.get(id_field)
+            if val not in (None, "", 0):
+                return val
+    return None
+
+
+def resolve_id(
+    forward_op_id: str,
+    forward_envelope: Optional[dict],
+    forward_args: dict,
+    *,
+    base_url: str = "",
+    session_file: str = "",
+    authorized: bool = False,
+    timeout: int = 30,
+) -> Optional[Any]:
+    """按前向 op 声明的 rollback_strategy.id_source 解析 id（4 模式分发）。
+
+    无声明（旧 atom 无 id_source）或解析失败 -> 返回 None（调用方回退旧逻辑）。
+    供 handle_rollback（回滚）和 resolve_step_refs（步骤间 ${STEP-N.id}）共用。
+    """
+    decl = _load_op_decl(forward_op_id)
+    if not decl or not isinstance(decl, dict):
+        return None
+    rs = decl.get("rollback_strategy")
+    if not isinstance(rs, dict):
+        return None
+    id_source = rs.get("id_source")
+    id_field = rs.get("id_field")
+    if not id_source or not id_field:
+        return None
+
+    if id_source == "response":
+        data = forward_envelope.get("data") if isinstance(forward_envelope, dict) else None
+        if not isinstance(data, dict):
+            return None
+        val = data.get(id_field)
+        return None if val in (None, "", 0) else val
+
+    if id_source == "args":
+        val = forward_args.get(id_field)
+        return None if val in (None, "", 0) else val
+
+    if id_source == "query":
+        query_op = rs.get("query_op")
+        query_match = rs.get("query_match")
+        query_match_source = rs.get("query_match_source", "args")
+        if not query_op or not query_match:
+            return None
+        # query_match_source=args：匹配值取自前向 op 的 args
+        if query_match_source != "args":
+            return None
+        match_val = forward_args.get(query_match)
+        if match_val in (None, "", 0):
+            return None
+        if not base_url or not session_file:
+            return None
+        return _resolve_query_id(
+            query_op, query_match, match_val, id_field,
+            base_url=base_url, session_file=session_file,
+            authorized=authorized, timeout=timeout,
+        )
+
+    if id_source == "placeholder":
+        # id 为固定占位（如 "1"），取自前向 op inputs.params.id；真正定位靠 id_field
+        inputs = decl.get("inputs") if isinstance(decl, dict) else None
+        params = inputs.get("params") if isinstance(inputs, dict) else None
+        if not isinstance(params, dict):
+            return None
+        val = params.get("id")
+        return None if val in (None, "") else val
+
+    return None
+
+
+def build_inverse_args(
+    forward_op_id: str,
+    forward_envelope: Optional[dict],
+    forward_args: dict,
+    decl: Optional[dict],
+    *,
+    base_url: str = "",
+    session_file: str = "",
+    authorized: bool = False,
+    timeout: int = 30,
+) -> dict:
+    """按 id_source 模式构造 inverse_op 的 args（回滚清理用）。
+
+    - response/args/query：{id: <解析值>}，顺带携带 type/policy_type
+    - placeholder（mode D，rename-back）：id 取占位，互换 old_name <-> new_name
+    无声明时返回空 dict（调用方回退旧 _extract_inverse_id 路径自行构造）。
+    """
+    if not decl or not isinstance(decl, dict):
+        return {}
+    rs = decl.get("rollback_strategy")
+    if not isinstance(rs, dict) or not rs.get("id_source"):
+        return {}
+    id_source = rs["id_source"]
+    inverse_args: dict = {}
+
+    if id_source == "placeholder":
+        # mode D：rename back。rollback 的 old_name = 前向 new_name，new_name = 前向 old_name
+        rid = resolve_id(forward_op_id, forward_envelope, forward_args,
+                         base_url=base_url, session_file=session_file,
+                         authorized=authorized, timeout=timeout)
+        if rid is not None:
+            inverse_args["id"] = rid
+        if "policy_type" in forward_args:
+            inverse_args["policy_type"] = forward_args["policy_type"]
+        inverse_args["old_name"] = forward_args.get("new_name")
+        inverse_args["new_name"] = forward_args.get("old_name")
+        return inverse_args
+
+    rid = resolve_id(forward_op_id, forward_envelope, forward_args,
+                     base_url=base_url, session_file=session_file,
+                     authorized=authorized, timeout=timeout)
+    if rid is not None:
+        inverse_args["id"] = rid
+    # 携带 type（policy_route ipv4/ipv6）与 policy_type（acl_policy 族）
+    if "type" in forward_args:
+        inverse_args["type"] = forward_args["type"]
+    if "policy_type" in forward_args:
+        inverse_args["policy_type"] = forward_args["policy_type"]
+    return inverse_args
 
 
 # ===== 回滚清理 =====
 
 
 def _extract_inverse_id(result_envelope: Optional[dict], op_id: str) -> Optional[Any]:
-    """从原操作返回 envelope.data 提取 inverse_op 所需 id。
+    """【回退路径】从原操作返回 envelope.data 提取 inverse_op 所需 id。
+
+    仅供无 rollback_strategy.id_source 声明的 op（如 interface 族）回退使用；
+    有声明的 op 走 resolve_id（4 模式声明驱动）。
 
     真相源：atoms/fw/fw_config_policy_route.yaml returns.data.policy_route_id。
     - fw_config_policy_route -> data.policy_route_id（config execute 返回创建的策略路由 id）
@@ -1076,16 +1417,28 @@ def handle_rollback(
     if rtype == "inverse_op":
         # config -> delete 清理
         inverse_op_id = strategy["inverse_op_id"]
-        # 优先从原操作返回 envelope.data 提取 id（config 返回 data.policy_route_id，
-        # 真相源 atoms/fw/fw_config_policy_route.yaml returns）；兜底调用方 args 传入（interface 族）
         inverse_args: dict = {}
-        rid = _extract_inverse_id(result_envelope, op_id)
-        if rid is not None:
-            inverse_args["id"] = rid
-        elif "id" in args:
-            inverse_args["id"] = args["id"]
-        if "type" in args:
-            inverse_args["type"] = args["type"]
+        # 声明优先：若 op 经 `ptm-atomic show` 有 rollback_strategy.id_source 声明，
+        # 按 4 模式（response/args/query/placeholder）构造 inverse_args；
+        # 无声明（旧 atom，如 interface）-> 回退旧 _extract_inverse_id + args["id"] 逻辑。
+        decl = _load_op_decl(op_id)
+        inv_args = build_inverse_args(
+            op_id, result_envelope, args, decl,
+            base_url=base_url, session_file=session_file,
+            authorized=authorized, timeout=timeout,
+        )
+        if inv_args:
+            inverse_args = inv_args
+        else:
+            # 兜底：从原操作返回 envelope.data 提取 id（policy_route_id/interface_id/id），
+            # 再兜底调用方 args["id"]（interface 族）。真相源 atoms/fw/*.yaml returns。
+            rid = _extract_inverse_id(result_envelope, op_id)
+            if rid is not None:
+                inverse_args["id"] = rid
+            elif "id" in args:
+                inverse_args["id"] = args["id"]
+            if "type" in args:
+                inverse_args["type"] = args["type"]
         return execute_op(
             inverse_op_id,
             inverse_args,
@@ -1371,6 +1724,11 @@ def _cli_main(argv: Optional[List[str]] = None) -> int:
     exec_parser.add_argument("--authorized", action="store_true", default=False)
     exec_parser.add_argument("--timeout", type=int, default=30)
     exec_parser.add_argument("--step-name", default="")
+    exec_parser.add_argument("--step-id", default="", help="步骤 ID（如 STEP-001），用于 step-refs 落盘")
+    exec_parser.add_argument(
+        "--step-refs-dir", default=None,
+        help="step-refs 目录（runs/<run-id>/step-refs/），启用 ${STEP-N.id} 插值与落盘",
+    )
     exec_parser.add_argument("--exec-log-path", default=None)
     exec_parser.add_argument("--diag-snapshot-ref", default="")
 
@@ -1428,6 +1786,8 @@ def _cli_main(argv: Optional[List[str]] = None) -> int:
             timeout=args_ns.timeout,
             exec_log_path=args_ns.exec_log_path,
             diag_snapshot_ref=args_ns.diag_snapshot_ref,
+            step_id=args_ns.step_id,
+            step_refs_dir=args_ns.step_refs_dir,
         )
         print(json.dumps(envelope, ensure_ascii=False, indent=2))
         return 0 if envelope.get("status") == "success" else 1
