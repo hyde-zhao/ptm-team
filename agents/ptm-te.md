@@ -8,6 +8,7 @@ skills:
   - device-management
   - device-connection
   - policy-route-execution
+  - trex-traffic
 dependencies: [ptm-tde]
 downstream: [ptm-tae]
 ---
@@ -22,8 +23,8 @@ downstream: [ptm-tae]
 |------|------|
 | 上游 | ptm-tde（产出 PC 于 `ppdcs/delivery/`，用户复制或手写到 `cases/upload/`） |
 | 下游 | ptm-tae（工具缺失反馈）、ptm-tde（用例设计问题反馈） |
-| 编排模式 | 编排器，按 [1]-[8] 八步流程调度 3 个 skill 执行 |
-| 关联 Skill | `device-management`（设备元数据）、`device-connection`（SSH/Telnet + 快照）、`policy-route-execution`（策略路由 op 执行） |
+| 编排模式 | 编排器，按 [1]-[8] 八步流程调度 4 个 skill 执行 |
+| 关联 Skill | `device-management`（设备元数据）、`device-connection`（SSH/Telnet + 快照）、`policy-route-execution`（策略路由 op 执行）、`trex-traffic`（TRex 流量 op 执行） |
 | 执行入口 | `cases/upload/<特性名>特性测试用例.md` |
 | 产物输出 | `runs/<run-id>/`（机器可读 `result.json` / `exec-log.jsonl` / `step-refs/` + 人类可读 `report.md`） |
 
@@ -425,12 +426,16 @@ ptm-te 的执行门控独立写进本 agent md，**不复用 checkpoint-manager*
 | `device-management` | 编排流程 [2] | `devices.yaml` 路径 + 设备名 | 设备 IP / 型号 / 凭据占位 | **只做元数据**，不含连接逻辑 |
 | `device-connection` | 编排流程 [2][8] | 设备 IP / 凭据 / 命令 | SSH/Telnet 执行结果 + 系统快照 | **只做连接 + 快照**，不解析 PC、不执行策略路由 op |
 | `policy-route-execution` | 编排流程 [4][7] | `op_id` + `args` + `--session-file` | envelope + CLI 输出 | 执行 auth + policy-route + operation-log + object + interface 共 5 族 op；其他族见覆盖矩阵 |
+| `trex-traffic` | 编排流程 [4]（`tg_*` 流量类 op） | `op_id` + `args`（端口 / 模板 / 速率等） | envelope + CLI 输出 | 执行 `tg_config_interface` / `tg_apply_traffic_template` / `tg_start_traffic_stream` / `tg_verify_traffic_loss` / `tg_stop_traffic_stream` / `tg_delete_traffic_template` 共 6 个 `tg_*` op；不处理 `fw_*` 设备配置 op |
 
 Skill 脚本边界：
 
 - `device-management`：无脚本（纯元数据 SKILL + reference）
 - `device-connection`：`scripts/ssh_exec.py`、`scripts/collect_sysinfo.py`（声明 `>=3.9,<3.13`）
 - `policy-route-execution`：`scripts/op_mapper.py`（必需，承载三层映射翻译）
+- `trex-traffic`：`src/trex_api/`（trex-api FastAPI 服务 + `tg` CLI；通过 HTTP 调用常驻 `trex-api`，由 `trex-api` 转换为 TRex 原生 YAML 并用 TRex Python API 执行）
+
+> 注：`trex-traffic` 承载 `tg_*` 流量类 op，`policy-route-execution` 承载 `fw_*` 设备配置类 op，两者 op_id 前缀不重叠。当前编排流程 [4] 的 op_mapper 只映射 `fw_*`，遇到 `tg_*` op 的调度分支待补充（见下方"待办：`tg_*` 编排分支"）。
 
 ## dry-run 默认门
 
@@ -461,6 +466,19 @@ Skill 脚本边界：
 - rollback 类型必须以 `ptm-atomic list` 实测为准，不得凭 op 名字推断
 - session 由 `--session-file` 自动管理，ptm-te 不自造 session 引用
 
+## 待办：`tg_*` 编排分支
+
+`trex-traffic` skill 已注册为 ptm-te 关联 skill（`install.py` 的 `PTM_TE_SKILLS` 会随 `install --agent ptm-te` 一并安装），但其承载的 6 个 `tg_*` 流量类 op（`tg_config_interface` / `tg_apply_traffic_template` / `tg_start_traffic_stream` / `tg_verify_traffic_loss` / `tg_stop_traffic_stream` / `tg_delete_traffic_template`）目前**尚未接入编排流程 [4]**：
+
+- 现状：编排流程 [4] 的 op_mapper（在 `policy-route-execution` skill 的 `scripts/op_mapper.py`）只映射 `fw_*` 设备配置类 op；遇到 `tg_*` op_id 会走 `OP_NOT_FOUND` 异常分支，阻塞并反馈 ptm-tae。
+- 待补：
+  1. op_mapper 增加 `tg_*` 分支，将 `tg_*` op_id + args 翻译为 `tg` CLI 子命令 + flag（翻译规则见 `trex-traffic/SKILL.md` 的 atom->CLI 映射表与参数速查）。
+  2. 编排流程 [4] 增加"遇到 `tg_*` op 调 `trex-traffic` skill"的调度路径；`tg_verify_traffic_loss` 的 `STATE_MISMATCH`（丢包超阈值）需与 `expected_result` 比对判定。
+  3. `tg_start_traffic_stream` 是 count 模式时会阻塞等待发完（约 `count/rate` 秒），编排需预留足够超时。
+  4. `tg_*` 流量的常驻 `trex-api` client 由 `trex-api` 服务自身持有，与 ptm-te 的 `--session-file` 体系独立，不共用 session。
+
+在 [1]-[4] 完成前，`trex-traffic` 可独立用于人工或脚本直接调用 `tg` CLI 执行流量测试（见 `trex-traffic/references/six-atom-walkthrough.md`）。
+
 ## 修订记录
 
 | 版本 | 日期 | 修订人 | 变更要点 |
@@ -469,3 +487,4 @@ Skill 脚本边界：
 | v1.1 | 2026-07-13 | host-orchestrator（CR-027） | F-01 args key 对齐 CR-025（source_network）；P2-8 session-<run-id>.json 隔离；P2-9 envelope 加 runtime_authorization；P2-10 snapshot-diff.json 自动产出；P2-11 validate_args 参数预检 + PARAM_INVALID；P2-12 NO_PROXY 代理适配 |
 | v1.2 | 2026-07-13 | host-orchestrator（CR-028） | op_mapper 扩展 operation-log/object/interface 3 族（7 新 op_id，共 15）；op 覆盖矩阵文档（mapped 15 / gap 6 / unmapped 97 / total 118）；object 族 4 gap 因安装版 0.1.0 未暴露 |
 | v1.3 | 2026-07-14 | host-orchestrator | id 来源刷新：config 响应 `data.policy_route_id` 优先（真相源 `fw_config_policy_route.yaml returns`），verify 查询兜底；update --id 已注册可用（ptm-atomic 0.1.0 修复，原 O-08 消除）；op_mapper `handle_rollback` 增加 `result_envelope` 从 config 响应提取 id；编排流程 [4] 增加 id 提取步骤。 |
+| v1.4 | 2026-07-16 | host-orchestrator | 关联 skill 新增 `trex-traffic`（`install.py` `PTM_TE_SKILLS` 同步）；承载 6 个 `tg_*` 流量类 op；`tg_*` 编排分支待补充，见"待办"小节。 |
