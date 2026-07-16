@@ -95,11 +95,12 @@ PMT_TDE_SKILLS = [
     "bug-gap-analyzer",
 ]
 
-# ptm-te referenced skills（设备管理 + 策略路由执行）
+# ptm-te referenced skills（设备管理 + 策略路由执行 + TRex 流量）
 PTM_TE_SKILLS = [
     "device-management",
     "device-connection",
     "policy-route-execution",
+    "trex-traffic",
 ]
 
 # Platform directory mapping
