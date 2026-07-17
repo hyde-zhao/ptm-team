@@ -1,0 +1,175 @@
+# ============================================================================
+# Effectiveness Check 模板 — improvement-tracker Skill
+# ============================================================================
+#
+# 用途：在行动项全部完成后评估改进措施的实际有效性。包含观察窗口
+#       管理、复发统计查询和人工 reviewer 的结果判定。
+#
+# 文件所有权：FEAT-RA-TRACKING（独占）
+# 创建者：ST-RA-04
+# ============================================================================
+
+# ── Schema 定义 ─────────────────────────────────────────────────────────────
+
+check_id:
+  type: string
+  required: true
+  immutable: true
+  pattern: "EFF-CHECK-{action_id}-{seq}"
+  description: 全局唯一有效性检查标识，生成后不可修改
+
+action_ref:
+  type: string
+  required: true
+  description: 关联的 Action Item ID。该 Action Item 必须已完成（status="done"）
+
+method:
+  type: string
+  required: true
+  description: >
+    验证方式，例如："回归测试"、"人工审查"、"观察指标对比"、"生产监控"。
+    初始值可取自 CA/PA Proposal 的 validation_method 字段，由 reviewer 确认或调整
+
+window_days:
+  type: integer
+  required: true
+  default: 30
+  min: 1
+  description: 观察窗口天数。默认 30 天，可由 reviewer 根据业务场景调整
+
+result:
+  type: enum
+  required: true
+  values: ["planned", "passed", "failed", "inconclusive"]
+  default: "planned"
+  description: >
+    有效性检查结果，仅可由人工 reviewer 填写：
+    - planned: 已创建，等待观察窗满足和 reviewer 评估
+    - passed: 有效性确认通过
+    - failed: 有效性不通过（原因需在 notes 中说明）
+    - inconclusive: 证据不足以判断（需补充数据或重新评估）
+
+recurrence_measure:
+  type: object
+  required: false
+  description: >
+    复发统计数据，从 SQLite measure_link 表只读查询获取。
+    当 total_observation_count > 0 时填写此对象
+  fields:
+    same_category_count:
+      type: integer
+      required: true
+      min: 0
+      description: 观察窗内同类问题数。同类定义为相同 proposal_ref 的问题单
+    total_observation_count:
+      type: integer
+      required: true
+      min: 0
+      description: 观察窗内总问题数
+    recurrence_rate:
+      type: float
+      required: true
+      min: 0.0
+      max: 1.0
+      description: >
+        复发率 = same_category_count / total_observation_count。
+        当 total_observation_count = 0 时，此对象不填（表示无观察数据）
+
+notes:
+  type: string
+  required: false
+  description: reviewer 备注。内容包括：观察窗豁免原因、证据不足说明等
+
+checked_by:
+  type: string
+  required_when: "result != 'planned'"
+  description: 检查人标识。result 为 planned 时可为空
+
+checked_at:
+  type: datetime
+  required_when: "result != 'planned'"
+  format: ISO 8601
+  description: 检查时间
+
+# ── 有效性判定规则 ───────────────────────────────────────────────────────────
+#
+# 1. result 初始值为 "planned"，表示等待观察窗满足和 reviewer 评估
+# 2. close 条件 2 要求所有关联的 effectiveness checks 的 result == "passed"
+#    - "failed": 阻断关闭，需在 notes 中说明不通过原因
+#    - "inconclusive": 阻断关闭，需补充数据后重新评估
+#    - "planned": 阻断关闭，说明观察窗尚未满足或 reviewer 尚未评估
+# 3. Skill/AI 不可直接设置 result（仅可由 reviewer 填写）
+# 4. 观察窗满足条件：(checked_at 之后经过天数) >= window_days
+#    - reviewer 可在 notes 中声明观察窗豁免（如观察期已过但未记录起始时间）
+#    - 豁免需注明原因
+
+# ── 约束汇总 ────────────────────────────────────────────────────────────────
+#
+# 1. check_id 全局唯一，不可变
+# 2. action_ref 必须指向 status="done" 的 Action Item
+# 3. method 和 window_days 为必填
+# 4. result 初始值为 "planned"，仅可由 reviewer 修改
+# 5. recurrence_measure 数据来源为 SQLite measure_link 表只读查询
+# 6. recurrence_rate 计算规则：same_category_count / total_observation_count
+# 7. total_observation_count = 0 时，不填 recurrence_measure（表示无观察数据）
+# 8. notes、checked_by、checked_at 仅在 reviewer 评估后填写
+# 9. Skill/AI 不可设置 result、checked_by、checked_at
+
+# ── 示例 ─────────────────────────────────────────────────────────────────────
+#
+# 示例 1：刚创建的有效性检查（等待评估）
+#
+# check_id: "EFF-CHECK-ACTION-PROPOSAL-20260716-001-01-01"
+# action_ref: "ACTION-PROPOSAL-20260716-001-01"
+# method: "对比实施前后两个发布周期的 NGFW 特有场景漏测率"
+# window_days: 30
+# result: "planned"
+# recurrence_measure: {}
+# notes: ""
+# checked_by: ""
+# checked_at: ""
+#
+# 示例 2：有效性通过（reviewer 评估后）
+#
+# check_id: "EFF-CHECK-ACTION-PROPOSAL-20260716-001-01-01"
+# action_ref: "ACTION-PROPOSAL-20260716-001-01"
+# method: "对比实施前后两个发布周期的 NGFW 特有场景漏测率"
+# window_days: 30
+# result: "passed"
+# recurrence_measure:
+#   same_category_count: 0
+#   total_observation_count: 25
+#   recurrence_rate: 0.0
+# notes: "观察窗 30 天内 25 个问题单中无 NGFW 特有场景漏测复发，漏测率从 18% 降至 3.2%，达到目标 ≤5%"
+# checked_by: "reviewer-zhang"
+# checked_at: "2026-09-16T10:00:00+08:00"
+#
+# 示例 3：有效性不通过（有同类复发）
+#
+# check_id: "EFF-CHECK-ACTION-PROPOSAL-20260716-002-01-01"
+# action_ref: "ACTION-PROPOSAL-20260716-002-01"
+# method: "观察两个发布周期内的 DPDK 问题测试拦截率"
+# window_days: 45
+# result: "failed"
+# recurrence_measure:
+#   same_category_count: 3
+#   total_observation_count: 12
+#   recurrence_rate: 0.25
+# notes: "观察窗内出现 3 个 DPDK 性能退化问题未被新增检查点拦截，拦截率仅 45%，未达到 ≥60% 目标"
+# checked_by: "reviewer-wang"
+# checked_at: "2026-10-16T14:00:00+08:00"
+#
+# 示例 4：证据不足（需补充数据）
+#
+# check_id: "EFF-CHECK-ACTION-PROPOSAL-20260716-003-01-01"
+# action_ref: "ACTION-PROPOSAL-20260716-003-01"
+# method: "审查后续 3 次版本发布中的缺陷逃逸记录"
+# window_days: 60
+# result: "inconclusive"
+# recurrence_measure:
+#   same_category_count: 1
+#   total_observation_count: 3
+#   recurrence_rate: 0.33
+# notes: "观察窗内问题单数量不足（仅 3 个），无法做出置信判断。建议延长观察窗至 90 天或收集更多数据后重新评估"
+# checked_by: "reviewer-zhang"
+# checked_at: "2026-11-01T09:00:00+08:00"

@@ -1,0 +1,183 @@
+# ============================================================================
+# Closure Decision 模板 — improvement-tracker Skill
+# ============================================================================
+#
+# 用途：在行动项完成、有效性检查和观察窗满足后，由人工 reviewer 执行
+#       关闭决策。四条件硬断言：全部条件满足才可关闭，任一不足则保持开放。
+#
+# 文件所有权：FEAT-RA-TRACKING（独占）
+# 创建者：ST-RA-04
+# ============================================================================
+
+# ── Schema 定义 ─────────────────────────────────────────────────────────────
+
+ra_id:
+  type: string
+  required: true
+  description: 关联的 RA Report ID
+
+proposal_id:
+  type: string
+  required: true
+  description: 关联的 CA/PA Proposal ID。必须指向 approval_status="approved" 的提案
+
+decision:
+  type: enum
+  required: true
+  values: ["open", "closed"]
+  description: >
+    关闭决策。仅可由人工 reviewer 触发：
+    - open: 保持在开放状态，需说明剩余风险和后续行动
+    - closed: 关闭改进措施（四条件必须全部满足）
+
+conditions:
+  type: object
+  required: true
+  description: >
+    四条件评估结果。decision="closed" 时四个字段必须全部为 true
+  fields:
+    all_actions_complete:
+      type: boolean
+      required: true
+      description: >
+        条件 1 — 所有关联 Action Items 的 status == "done"？
+        此条件不要求 overdue 状态项必须完成（overdue 项如 reviewer 确认可接受，可进入关闭）
+    effectiveness_passed:
+      type: boolean
+      required: true
+      description: >
+        条件 2 — 所有关联 Effectiveness Checks 的 result == "passed"？
+        "failed"、"inconclusive"、"planned" 均导致此条件为 false
+    observation_window_satisfied:
+      type: boolean
+      required: true
+      description: >
+        条件 3 — 所有关联 Effectiveness Checks 的观察窗是否满足？
+        满足条件：从 checked_at 至今的天数 >= window_days，或 reviewer 已声明观察窗豁免
+    no_same_category_recurrence:
+      type: boolean
+      required: true
+      description: >
+        条件 4 — 无同类复发（所有 Effectiveness Checks 的 recurrence_rate == 0）
+
+residual_risks:
+  type: list
+  required_when: "decision == 'open'"
+  description: 剩余风险列表。decision="open" 时必须至少包含一项
+
+follow_up_actions:
+  type: list
+  required_when: "decision == 'open'"
+  description: 后续行动列表。decision="open" 时必须至少包含一项
+
+reviewer:
+  type: string
+  required: true
+  description: 关闭决定人标识。非空，仅可由人工 reviewer 填写
+
+decided_at:
+  type: datetime
+  required: true
+  format: ISO 8601
+  description: 关闭决策时间
+
+# ── 四条件硬断言规则 ─────────────────────────────────────────────────────────
+#
+# 以下规则硬编码，不可由 Skill/AI 覆盖：
+#
+#   if decision == "closed":
+#       assert conditions.all_actions_complete == True
+#       assert conditions.effectiveness_passed == True
+#       assert conditions.observation_window_satisfied == True
+#       assert conditions.no_same_category_recurrence == True
+#   else (decision == "open"):
+#       assert len(residual_risks) > 0 or len(follow_up_actions) > 0
+#
+# 违反规则时拒绝写入，返回具体不满足的条件和修复建议。
+
+# ── 约束汇总 ────────────────────────────────────────────────────────────────
+#
+# 1. ra_id 和 proposal_id 必须指向有效的 RA Report 和已批准的 CA/PA Proposal
+# 2. decision="closed" 时，四个 conditions 字段必须全部为 true
+# 3. 任一 conditions 字段为 false → decision="open"
+# 4. decision="open" 时，residual_risks 和 follow_up_actions 不能同时为空
+# 5. decision="closed" 时，residual_risks 和 follow_up_actions 可为空（或填 "N/A"）
+# 6. reviewer 和 decided_at 必填，仅可由人工 reviewer 填写
+# 7. Skill/AI 不可触发 closure review、不可设置 decision="closed"
+# 8. 关闭决策必须有人工 reviewer 签名
+# 9. 不根据完成率关闭（全部 done 但有效性 failed → 保持 open）
+# 10. 不自动关闭 RA（无 reviewer 签名的关闭决策不可写入）
+
+# ── 示例 ─────────────────────────────────────────────────────────────────────
+#
+# 示例 1：关闭决策（四条件全部满足）
+#
+# ra_id: "RA-RPT-20260716-001"
+# proposal_id: "PROPOSAL-20260716-001"
+# decision: "closed"
+# conditions:
+#   all_actions_complete: true
+#   effectiveness_passed: true
+#   observation_window_satisfied: true
+#   no_same_category_recurrence: true
+# residual_risks: ["N/A — 四条件全部满足"]
+# follow_up_actions: ["N/A — 改进措施已闭环，无需后续行动"]
+# reviewer: "reviewer-zhang"
+# decided_at: "2026-09-16T10:30:00+08:00"
+#
+# 示例 2：保持开放（有效性不通过）
+#
+# ra_id: "RA-RPT-20260716-002"
+# proposal_id: "PROPOSAL-20260716-002"
+# decision: "open"
+# conditions:
+#   all_actions_complete: true
+#   effectiveness_passed: false
+#   observation_window_satisfied: true
+#   no_same_category_recurrence: false
+# residual_risks:
+#   - "DPDK 性能回归检查点未能有效拦截吞吐量退化场景（拦截率仅 45%）"
+#   - "观察窗内 12 个问题单中有 3 个同类复发（recurrence_rate=0.25）"
+# follow_up_actions:
+#   - "扩展检查点覆盖吞吐量退化场景，增加 P99 延迟监控"
+#   - "将观察窗延长至 60 天，重新收集数据后再次评估"
+# reviewer: "reviewer-wang"
+# decided_at: "2026-10-16T14:30:00+08:00"
+#
+# 示例 3：保持开放（观察窗不足）
+#
+# ra_id: "RA-RPT-20260716-003"
+# proposal_id: "PROPOSAL-20260716-003"
+# decision: "open"
+# conditions:
+#   all_actions_complete: true
+#   effectiveness_passed: false
+#   observation_window_satisfied: false
+#   no_same_category_recurrence: true
+# residual_risks:
+#   - "有效性检查尚处于 planned 状态，reviewer 尚未评估"
+#   - "观察窗仅过去 15 天，未达到 30 天最低要求"
+# follow_up_actions:
+#   - "等待观察窗满足（至少再等待 15 天）后由 reviewer 评估有效性"
+#   - "若观察窗内出现新问题单，同步更新 recurrence_measure"
+# reviewer: "reviewer-zhang"
+# decided_at: "2026-08-15T09:00:00+08:00"
+#
+# 示例 4：保持开放（全部 done 但有效性 failed — 证明不按完成率关闭）
+#
+# ra_id: "RA-RPT-20260716-004"
+# proposal_id: "PROPOSAL-20260716-004"
+# decision: "open"
+# conditions:
+#   all_actions_complete: true
+#   effectiveness_passed: false
+#   observation_window_satisfied: true
+#   no_same_category_recurrence: false
+# residual_risks:
+#   - "虽然所有行动项已完成，但有效性检查结果为 failed"
+#   - "观察窗内出现 2 个同类问题单，说明改进措施未达到预期效果"
+# follow_up_actions:
+#   - "重新分析根因，确认改进措施是否针对正确原因"
+#   - "创建新的 CA/PA Proposal 重新走改进流程"
+# reviewer: "reviewer-wang"
+# decided_at: "2026-11-01T11:00:00+08:00"

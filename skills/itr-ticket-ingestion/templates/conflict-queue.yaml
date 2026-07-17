@@ -1,0 +1,28 @@
+# conflict-queue.yaml — ITR 摄取冲突队列模板
+# 来源: ST-RA-06.1-DETECT LLD v1.2 §2.3
+# 本模板由变更检测管线在 S2 增量摄取时按条填充
+# 填充后的实例输出到 data/snapshots/batch-{batch_id}-conflicts.yaml
+# 人工 reviewer 需逐条填写 reviewer_decision 和 resolution_timestamp
+
+batch_ref: "string"
+generated_at: "ISO8601"
+conflicts:
+  - index: 0
+    source_ticket_id: null | "string"
+    reason: "missing_id | semantic_conflict | irreconcilable"
+    new_record_summary:
+      product: "string"
+      title: "string"
+      severity: "string"
+    existing_record_summary:
+      source_ticket_id: "string"
+      first_seen_at: "string"
+      last_seen_at: "string"
+      status: "string"
+    field_conflicts:
+      - field: "status"
+        existing: "已关闭"
+        new: "重新打开"
+    suggested_resolution: "manual_review | keep_existing | keep_new"
+    reviewer_decision: ""         # 人工回填: 'keep_existing' | 'keep_new' | 'rejected'
+    resolution_timestamp: ""      # 人工回填: ISO8601

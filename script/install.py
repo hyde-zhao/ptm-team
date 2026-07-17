@@ -65,6 +65,8 @@ AGENT_ALIASES = {
     "ptm-tde": "ptm-tde",
     "te": "ptm-te",
     "ptm-te": "ptm-te",
+    "tse": "ptm-tse",
+    "ptm-tse": "ptm-tse",
 }
 
 # ptm-tde referenced skills (from docs/ptm-tde/skill-references.md)
@@ -101,6 +103,13 @@ PTM_TE_SKILLS = [
     "device-connection",
     "policy-route-execution",
     "trex-traffic",
+]
+
+# ptm-tse referenced skills (CR-030: ITR ingestion, reverse analysis, CAPA governance)
+PTM_TSE_SKILLS = [
+    "itr-ticket-ingestion",
+    "reverse-analysis",
+    "improvement-tracker",
 ]
 
 # Platform directory mapping
@@ -423,6 +432,8 @@ def get_agent_skills(agent_name: str) -> list[str]:
         return PMT_TDE_SKILLS
     if agent_name == "ptm-te":
         return PTM_TE_SKILLS
+    if agent_name == "ptm-tse":
+        return PTM_TSE_SKILLS
     return []
 
 

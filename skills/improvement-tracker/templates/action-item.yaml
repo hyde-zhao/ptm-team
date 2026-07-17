@@ -1,0 +1,175 @@
+# ============================================================================
+# Action Item 模板 — improvement-tracker Skill
+# ============================================================================
+#
+# 用途：基于已批准的 CA/PA Proposal 创建结构化行动项，管理执行状态、
+#       实施证据和过期检测。行动项是闭环跟踪的最小可追踪单元。
+#
+# 文件所有权：FEAT-RA-TRACKING（独占）
+# 创建者：ST-RA-04
+# ============================================================================
+
+# ── Schema 定义 ─────────────────────────────────────────────────────────────
+
+action_id:
+  type: string
+  required: true
+  immutable: true
+  pattern: "ACTION-{proposal_id}-{seq}"
+  description: 全局唯一行动项标识，生成后不可修改
+
+proposal_ref:
+  type: string
+  required: true
+  description: 关联的 CA/PA Proposal ID。必须指向 approval_status="approved" 的提案
+
+input_ref:
+  type: string
+  required: true
+  description: 关联的 Approved Improvement Input ID。必须指向 consumer_status != "blocked" 的输入
+
+owner:
+  type: string
+  required: true
+  description: 单一执行 Owner 标识。一个行动项只能有一个 Owner
+
+due_date:
+  type: date
+  required: true
+  format: "YYYY-MM-DD"
+  description: 到期日期。当 now > due_date 且 status ∈ {not-started, in-progress} 时系统自动标记为 overdue
+
+status:
+  type: enum
+  required: true
+  values: ["not-started", "in-progress", "done", "overdue"]
+  default: "not-started"
+  description: >
+    行动项状态，受状态机规则控制：
+    - not-started: 未开始（初始状态）
+    - in-progress: 执行中（由 Owner/Reviewer 手动标记）
+    - done: 已完成（终态，不可回退；由 Owner/Reviewer 手动标记）
+    - overdue: 已过期（系统自动标记，由 Owner/Reviewer 可手动标为 done）
+
+description:
+  type: string
+  required: true
+  max_length: 500
+  description: 行动描述，说明具体需要做什么
+
+blockers:
+  type: list
+  required: false
+  default: []
+  description: 阻塞项列表。例如 "等待测试环境就绪"、"依赖上游接口确认"
+
+implementation_evidence:
+  type: string
+  required: false
+  description: 实施证据引用或描述。例如 "详见测试报告 TEST-RPT-20260801-001 §3.2"
+
+created_at:
+  type: datetime
+  required: true
+  format: ISO 8601
+  description: 创建时间
+
+updated_at:
+  type: datetime
+  required: true
+  format: ISO 8601
+  description: 最后更新时间
+
+# ── 状态机规则 ───────────────────────────────────────────────────────────────
+#
+# 允许的状态迁移（硬编码，不可由 Skill/AI 覆盖）：
+#
+#   not-started ──(手动标记开始)──► in-progress ──(手动标记完成)──► done
+#        │                               │
+#        │   ┌──(now > due_date)─────────┘
+#        │   ▼
+#        └─ overdue ◄──(now > due_date)── in-progress
+#
+#                                 overdue ──(手动标记完成)──► done
+#
+# 禁止的状态迁移：
+#   - done ──► not-started / in-progress / overdue（done 是终态，不可逆行）
+#   - overdue ──► not-started / in-progress（overdue 只能转向 done）
+#   - Skill/AI ──► done（只有 Owner/Reviewer 能标记完成）
+#
+# 系统自动行为：
+#   - 过期检测：status ∈ {not-started, in-progress} 且 now > due_date → 动态标记为 overdue
+#   - overdue 不持久化到文件，每次查询时动态计算
+#   - 系统不自动完成、不自动关闭、不自动改变除 overdue 以外的状态
+
+# ── 约束汇总 ────────────────────────────────────────────────────────────────
+#
+# 1. action_id 全局唯一，不可变
+# 2. proposal_ref 必须指向已批准的 CA/PA Proposal
+# 3. input_ref 必须指向 consumer_status != "blocked" 的 Approved Input
+# 4. owner、due_date、description 为必填
+# 5. status 初始值为 "not-started"
+# 6. "done" 是终态，不可回退为其他状态
+# 7. Skill/AI 只能标记 overdue，不可标记 done 或改变其他状态
+# 8. blockers 缺省为 []（空列表）
+
+# ── 示例 ─────────────────────────────────────────────────────────────────────
+#
+# 示例 1：新建的纠正行动项（未开始）
+#
+# action_id: "ACTION-PROPOSAL-20260716-001-01"
+# proposal_ref: "PROPOSAL-20260716-001"
+# input_ref: "INPUT-20260716-001"
+# owner: "ptm-tde"
+# due_date: "2026-08-16"
+# status: "not-started"
+# description: "基于 NGFW 场景补充跨 VPC 路由和 DNS 代理测试用例，覆盖 RA-RPT-20260716-001 中列出的 12 个漏测点"
+# blockers: []
+# implementation_evidence: ""
+# created_at: "2026-07-16T10:30:00+08:00"
+# updated_at: "2026-07-16T10:30:00+08:00"
+#
+# 示例 2：执行中的行动项（有阻塞）
+#
+# action_id: "ACTION-PROPOSAL-20260716-002-01"
+# proposal_ref: "PROPOSAL-20260716-002"
+# input_ref: "INPUT-20260716-002"
+# owner: "ptm-te"
+# due_date: "2026-09-01"
+# status: "in-progress"
+# description: "在 DPDK 相关模块中新增性能回归测试检查点，覆盖吞吐量、延迟和丢包率三个维度"
+# blockers:
+#   - "性能测试环境搭建中，预计 2 周后可用"
+# implementation_evidence: ""
+# created_at: "2026-07-16T11:00:00+08:00"
+# updated_at: "2026-08-01T14:00:00+08:00"
+#
+# 示例 3：已过期的行动项
+#
+# action_id: "ACTION-PROPOSAL-20260716-003-01"
+# proposal_ref: "PROPOSAL-20260716-003"
+# input_ref: "INPUT-20260716-003"
+# owner: "ptm-qat"
+# due_date: "2026-08-01"
+# status: "not-started"
+# description: "补充评审检查清单，纳管已知缺陷模式"
+# blockers:
+#   - "评审人员资源冲突"
+# implementation_evidence: ""
+# created_at: "2026-07-16T12:00:00+08:00"
+# updated_at: "2026-07-16T12:00:00+08:00"
+# # now > 2026-08-01 时系统动态标记为 overdue，不修改此文件
+#
+# 示例 4：已完成的行动项（终态）
+#
+# action_id: "ACTION-PROPOSAL-20260716-004-01"
+# proposal_ref: "PROPOSAL-20260716-004"
+# input_ref: "INPUT-20260716-004"
+# owner: "ptm-tde"
+# due_date: "2026-07-30"
+# status: "done"
+# description: "修复 revert/transaction 测试用例的 step 隔离问题"
+# blockers: []
+# implementation_evidence: "测试报告 TEST-RPT-20260730-001 §3.2，覆盖 8 个回归场景全部通过"
+# created_at: "2026-07-16T13:00:00+08:00"
+# updated_at: "2026-07-28T09:30:00+08:00"

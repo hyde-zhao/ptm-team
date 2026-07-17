@@ -1,0 +1,153 @@
+# MetricDefinition 模板
+# ======================
+# 用途：reverse-analysis Skill 中六维分析指标的标准化定义。
+# 来源：ST-RA-02 LLD §2.4 (LLD v1.1)、HLD REV-03 §MetricDefinition 契约、Feature DESIGN §2.3
+#
+# 使用方式：
+#   - 每个分析维度可以定义一个或多个 MetricDefinition
+#   - 模板中一个文档可包含多个指标定义（使用 YAML 多文档格式 --- 分隔）
+#   - metric_version 变更时必须触发 S2 全量重算（ST-RA-06.2 负责检测）
+#
+# 关键降级规则：
+#   - 当 denominator.trusted = false 或分母不可获取时，degraded_output 生效
+#   - 降级时只能输出：数量、占比、Pareto 分布、趋势方向
+#   - 绝不允许在任何输出中将降级数据标记为"密度"、"缺陷密度"或"DPMO"
+---
+# ============================================================================
+# 示例指标 1: P1/P2 问题数量（无分母要求）
+# ============================================================================
+metric_id: "m-p1p2-count"
+name: "P1/P2 级别问题数量"
+dimension: "product_quality"
+numerator:
+  field: "ticket.severity"
+  filter: "severity in ('P1', 'P2')"
+denominator:
+  field: ""                 # 无分母：不需要代码量或版本规模
+  filter: ""
+  trusted: false            # 无分母，不可信
+window:
+  start: ""                 # 分析窗口起始（ISO 8601）
+  end: ""                   # 分析窗口结束（ISO 8601）
+  type: "month"             # month | quarter | custom
+cutoff_date: ""             # 数据截止日期（ISO 8601）
+metric_version: "1.0"
+na_condition: "无 P1/P2 级别 ticket 时标记 N/A"
+degraded_output: "输出绝对数量 + Pareto 分布 + 趋势方向；禁止标注为'缺陷密度'或'DPMO'"
+
+---
+# ============================================================================
+# 示例指标 2: 模块级 Pareto 分布（无分母要求）
+# ============================================================================
+metric_id: "m-module-pareto"
+name: "问题模块 Pareto 分布"
+dimension: "product_quality"
+numerator:
+  field: "ticket.module"
+  filter: "quality_flag in ('clean', 'incomplete', 'anomaly')"
+denominator:
+  field: ""
+  filter: ""
+  trusted: false
+window:
+  start: ""
+  end: ""
+  type: "month"
+cutoff_date: ""
+metric_version: "1.0"
+na_condition: "所有 ticket 的 module 字段为空时标记 N/A"
+degraded_output: "输出各模块的问题数量和占比百分比，按数量降序排列；禁止标注为'密度'"
+
+---
+# ============================================================================
+# 示例指标 3: 缺陷密度（必须有可信分母）
+# ============================================================================
+metric_id: "m-defect-density"
+name: "缺陷密度"
+dimension: "product_quality"
+numerator:
+  field: "ticket.severity"
+  filter: "severity in ('P1', 'P2') AND quality_flag = 'clean'"
+denominator:
+  field: "external.code_size_kilolines"   # 外部提供的代码量数据
+  filter: ""
+  trusted: false                          # 默认不可信；仅当外部提供且验证后才设为 true
+window:
+  start: ""
+  end: ""
+  type: "month"
+cutoff_date: ""
+metric_version: "1.0"
+na_condition: "分母字段不可获取 或 denominator.trusted = false"
+degraded_output: "输出 P1/P2 绝对数量 + 月度趋势 + Pareto 分布；不得输出密度值；报告正文必须显式声明'因无法获取可信单位时间代码量，本报告不计算缺陷密度'"
+
+---
+# ============================================================================
+# 示例指标 4: 逃逸点分布
+# ============================================================================
+metric_id: "m-escape-distribution"
+name: "控制层逃逸点分布"
+dimension: "escape"
+numerator:
+  field: "escape_analysis.escape_points[].layer"
+  filter: "status = 'confirmed'"
+denominator:
+  field: ""
+  filter: ""
+  trusted: false
+window:
+  start: ""
+  end: ""
+  type: "month"
+cutoff_date: ""
+metric_version: "1.0"
+na_condition: "无 confirmed escape layer 时标记 N/A"
+degraded_output: "输出 candidate escape layer 计数和建议补充控制证据的方向；不得声称 confirmed"
+
+---
+# ============================================================================
+# 示例指标 5: 漏测阶段分布
+# ============================================================================
+metric_id: "m-test-missed-phase"
+name: "漏测阶段分布（PPDCS 归类）"
+dimension: "test_missed"
+numerator:
+  field: "test_missed.ppdcs_category"
+  filter: "ppdcs_category IS NOT NULL"
+denominator:
+  field: ""
+  filter: ""
+  trusted: false
+window:
+  start: ""
+  end: ""
+  type: "month"
+cutoff_date: ""
+metric_version: "1.0"
+na_condition: "所有 ticket 的 test_missed_analysis 或 test_missed_phase 为空时标记 N/A"
+degraded_output: "输出各 PPDCS 类别的数量和占比；缺失字段标记 unknown_fields[]"
+
+---
+# ============================================================================
+# 示例指标 6: 环比变化率（P1+2 计数）
+# ============================================================================
+metric_id: "m-p1p2-mom-change"
+name: "P1/P2 问题数月环比变化率"
+dimension: "comparison"
+numerator:
+  field: "ticket.severity"
+  filter: "severity in ('P1', 'P2') AND openeddate 在当期窗口内"
+denominator:
+  field: "comparison.baseline_period.total_tickets"
+  filter: "severity in ('P1', 'P2') AND openeddate 在基期窗口内"
+  trusted: true             # 基期数据来自同口径 SQLite 统计，可信
+window:
+  start: ""                 # 当期窗口起始
+  end: ""                   # 当期窗口结束
+  type: "month"
+  baseline_start: ""        # 基期窗口起始
+  baseline_end: ""          # 基期窗口结束
+cutoff_date: ""
+metric_version: "1.0"
+na_condition: "当期或基期样本量 < 10（最小阈值），或缺少同口径完整月份窗口时标记 N/A"
+degraded_output: "输出绝对数量缺口和建议最小窗口；不得输出虚假变化率"

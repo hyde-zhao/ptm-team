@@ -1,0 +1,134 @@
+# ITR 字段映射配置（field-mapping.yaml）
+# ==========================================
+# 来源: ST-RA-05.2-CLEAN LLD §2.3 字段映射配置
+# 用途: itr-ticket-ingestion Skill 清洗阶段使用的字段映射真相源
+#
+# 本文件定义 ITR API 响应字段 → ticket 表列的映射关系。
+# 任何不在本映射中的 ITR 字段：
+#   1. 不被映射到 ticket 表字段
+#   2. 保留在 raw_json 中（完整原始响应）
+#   3. 在 quality_report.issues 中记录 type='unclassified'
+#   4. 不静默丢弃
+#
+# 修改须知:
+#   - 修改 source 字段名需与 ITR 真实响应字段名一致
+#   - 修改 target 字段名需与 data/schema.sql 列名一致
+#   - type 仅支持: string, enum, datetime, int
+#   - required: true 的字段缺失会导致该条记录进入 FailedRecord，不写入 ticket 表
+
+schema_version: "1.0"
+
+mappings:
+  # ---- 必填字段 ----
+  - source: "id"
+    target: "source_ticket_id"
+    type: "string"
+    required: true
+
+  - source: "product"
+    target: "product"
+    type: "string"
+    required: true
+
+  # ---- 优先级与严重度（参与 QCOMB 高严重度判定）----
+  - source: "pri"
+    target: "priority"
+    type: "enum"
+    required: false
+    valid_values: ["P1", "P2", "P3", "P4"]
+
+  - source: "severity"
+    target: "severity"
+    type: "enum"
+    required: false
+    valid_values: ["致命", "严重", "一般", "提示"]
+
+  # ---- 可选字段 ----
+  - source: "module"
+    target: "module"
+    type: "string"
+    required: false
+
+  - source: "status"
+    target: "status"
+    type: "string"
+    required: false
+
+  - source: "title"
+    target: "title"
+    type: "string"
+    required: false
+
+  - source: "description"
+    target: "description"
+    type: "string"
+    required: false
+
+  - source: "root_cause"
+    target: "root_cause"
+    type: "string"
+    required: false
+
+  - source: "test_missed_analysis"
+    target: "test_missed_analysis"
+    type: "string"
+    required: false
+
+  - source: "test_missed_phase"
+    target: "test_missed_phase"
+    type: "string"
+    required: false
+
+  - source: "improvement_measures"
+    target: "improvement_measures"
+    type: "string"
+    required: false
+
+  - source: "openeddate"
+    target: "openeddate"
+    type: "string"
+    required: false
+
+  - source: "resolveddate"
+    target: "resolveddate"
+    type: "string"
+    required: false
+
+  # ---- 时间戳字段 ----
+  - source: "source_updated_at"
+    target: "source_updated_at"
+    type: "datetime"
+    required: true
+
+# 已知字段分类（用于 check_sensitive_fields 三级分类）
+# 分类含义见 ST-RA-05.2-CLEAN LLD §3.2：
+#   raw:     原始数据，不可直接暴露（如 raw_json）
+#   cleaned: 映射清洗后，可安全分析
+#   report:  聚合/脱敏后，可对外展示
+field_classification:
+  raw:
+    - "raw_json"
+  cleaned:
+    - "source_ticket_id"
+    - "product"
+    - "module"
+    - "priority"
+    - "severity"
+    - "status"
+    - "title"
+    - "description"
+    - "root_cause"
+    - "test_missed_analysis"
+    - "test_missed_phase"
+    - "improvement_measures"
+    - "openeddate"
+    - "resolveddate"
+    - "source_updated_at"
+    - "first_seen_at"
+    - "last_seen_at"
+    - "quality_flag"
+  report:
+    - "severity"
+    - "priority"
+    - "product"
+    - "status"

@@ -1,0 +1,112 @@
+# IngestionQualityReport 模板（quality-report.yaml）
+# ==================================================
+# 来源: ST-RA-05.2-CLEAN LLD §2.4 / §2.5 / §2.6 + FEAT-RA-INGESTION DESIGN §3.3
+# 用途: itr-ticket-ingestion Skill 清洗阶段生成的批次质量报告
+#
+# 本文件定义 IngestionQualityReport 的完整结构。
+# 清洗完成后，填充本模板并将 quality_report_ref 写入 ingestion_batch 表。
+#
+# overall_status 三态含义（LLD §5 状态机）：
+#   clean:   所有指标通过阈值 → analysis_run 正常创建
+#   flagged: 有警告但未超过阻断阈值 → analysis_run 可创建，标注风险
+#   blocked: 任一项超过阻断阈值 → 禁止创建 analysis_run
+
+batch_id: ""
+schema_version: "1.0"
+generated_at: ""
+
+# ---- 输入摘要 ----
+input_summary:
+  total_fetched: 0
+  http_status: 200
+  response_hash: ""
+
+# ---- 质量摘要 ----
+quality_summary:
+  total_clean: 0
+  total_flagged: 0
+  total_failed: 0
+  total_blocked: 0
+  null_rate: 0.0
+  anomaly_rate: 0.0
+  duplicate_rate: 0.0
+  conflict_count: 0
+  unclassified_fields: 0
+
+# ---- 单字段阈值判定 ----
+thresholds:
+  null_rate:
+    threshold: 0.30
+    actual: 0.0
+    passed: true
+  anomaly_rate:
+    threshold: 0.10
+    actual: 0.0
+    passed: true
+  duplicate_rate:
+    threshold: 0.50
+    actual: 0.0
+    passed: true
+  min_analyzable_ratio:
+    threshold: 0.50
+    actual: 0.0
+    passed: true
+  max_conflict_count:
+    threshold: 50
+    actual: 0
+    passed: true
+
+# ---- 组合规则结果（QCOMB-01 ~ QCOMB-05）----
+# 来源: ST-RA-05.2-CLEAN LLD §2.6
+# 判定顺序: QCOMB-01 → QCOMB-02 → QCOMB-03 → QCOMB-04 → QCOMB-05
+# 任一条触发 blocked → overall_status='blocked'
+# QCOMB-04 不阻断，仅在报告中附加 analysis_confidence 标注
+combined_rules:
+  QCOMB-01:
+    description: "最小关键字段完整率：高严重度记录（P1 或 P2+致命/严重）的 root_cause null_rate > 40%"
+    severity_high_count: 0
+    root_cause_null_count: 0
+    root_cause_null_rate: 0.0
+    threshold: 0.40
+    triggered: false
+    action: "blocked"
+  QCOMB-02:
+    description: "高严重度记录质量不得 flagged：severity=致命的记录中 quality_flag ∈ {blocked} 的数量 > 0"
+    fatal_count: 0
+    fatal_blocked_count: 0
+    triggered: false
+    action: "blocked"
+  QCOMB-03:
+    description: "双因子质量门控：analyzable_ratio < 0.5 AND null_rate > 0.25"
+    analyzable_ratio: 0.0
+    null_rate: 0.0
+    triggered: false
+    action: "blocked"
+  QCOMB-04:
+    description: "分析方法降级：analyzable_ratio < 0.7"
+    analyzable_ratio: 0.0
+    triggered: false
+    action: "degraded"
+  QCOMB-05:
+    description: "批量冲突上限：冲突数 > 20% 总记录数"
+    conflict_count: 0
+    total_fetched: 0
+    conflict_rate: 0.0
+    threshold: 0.20
+    triggered: false
+    action: "blocked"
+
+# ---- 整体判定 ----
+overall_status: "clean"   # clean | flagged | blocked
+analyzable_ratio: 0.0
+is_analyzable: true
+analysis_confidence: ""   # 非空时表示降级: "degraded"（QCOMB-04 触发）
+block_reason: ""
+
+# ---- 问题详情 ----
+issues:
+  - field: ""
+    type: ""              # null | anomaly | duplicate | conflict | unclassified
+    count: 0
+    description: ""
+    sample_ids: []        # 最多 5 条示例 source_ticket_id
