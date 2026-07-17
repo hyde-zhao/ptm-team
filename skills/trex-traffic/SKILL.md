@@ -44,11 +44,11 @@ config -> apply -> start -> verify -> stop -> delete-template
 示例（PowerShell）：
 
 ```powershell
-tg tg_config_interface --interfaces '[{"port":"0","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},{"port":"1","ip":"20.1.1.2","gateway":"20.1.1.1"}]'
-tg tg_apply_traffic_template --template udp-demo --tx-port 0 --rx-port 1 --ip-version ipv4 --l4-protocol udp --l4-sport 1234 --l4-dport 5678 --traffic-mode count --rate 100pps --count 500
-tg tg_start_traffic_stream --ports "0,1" --txport 0 --rxport 1 --template udp-demo --name stream-1
-tg tg_verify_traffic_loss --ports "0,1" --txport 0 --rxport 1 --name stream-1 --max-loss 0
-tg tg_stop_traffic_stream --ports "0,1" --txport 0 --rxport 1 --name stream-1
+tg tg_config_interface --interfaces '[{"port":"2_1","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},{"port":"2_2","ip":"20.1.1.2","gateway":"20.1.1.1"}]'
+tg tg_apply_traffic_template --template udp-demo --tx-port 2_1 --rx-port 2_2 --ip-version ipv4 --l4-protocol udp --l4-sport 1234 --l4-dport 5678 --traffic-mode count --rate 100pps --count 500
+tg tg_start_traffic_stream --ports "2_1,2_2" --txport 2_1 --rxport 2_2 --template udp-demo --name stream-1
+tg tg_verify_traffic_loss --ports "2_1,2_2" --txport 2_1 --rxport 2_2 --name stream-1 --max-loss 0
+tg tg_stop_traffic_stream --ports "2_1,2_2" --txport 2_1 --rxport 2_2 --name stream-1
 tg tg_delete_traffic_template --template udp-demo
 ```
 
@@ -160,7 +160,7 @@ tg_config_interface
 CLI：
 
 ```powershell
-tg tg_config_interface --interfaces '[{"port":"0","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},{"port":"1","ip":"20.1.1.2","gateway":"20.1.1.1"}]'
+tg tg_config_interface --interfaces '[{"port":"2_1","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},{"port":"2_2","ip":"20.1.1.2","gateway":"20.1.1.1"}]'
 ```
 
 行为：
@@ -201,7 +201,7 @@ tg_apply_traffic_template
 CLI：
 
 ```powershell
-tg tg_apply_traffic_template --template udp-demo --tx-port 0 --rx-port 1 --ip-version ipv4 --l4-protocol udp --l4-sport 1234 --l4-dport 5678 --traffic-mode count --rate 100pps --count 500
+tg tg_apply_traffic_template --template udp-demo --tx-port 2_1 --rx-port 2_2 --ip-version ipv4 --l4-protocol udp --l4-sport 1234 --l4-dport 5678 --traffic-mode count --rate 100pps --count 500
 ```
 
 行为：
@@ -232,7 +232,7 @@ tg_start_traffic_stream
 CLI：
 
 ```powershell
-tg tg_start_traffic_stream --ports "0,1" --txport 0 --rxport 1 --template udp-demo --name stream-1
+tg tg_start_traffic_stream --ports "2_1,2_2" --txport 2_1 --rxport 2_2 --template udp-demo --name stream-1
 ```
 
 行为：
@@ -265,7 +265,7 @@ tg_verify_traffic_loss
 CLI：
 
 ```powershell
-tg tg_verify_traffic_loss --ports "0,1" --txport 0 --rxport 1 --name stream-1 --max-loss 0
+tg tg_verify_traffic_loss --ports "2_1,2_2" --txport 2_1 --rxport 2_2 --name stream-1 --max-loss 0
 ```
 
 行为：
@@ -298,7 +298,7 @@ tg_stop_traffic_stream
 CLI：
 
 ```powershell
-tg tg_stop_traffic_stream --ports "0,1" --txport 0 --rxport 1 --name stream-1
+tg tg_stop_traffic_stream --ports "2_1,2_2" --txport 2_1 --rxport 2_2 --name stream-1
 ```
 
 行为：
