@@ -1,0 +1,169 @@
+# RA Report 输出模板
+# ==================
+# 用途：reverse-analysis Skill 六维分析的标准化输出格式。
+# 来源：ST-RA-02 LLD §3.1 (LLD v1.1)
+#
+# 使用方式：
+#   - Skill 执行六维分析后，按此模板填充各 section
+#   - 逐单报告：report_type=single_ticket，ticket_ref 必填
+#   - 批量汇总：report_type=batch_summary，ticket_ref 为 null
+#   - 差异报告：report_type=difference（S2 增量重算使用）
+
+report_id: ""                # 报告唯一 ID（格式：ra-report-{timestamp}-{hash}）
+analysis_run_id: ""          # 关联 analysis_run.run_id
+ticket_ref: null             # 逐单报告填写 source_ticket_id；批量报告为 null
+report_type: ""              # single_ticket | batch_summary | difference
+created_at: ""               # ISO 8601 时间戳
+
+sections:
+  # =========================================================================
+  # §A 资格检查摘要（来源：SKILL.md §1-§2，由 ST-RA-01 填充）
+  # =========================================================================
+  eligibility:
+    status: ""               # eligible | eligible_on_request | rejected | deferred | blocked
+    reason: ""               # 资格判定原因
+    ticket_ref: ""           # 引用的 ticket source_ticket_id
+    quality_batch_ref: ""    # 关联的 ingestion_batch.batch_id
+    threshold:
+      valid_count: 0         # 有效证据线数量（category ∈ {fact, hypothesis} AND validity=valid）
+      result: ""             # passed | insufficient
+      max_rc_state: ""       # 根因状态机上限：evidence-backed | ai_candidate
+
+  # =========================================================================
+  # §B 根因分析（来源：SKILL.md §3 §4，由 ST-RA-02 填充）
+  # =========================================================================
+  root_cause:
+    current_level: ""        # raw_statement | ai_candidate | evidence_backed | reviewer_confirmed
+    raw_statement: ""        # 从 ticket.root_cause 提取的原始文本
+    ai_candidates:           # AI 分析生成的候选根因列表
+      - hypothesis: ""       # 候选根因描述
+        confidence: ""       # high | medium | low
+        method: ""           # 5whys | fishbone | combined
+        supporting_evidence: []   # 支持该候选的证据引用（line_id 列表）
+        contradicting_evidence: [] # 矛盾的证据引用（line_id 列表）
+    evidence_backed:         # 有证据支撑的根因（evidence_lines >= 3 时填充）
+      confirmed_cause: ""    # 确认的根因描述
+      evidence_lines:        # 支撑证据线列表
+        - line_id: ""        # 引用自 §2 证据分类结果
+          type: ""           # fact | hypothesis
+          source: ""         # 来源字段名
+      evidence_count: 0      # 有效证据线数量（必须 >= 3）
+    reviewer_confirmed:      # 人工确认的根因
+      confirmed_by: ""       # reviewer 标识
+      confirmed_at: ""       # 确认时间（ISO 8601）
+      reviewer_notes: ""     # reviewer 备注
+    reviewer_status: ""      # unconfirmed | confirmed
+    transition_log:          # 状态转换记录
+      - from_level: ""
+        to_level: ""
+        trigger: ""          # auto | manual | threshold_met
+        timestamp: ""
+
+  # =========================================================================
+  # §C 产品质量分析（来源：SKILL.md §3.2，由 ST-RA-02 填充）
+  # =========================================================================
+  product_quality:
+    metrics:                 # 引用的 MetricDefinition 列表
+      - metric_id: ""        # 对应 metric-definition.yaml 中的 metric_id
+        metric_value: null   # 计算结果
+    top_risk_modules:        # 按问题数量降序排列的风险模块
+      - product: ""
+        module: ""
+        count: 0
+        percentage: 0.0
+        trend_direction: ""  # rising | stable | falling
+    quality_trend: ""        # 整体质量趋势描述
+    defect_density:          # 缺陷密度（仅当分母可信时填充）
+      numerator: 0
+      denominator: 0
+      density_value: null
+      unit: ""               # 如 "defects per KLOC"、"per release" 等
+    degraded_notice: ""      # 无可信分母时的降级声明（如 "未提供单位时间代码量，本报告仅输出绝对数量和 Pareto 分布；不得将此数据标注为'缺陷密度'"）
+
+  # =========================================================================
+  # §D 流出分析（来源：SKILL.md §3.2，由 ST-RA-02 填充）
+  # =========================================================================
+  escape_analysis:
+    escape_points:           # 逃逸点列表
+      - layer: ""            # 控制层名称（如"单元测试"、"集成测试"、"代码评审"）
+        evidence_ref: ""     # 控制证据引用
+        status: ""           # confirmed | candidate
+    nearest_intercept: ""    # 最近拦截点（应该在哪个控制层捕获）
+    candidate_layers:        # 无确认证据的候选逃逸层
+      - layer: ""
+        reasoning: ""        # 推断理由
+    confirmed_layers:        # 有控制证据支持的确认逃逸层
+      - layer: ""
+        evidence_ref: ""
+
+  # =========================================================================
+  # §E 漏测分析（来源：SKILL.md §3.2，由 ST-RA-02 填充）
+  # =========================================================================
+  test_missed:
+    ppdcs_category: ""       # Prevention | Protection | Detection | Containment | Sustainment
+    missed_pattern: ""       # 漏测模式描述
+    recommended_method: ""   # 建议的测试设计方法
+    unknown_fields: []       # 无法确定的字段标记（如 "test_missed_phase 缺失"）
+
+  # =========================================================================
+  # §F 改进候选（来源：SKILL.md §3.2，由 ST-RA-02 填充；批准状态由 ST-RA-03 管理）
+  # =========================================================================
+  improvement_candidates:
+    capa_items:
+      - type: ""             # corrective | preventive
+        basis: ""            # 依据（关联的分析结论）
+        target: ""           # 改进目标
+        owner_candidate: ""  # 建议 Owner
+        priority: ""         # P0 | P1 | P2 | P3
+        acceptance_criteria: ""  # 验收标准
+        effectiveness_check: ""  # 有效性检查方法
+
+  # =========================================================================
+  # §G 环比/同比分析（来源：SKILL.md §3.2，由 ST-RA-02 填充）
+  # =========================================================================
+  comparison:
+    mode: ""                 # yoy | mom | none
+    baseline_period:
+      start: ""              # 基期起始日期（ISO 8601）
+      end: ""                # 基期结束日期（ISO 8601）
+      total_tickets: 0       # 基期总 ticket 数
+    current_period:
+      start: ""              # 当期起始日期（ISO 8601）
+      end: ""                # 当期结束日期（ISO 8601）
+      total_tickets: 0       # 当期总 ticket 数
+      sample_size: 0         # 同口径可比样本数
+    changes:                 # 变化列表
+      - metric_name: ""      # 指标名称
+        baseline_value: null
+        current_value: null
+        absolute_change: null
+        change_rate: null    # 百分比变化率
+        direction: ""        # increased | decreased | unchanged
+        credibility: ""      # high | medium | low | na（可信度）
+    na_reasons: []           # 无法计算的 N/A 原因（如 "窗口不足：当期样本量 5 < 最小阈值 10"）
+
+  # =========================================================================
+  # §H 证据集（来源：SKILL.md §2，由 ST-RA-01 填充，六维引擎消费）
+  # =========================================================================
+  evidence_set:
+    lines:
+      - line_id: ""          # L1 | L2 | L3 | L4 | L5
+        category: ""         # fact | hypothesis | unknown | gap
+        validity: ""         # valid | incomplete | invalid
+        source: ""           # 来源字段名
+        gap_owner: null      # category=gap 时的补充责任人
+        clarification_status: ""  # clear | needs_clarification
+        summary: ""          # 字段值摘要（不超过 200 字符）
+    gap_report:
+      - line_id: ""
+        reason: ""
+        recommended_action: ""
+        gap_owner: ""
+
+# ============================================================================
+# 元数据
+# ============================================================================
+schema_version: "1.0"       # 本模板版本
+metric_versions: {}          # 使用的各指标版本号映射 {metric_id: version}
+mapping_rule_version: ""     # 字段映射规则版本
+analysis_rule_version: ""    # 分析规则版本

@@ -1,0 +1,181 @@
+# ============================================================================
+# Approved Improvement Input 模板 — improvement-tracker Skill
+# ============================================================================
+#
+# 用途：CA/PA Proposal 经 reviewer 批准后，生成不可变的 Approved Improvement Input，
+#        供下游 Agent（ptm-tde/ptm-te/ptm-tae/ptm-qa）只读消费。
+#        本模板定义 Approved Improvement Input 的完整 schema 和示例。
+#
+# 文件所有权：FEAT-RA-IMPROVEMENT（独占）
+# 创建者：ST-RA-03
+# ============================================================================
+
+# ── Schema 定义 ─────────────────────────────────────────────────────────────
+
+input_id:
+  type: string
+  required: true
+  immutable: true
+  pattern: "INPUT-{timestamp}-{seq}"
+  description: 全局唯一输入标识，生成后不可修改
+
+source_ra:
+  type: string
+  required: true
+  description: 来源 RA Report ID，追溯改进输入的分析源头
+
+proposal_id:
+  type: string
+  required: true
+  description: 关联的 CA/PA Proposal ID，保证批准链路完整可追溯
+
+kind:
+  type: enum
+  required: true
+  values: ["corrective", "preventive"]
+  description: 改进类型。与关联 proposal 的 kind 一致
+
+title:
+  type: string
+  required: true
+  description: 改进标题。与关联 proposal 的 title 一致
+
+target_agent:
+  type: enum
+  required: true
+  values: ["ptm-tde", "ptm-te", "ptm-tae", "ptm-qa"]
+  description: >
+    目标消费 Agent。指定哪个 Agent 应消费此改进输入。
+    ptm-tde: 测试设计
+    ptm-te: 测试执行
+    ptm-tae: 测试自动化
+    ptm-qa: 质量保证
+
+scope:
+  type: string
+  required: true
+  description: 改进适用范围。明确说明哪些模块/功能/阶段受影响
+
+acceptance_criteria:
+  type: string
+  required: true
+  description: 验收标准。下游 Agent 应如何判断改进已完成且有效
+
+priority:
+  type: enum
+  required: true
+  values: ["P0", "P1", "P2"]
+  description: 优先级。P0 要求立即处理
+
+constraints:
+  type: string
+  required: true
+  description: 限制条件。下游执行时需遵守的约束和边界
+
+approval_ref:
+  type: object
+  required: true
+  description: 批准引用。引用关联 proposal 的批准信息
+  fields:
+    reviewer:
+      type: string
+      required: true
+      description: 批准人标识
+    approved_at:
+      type: datetime
+      required: true
+      format: ISO 8601
+      description: 批准时间
+
+consumer_status:
+  type: enum
+  required: true
+  values: ["pending-consumer", "consumed", "blocked", "superseded"]
+  default: "pending-consumer"
+  description: >
+    消费者状态。
+    pending-consumer: 等待消费者处理（默认）
+    consumed: 消费者已处理
+    blocked: 消费者不可用（target_agent 未识别）
+    superseded: 已被新版本替代（由 ST-RA-06.3-TRACK 更新）
+
+created_at:
+  type: datetime
+  required: true
+  format: ISO 8601
+  description: 创建时间
+
+immutable:
+  type: boolean
+  required: true
+  value: true
+  description: 不可变标记。生成后固定为 true，拒绝任何修改
+
+# ── 约束汇总 ────────────────────────────────────────────────────────────────
+#
+# 1. input_id 全局唯一，不可变
+# 2. 必须在关联 proposal_id 的 approval_status="approved" 时才能生成
+# 3. 生成后所有字段不可变（immutable=true）
+# 4. target_agent 枚举值限定为现有 Agent 列表
+# 5. consumer_status 默认值为 "pending-consumer"
+# 6. source_ra、proposal_id、approval_ref 组成完整的追溯链路
+# 7. constraints 不能为空字符串 — 无限制时填 "无" 或 "N/A"
+# 8. 下游 Agent 只读消费，不得修改任何字段
+
+# ── 与 CA/PA Proposal 的字段映射关系 ───────────────────────────────────────
+#
+# | Approved Input 字段    | 来源              |
+# |------------------------|-------------------|
+# | input_id               | 自动生成          |
+# | source_ra              | proposal.analysis_ref.ra_report_id |
+# | proposal_id            | proposal.proposal_id |
+# | kind                   | proposal.kind     |
+# | title                  | proposal.title    |
+# | target_agent           | reviewer 指定或 owner 映射 |
+# | scope                  | proposal.target + basis 组合 |
+# | acceptance_criteria    | proposal.validation_method 转化 |
+# | priority               | proposal.priority |
+# | constraints            | proposal.side_effects |
+# | approval_ref           | proposal.approval_ref 引用 |
+# | consumer_status        | 映射自 target_agent（§3.4） |
+# | immutable              | 固定 true         |
+
+# ── 示例 ─────────────────────────────────────────────────────────────────────
+#
+# 示例 1：纠正措施 Approved Input（TGFW 用例覆盖）
+#
+# input_id: "INPUT-20260716-001"
+# source_ra: "RA-RPT-20260716-001"
+# proposal_id: "PROPOSAL-20260716-001"
+# kind: "corrective"
+# title: "优化 TGFW 模块测试用例覆盖 NGFW 特有场景"
+# target_agent: "ptm-tde"
+# scope: "TGFW 模块 NGFW 特有场景（跨 VPC 路由、DNS 代理）测试用例设计"
+# acceptance_criteria: "下一个发布周期内 NGFW 特有场景漏测率 ≤5%"
+# priority: "P0"
+# constraints: "测试用例数量预计增加 15-25%；需要 ptm-te 配合验证环境准备"
+# approval_ref:
+#   reviewer: "zhangsan"
+#   approved_at: "2026-07-16T14:00:00+08:00"
+# consumer_status: "pending-consumer"
+# created_at: "2026-07-16T14:00:00+08:00"
+# immutable: true
+#
+# 示例 2：预防措施 Approved Input（DPDK 性能回归检查点）
+#
+# input_id: "INPUT-20260716-002"
+# source_ra: "RA-RPT-20260716-001"
+# proposal_id: "PROPOSAL-20260716-002"
+# kind: "preventive"
+# title: "新增 DPDK 性能回归测试检查点"
+# target_agent: "ptm-te"
+# scope: "DPDK 相关功能模块的性能回归测试执行阶段"
+# acceptance_criteria: "DPDK 相关问题的测试拦截率稳定在 ≥60%，持续两个发布周期"
+# priority: "P1"
+# constraints: "需要新增性能测试环境，环境搭建需 2 周；不允许影响现有测试执行排期"
+# approval_ref:
+#   reviewer: "zhangsan"
+#   approved_at: "2026-07-16T15:30:00+08:00"
+# consumer_status: "pending-consumer"
+# created_at: "2026-07-16T15:30:00+08:00"
+# immutable: true

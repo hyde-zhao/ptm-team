@@ -1,0 +1,182 @@
+# ============================================================================
+# CA/PA Proposal 模板 — improvement-tracker Skill
+# ============================================================================
+#
+# 用途：基于已确认的逆向分析结论（analysis-confirmed RA Report）生成结构化的
+#        纠正/预防措施草案。本模板定义 CA/PA Proposal 的完整 schema 和示例。
+#
+# 文件所有权：FEAT-RA-IMPROVEMENT（独占）
+# 创建者：ST-RA-03
+# ============================================================================
+
+# ── Schema 定义 ─────────────────────────────────────────────────────────────
+
+proposal_id:
+  type: string
+  required: true
+  immutable: true
+  pattern: "PROPOSAL-{timestamp}-{seq}"
+  description: 全局唯一提案标识，生成后不可修改
+
+analysis_ref:
+  type: object
+  required: true
+  description: 关联的分析引用
+  fields:
+    ra_report_id:
+      type: string
+      required: true
+      description: 来源 RA Report ID
+    analysis_run_id:
+      type: string
+      required: true
+      description: 关联的分析运行 ID
+
+kind:
+  type: enum
+  required: true
+  values: ["corrective", "preventive"]
+  description: >
+    corrective: 纠正措施 — 消除已发生问题的根本原因，防止再发生
+    preventive: 预防措施 — 消除潜在问题的原因，防止发生
+
+title:
+  type: string
+  required: true
+  max_length: 200
+  description: CA/PA 提案标题，简洁描述改进目标
+
+basis:
+  type: string
+  required: true
+  description: 改进依据，必须引用分析结论中的具体发现。不得在分析结论缺失时推测填充
+
+target:
+  type: string
+  required: true
+  description: 量化的改进目标。例如 "漏测率降低至 ≤5%"
+
+owner:
+  type: string
+  required: true
+  description: 单一负责人标识。每个提案只能有一个 Owner
+
+due_date:
+  type: date
+  required: true
+  format: "YYYY-MM-DD"
+  description: 建议的完成日期
+
+priority:
+  type: enum
+  required: true
+  values: ["P0", "P1", "P2"]
+  description: 优先级。P0 表示需要立即处理
+
+validation_method:
+  type: string
+  required: true
+  description: 如何验证措施有效。例如 "观察下一个发布周期内的漏测率变化"
+
+side_effects:
+  type: string
+  required: true
+  description: 潜在副作用和风险。例如 "可能导致测试用例数量增加 20%"
+
+approval_status:
+  type: enum
+  required: true
+  values: ["draft", "approved", "rejected"]
+  default: "draft"
+  description: >
+    提案审批状态。仅可由人工 reviewer 改变。
+    draft: 草案，待审查
+    approved: 已批准（终态，不可回退）
+    rejected: 已拒绝（终态，不可回退）
+
+approval_ref:
+  type: object
+  required: false
+  required_when: "approval_status == 'approved'"
+  description: 批准引用。仅在 approval_status="approved" 时必填
+  fields:
+    reviewer:
+      type: string
+      required_when: "approval_status in ['approved', 'rejected']"
+      description: 批准人/审查人标识
+    approved_at:
+      type: datetime
+      required_when: "approval_status in ['approved', 'rejected']"
+      format: ISO 8601
+      description: 批准/拒绝时间
+    comments:
+      type: string
+      required_when: "approval_status == 'rejected'"
+      description: 审批意见。rejected 状态下必填，作为拒绝理由
+
+created_at:
+  type: datetime
+  required: true
+  format: ISO 8601
+  description: 创建时间
+
+updated_at:
+  type: datetime
+  required: true
+  format: ISO 8601
+  description: 最后更新时间
+
+# ── 约束汇总 ────────────────────────────────────────────────────────────────
+#
+# 1. proposal_id 全局唯一，不可变
+# 2. kind、title、basis、target、owner、due_date、priority、validation_method 为必填
+# 3. approval_status 仅可由人工 reviewer 改变
+# 4. approval_ref 仅在 approval_status="approved" 时必填
+# 5. approved 和 rejected 是终态，不可回退为 draft 或互转
+# 6. 若需修改已批准的提案，必须创建新 proposal（新 proposal_id）并重新走批准流程
+# 7. side_effects 不能为空字符串 — 无副作用时填 "无" 或 "N/A"
+# 8. basis 必须引用分析结论中的具体发现，不得推测填充
+
+# ── 示例 ─────────────────────────────────────────────────────────────────────
+#
+# 示例 1：纠正措施（Corrective Action）
+#
+# proposal_id: "PROPOSAL-20260716-001"
+# analysis_ref:
+#   ra_report_id: "RA-RPT-20260716-001"
+#   analysis_run_id: "RUN-20260716-001"
+# kind: "corrective"
+# title: "优化 TGFW 模块测试用例覆盖 NGFW 特有场景"
+# basis: "RA Report RA-RPT-20260716-001 §4.2：NGFW 特有场景（跨 VPC 路由、DNS 代理）
+#        的漏测率高达 18%，根因为测试用例未覆盖 NGFW 差异化能力"
+# target: "NGFW 特有场景漏测率从 18% 降至 ≤5%"
+# owner: "ptm-tde"
+# due_date: "2026-08-16"
+# priority: "P0"
+# validation_method: "观察下一个发布周期内的 NGFW 特有场景漏测率变化"
+# side_effects: "测试用例数量预计增加 15-25%，可能延长回归测试时间"
+# approval_status: "draft"
+# approval_ref: {}
+# created_at: "2026-07-16T10:30:00+08:00"
+# updated_at: "2026-07-16T10:30:00+08:00"
+#
+# 示例 2：预防措施（Preventive Action）
+#
+# proposal_id: "PROPOSAL-20260716-002"
+# analysis_ref:
+#   ra_report_id: "RA-RPT-20260716-001"
+#   analysis_run_id: "RUN-20260716-001"
+# kind: "preventive"
+# title: "新增 DPDK 性能回归测试检查点"
+# basis: "RA Report RA-RPT-20260716-001 §5.1：环比分析显示 DPDK 相关问题的测试
+#        拦截率波动大（30%-70%），缺乏稳定的性能回归检查点"
+# target: "DPDK 相关问题的测试拦截率稳定在 ≥60%"
+# owner: "ptm-te"
+# due_date: "2026-09-01"
+# priority: "P1"
+# validation_method: "对比实施前后两个发布周期的 DPDK 问题测试拦截率"
+# side_effects: "需要新增性能测试环境，预计环境搭建需要 2 周"
+# approval_status: "draft"
+# approval_ref: {}
+# created_at: "2026-07-16T11:00:00+08:00"
+# updated_at: "2026-07-16T11:00:00+08:00"

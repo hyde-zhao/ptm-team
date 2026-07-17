@@ -1,0 +1,28 @@
+# batch-manifest.yaml
+# ITR 摄取批次清单模板
+# 本模板由 itr-ticket-ingestion Skill 在每次成功摄取后实例化
+# 清洗阶段（ST-RA-05.2-CLEAN）回填 quality_report_ref 和 ingestion_result 中的
+# total_cleaned / total_failed；变更检测阶段（ST-RA-06.1-DETECT）回填
+# total_new / total_updated / total_unchanged / total_conflict
+
+batch_id: "string"
+request:
+  url: "string"
+  params: {}
+  timestamp: "ISO8601"
+http_status: 200
+response_hash: "sha256:..."
+snapshot:
+  ref: "data/snapshots/batch-{batch_id}-raw.json"
+  saved_at: "ISO8601"
+schema_version: "1.0"
+ingestion_result:
+  total_fetched: 0
+  total_new: 0
+  total_updated: 0
+  total_unchanged: 0
+  total_conflict: 0
+  total_cleaned: 0
+  total_failed: 0
+quality_report_ref: "skills/itr-ticket-ingestion/templates/quality-report.yaml"
+errors: []

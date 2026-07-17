@@ -1,0 +1,109 @@
+# ============================================================================
+# AnalysisRunManifest 模板
+# ============================================================================
+# 用途：记录每次 S1/S2 分析运行的元数据，是 analysis_run 表的写入契约。
+# 拥有者：FEAT-RA-ANALYSIS (F-021)
+# 来源：ST-RA-05.3-ANALYZE LLD v1.2 §2.3 + SKILL.md §6.5
+# 关联 DAO：data/dao.py — insert_analysis_run(), get_analysis_run(),
+#           get_runs_by_batch(), update_analysis_run_draft(),
+#           reviewer_publish_analysis_run()
+# ============================================================================
+
+# ---- 清单标识 ----
+# 分析运行唯一标识，格式 {batch_ref}-{timestamp}-{short_uuid}
+# 示例: batch_20260716_001-20260716T103000Z-a3f2
+analysis_run_id: "batch_20260716_001-20260716T103000Z-a3f2"
+
+# ---- 数据来源 ----
+# 数据来源批次引用，对应 ingestion_batch.batch_id
+batch_ref: "batch_20260716_001"
+
+# 环比同比对比批次引用（可选）
+# S1 逐单分析: null
+# S1 批量分析: null（无环比同比需求时）或指定对比批次
+# S2 增量分析: 必填
+comparison_batch_ref: null
+
+# ---- 版本信息 ----
+# SQLite schema 版本，来自 ingestion_batch.schema_version
+# 缺失时降级为 "unknown"
+schema_version: "1.0"
+
+# 字段映射规则版本
+# 缺失时降级为 "unknown"
+mapping_version: "1.0"
+
+# 分析规则版本，来自 metric-definition.yaml 的 metric_version
+rule_version: "1.0"
+
+# ---- 时间窗口 ----
+# 分析窗口起始（ISO 8601 日期，含该日）
+# 批量分析时覆盖批次内所有 ticket 的时间范围
+window:
+  start: "2026-07-01"
+  end: "2026-07-15"
+
+# ---- 计算模式 ----
+# 重算模式: full（全量重算）/ incremental（增量重算）
+# S1 固定为 full
+recompute_mode: "full"
+
+# 全量重算原因（当 recompute_mode=full 时填写）
+# S1 首次分析: null
+# 非首次或 S2 全量重算: 填写原因（如 "metric_version 变更从 1.0 到 1.1"）
+full_recompute_reason: null
+
+# ---- 运行状态 ----
+# 生命周期: created → in_progress → completed → published
+# 异常路径: in_progress → failed
+# 状态管理约束:
+#   - created/in_progress/completed/failed → 通过 update_analysis_run_draft() 更新
+#   - completed → published → 仅通过 reviewer_publish_analysis_run() 执行
+#   - failed → 不可回退，需创建新的 analysis_run
+status: "created"
+
+# ---- 关联报告 ----
+# 关联的报告引用列表，与 ra-report.yaml 中的 report_id 对应
+# report_refs:
+#   - report_id: "{analysis_run_id}-batch"          # batch_summary 类型
+#     type: batch_summary
+#     ticket_refs:
+#       - "ITR-2026-0001"
+#       - "ITR-2026-0002"
+#   - report_id: "{analysis_run_id}-single-0001"    # single_ticket 类型（可选）
+#     type: single_ticket
+#     ticket_refs:
+#       - "ITR-2026-0001"
+#
+# report_refs 类型:
+#   - single_ticket: 逐单分析报告，ticket_refs 包含单个 source_ticket_id
+#   - batch_summary: 批量聚合报告，ticket_refs 列出所有 eligible ticket
+#   - difference: S2 增量差异报告（ST-RA-06.2 实现）
+report_refs:
+  - report_id: "batch_20260716_001-20260716T103000Z-a3f2-batch"
+    type: batch_summary
+    ticket_refs:
+      - "ITR-2026-0001"
+      - "ITR-2026-0002"
+
+# ---- 时间戳与调用方 ----
+# 清单创建时间（ISO 8601 datetime）
+# 注意: analysis_run 表中的 created_at 由 DAO 的 DEFAULT (datetime('now')) 自动生成，
+# 此处的 created_at 仅作为 manifest 文档的时间戳。
+created_at: "2026-07-16T10:30:00Z"
+
+# 调用方标识（ptm-tse Agent 标识）
+created_by: "ptm-tse"
+
+# ============================================================================
+# 字段约束速查
+# ============================================================================
+# 必填字段: analysis_run_id, batch_ref, schema_version, mapping_version,
+#           rule_version, window (start, end), recompute_mode, status,
+#           report_refs, created_at, created_by
+# 可选字段: comparison_batch_ref, full_recompute_reason
+# 枚举约束:
+#   - recompute_mode: full | incremental
+#   - status: created | in_progress | completed | failed | published
+#   - report_refs[].type: single_ticket | batch_summary | difference
+# ============================================================================

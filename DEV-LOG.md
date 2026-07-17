@@ -1,5 +1,114 @@
 # DEV-LOG — CR-013 ptm-tde PPDCS 阶段改造
 
+## ST-RA-INGEST-DB: SQLite 数据库 schema 与 DAO 层
+
+**实现时间**: 2026-07-16T13:53:00+08:00
+**执行模式**: meta-dev 直接执行（host-orchestrator 调度）
+**Applies to**: CR-030, Wave 1
+**Feature**: FEAT-RA-INGESTION (F-020)
+**story_status**: ready-for-verification
+
+### 实现清单
+
+| 文件 | 操作 | 行数 | 说明 |
+|------|:---:|:---:|------|
+| `data/schema.sql` | 新建 | 175 | 6 表 DDL (ticket, ticket_version, ingestion_batch, change_history, analysis_run, measure_link) + 13 索引 |
+| `data/dao.py` | 新建 | 929 | 34 公共函数: 连接管理(WAL+FK)、Ticket CRUD、Version、Batch、Change History、Analysis Run、Measure Link、事务管理、输入校验、存储初始化 |
+| `data/.gitignore` | 新建 | 5 | 排除 *.db, *.db-journal, *.db-wal, *.db-shm, snapshots/ |
+| `.gitignore` | 修改 | +3 | 添加 !data/.gitignore, !data/schema.sql, !data/dao.py 否定排除 |
+
+### 关键决策与偏差
+
+- 采用 `isolation_level=None` (autocommit 模式) 以实现显式事务控制，`begin_transaction()`/`commit()`/`rollback()` 正常工作于 Python sqlite3
+- 根目录 `.gitignore` 有 `data/*` 全局排除，需添加 `!data/schema.sql`、`!data/dao.py`、`!data/.gitignore` 否定规则使源文件可追踪
+- `analysis_run` 和 `measure_link` 的完整 CRUD 由 F-020 一次性实现（方案 A），下游 F-021/F-023 仅调用公共接口
+- 受限于 `:memory:` 数据库，WAL/SHM 文件权限实时验证需在实际文件系统测试
+
+### 测试验证
+
+- 25 项功能测试全部通过（DDL、CRUD、约束、事务回滚、FK、输入校验）
+- `init_storage()` 目录 0700 权限硬断言验证通过
+
+---
+
+## ST-RA-05.1-INGEST: ITR 问题单受控摄取与原始快照保存
+
+**实现时间**: 2026-07-16T14:00:00+08:00
+**执行模式**: meta-dev 直接执行（host-orchestrator 调度）
+**Applies to**: CR-030, Wave 1
+**Feature**: FEAT-RA-INGESTION (F-020)
+**story_status**: ready-for-verification
+**cp6_result**: PASS
+
+### 实现清单
+
+| 文件 | 操作 | 行数 | 说明 |
+|------|:---:|:---:|------|
+| `skills/itr-ticket-ingestion/SKILL.md` | 新建 | 670 | Skill 主文件，共享写入（本 Story 写入 §1-§5，§6-§8 占位给后续 Story） |
+| `skills/itr-ticket-ingestion/templates/batch-manifest.yaml` | 新建 | 28 | 批次清单模板（11 顶层字段 + ingestion_result 6 子字段） |
+| `skills/itr-ticket-ingestion/templates/allowlist-config.yaml` | 新建 | 27 | Allowlist 白名单配置（1 entry，5 allowed_params，max_page_size=100） |
+| `skills/README.md` | 修改 | +14 | 新增 ptm-tse 章节 + itr-ticket-ingestion 条目 |
+
+### 关键决策与偏差
+
+- **Skill 定义文件 vs 可执行代码**：本 Story 输出为 Prompt-Skill 定义文件（Markdown + YAML 模板），非可执行 Python 代码。实际 HTTP 请求、快照保存等逻辑由 Agent 平台在触发 Skill 时按伪代码执行。LLD §7 的 15 个单元测试在 Skill 执行时运行。
+- **共享 SKILL.md**：`itr-ticket-ingestion/SKILL.md` 是 4 个 Story（ST-RA-05.1-INGEST、ST-RA-05.2-CLEAN、ST-RA-06.1-DETECT、ST-NRA-03）的共享写入文件。本 Story 写入 §1-§5 并标记 `shared=true` + `shared_writers` 列表，§6-§8 为后续 Story 保留占位。
+- **allowlist 模板独立**：将 allowlist 配置模板单独提取为 `templates/allowlist-config.yaml`，与 batch-manifest.yaml 并列，便于配置审查和修改。
+- **allow_redirects=false**：HTTP 重定向一律拒绝（3xx 视为错误），增强 deny-by-default 安全性。
+- **无偏离**：实现完全按 LLD v1.2 设计执行，无偏差。
+
+### 验收结果
+
+| 验收标准 | 状态 |
+|---|---|
+| AC-1: Skill 文件存在且 frontmatter 完整 | ✅ PASS |
+| AC-2: allowlist 白名单逻辑清晰可审查（URL pattern + 参数白名单） | ✅ PASS |
+| AC-3: 只允许 GET 方法，POST/PUT/DELETE 拒绝 | ✅ PASS |
+| AC-4: 快照保存到 `data/snapshots/`，不在 Git 跟踪 | ✅ PASS（data/.gitignore 已排除） |
+| AC-5: 快照包含完整元数据（url, params, timestamp, hash） | ✅ PASS |
+| AC-6: 拒绝认证头（Authorization, X-Auth-Token, Cookie, X-API-Key） | ✅ PASS |
+| batch-manifest.yaml 模板完整 | ✅ PASS |
+
+### 安全合规
+
+- deny-by-default：6 步 allowlist 校验链（方法→认证头→URL→参数→分页上限→通过）
+- 无凭据读取：不声明 credential 工具、不解析认证头、不读取系统凭据存储
+- 受限存储：目录 0700（dao.py init_storage() 保证）+ 文件 0600（save_raw_snapshot 硬断言）
+- 不修改 data/ 下任何文件：git diff 确认零变更
+- 只调用 DAO 公共接口，不直接执行 SQL
+
+### 已知限制
+
+- O-ING-01：ITR 真实响应 schema 未确认，字段映射准确性待首次受控探测
+- O-ING-02：ITR 分页机制（offset/limit vs cursor-based）未确认，分页逻辑待首次探测
+- Skill 文件为定义态，非运行时——当 Agent 平台实际执行本 Skill 时需要对应的 Python 实现
+
+### 验证入口
+
+1. 审查 `skills/itr-ticket-ingestion/SKILL.md` §2.2 的 6 步 allowlist 校验算法
+2. 审查 §3.3 的 8 步快照保存算法（临时文件 → 0600 校验 → 原子替换 → 最终校验）
+3. 审查 `skills/itr-ticket-ingestion/templates/batch-manifest.yaml` 字段完整性
+4. 确认 `git diff --name-only data/` 输出为空
+5. 审查 §5.1 的 DAO 调用约束和禁止操作清单
+
+### 提供给 meta-qa 的验证提示
+
+- **验证方式**：static-only（Skill 定义文件，非可执行代码）
+- **重点审查**：allowlist 逻辑的 deny-by-default 完备性、快照保存的安全性（temp+0600+atomic+清理）、DAO 只调用公共接口的约束
+- **风险**：RISK-CR030-ITR-HTTP-DATA-RETENTION（原始快照保存后的存储空间管理）
+- **开放项**：O-ING-01（ITR schema）、O-ING-02（ITR 分页机制）——首次受控探测后需回写
+- **共享文件注意**：SKILL.md §6-§8 为占位，未被本 Story 填充，内容审查时不应将空占位视为缺失
+- `git check-ignore` 验证：源文件可追踪，运行时文件被排除
+- CP6 检查结果: `process/checks/CP6-ST-RA-INGEST-DB-sqlite-schema-dao-CODING-DONE.md`
+
+### 已知限制
+
+- 大规模写入性能测试 (>10k records) 延后至性能 CR (O-DB-02)
+- 数据库加密首版不做
+- 生产备份恢复延后至安全/合规 CR (O-DB-03)
+
+---
+
 ## STORY-013-01：5 设计 Skill 路径迁移 + 方法论占位
 
 **实现时间**：2026-06-03T04:00:00+08:00

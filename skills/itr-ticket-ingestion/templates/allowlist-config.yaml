@@ -1,0 +1,27 @@
+# allowlist-config.yaml
+# ITR 受控摄取 allowlist 白名单配置
+# 真相源，由 itr-ticket-ingestion Skill 在触发 HTTP 请求前读取并校验
+# 安全原则: deny-by-default — 任何不在本白名单的 URL、方法、参数和 header 将被拒绝
+
+allowlist:
+  - pattern: "http://<IP_ADDRESS>/itr/v1/itrs"
+    description: "TGFW ITR 问题单接口"
+    allowed_params:
+      - product
+      - time_range_start
+      - time_range_end
+      - page
+      - page_size
+    max_page_size: 100
+    allow_redirects: false
+
+# 禁止的 HTTP 方法（白名单外的所有方法均拒绝）
+# 实际只允许 GET
+# POST, PUT, PATCH, DELETE, HEAD, OPTIONS 等一律拒绝
+
+# 禁止的请求头（case-insensitive 匹配）
+# 任何以下名称的 header 出现即拒绝请求:
+#   - authorization
+#   - x-auth-token
+#   - cookie
+#   - x-api-key
