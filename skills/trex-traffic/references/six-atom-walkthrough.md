@@ -118,7 +118,7 @@ client.release(ports=[0,1])
 CLI（本机，已 `export TREX_API_URL`）：
 
 ```bash
-tg tg_config_interface --interfaces '[{"port":"0","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},{"port":"1","ip":"20.1.1.2","gateway":"20.1.1.1"}]'
+tg tg_config_interface --interfaces '[{"port":"2_1","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},{"port":"2_2","ip":"20.1.1.2","gateway":"20.1.1.1"}]'
 ```
 
 等价 curl：
@@ -128,8 +128,8 @@ curl -s --noproxy '*' -X POST http://<IP_ADDRESS>:8000/api/v1/ops/tg_config_inte
   -H 'Content-Type: application/json' \
   -d '{
     "interfaces": [
-      {"port":"0","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},
-      {"port":"1","ip":"20.1.1.2","gateway":"20.1.1.1"}
+      {"port":"2_1","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},
+      {"port":"2_2","ip":"20.1.1.2","gateway":"20.1.1.1"}
     ]
   }'
 ```
@@ -250,7 +250,7 @@ CLI：
 ```bash
 tg tg_apply_traffic_template \
   --template udp-demo \
-  --tx-port 0 --rx-port 1 \
+  --tx-port 2_1 --rx-port 2_2 \
   --ip-version ipv4 --l4-protocol udp \
   --l4-sport 1234 --l4-dport 5678 \
   --traffic-mode count --rate 100pps --count 500
@@ -379,7 +379,7 @@ if mode == count:
 CLI：
 
 ```bash
-tg tg_start_traffic_stream --ports "0,1" --txport 0 --rxport 1 --template udp-demo --name stream-1
+tg tg_start_traffic_stream --ports "2_1,2_2" --txport 2_1 --rxport 2_2 --template udp-demo --name stream-1
 ```
 
 等价 curl：
@@ -476,7 +476,7 @@ passed = (loss_ratio <= max_loss) and (tx_packets > 0)
 CLI：
 
 ```bash
-tg tg_verify_traffic_loss --ports "0,1" --txport 0 --rxport 1 --name stream-1 --max-loss 0
+tg tg_verify_traffic_loss --ports "2_1,2_2" --txport 2_1 --rxport 2_2 --name stream-1 --max-loss 0
 ```
 
 等价 curl：
@@ -555,7 +555,7 @@ client.release(ports)
 CLI：
 
 ```bash
-tg tg_stop_traffic_stream --ports "0,1" --txport 0 --rxport 1 --name stream-1
+tg tg_stop_traffic_stream --ports "2_1,2_2" --txport 2_1 --rxport 2_2 --name stream-1
 ```
 
 等价 curl：
@@ -656,7 +656,7 @@ post() {  # op_id  json
 step() { echo; echo "==================== $1 ===================="; }
 
 step "1/6 tg_config_interface"
-post tg_config_interface '{"interfaces":[{"port":"0","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},{"port":"1","ip":"20.1.1.2","gateway":"20.1.1.1"}]}'
+post tg_config_interface '{"interfaces":[{"port":"2_1","ip":"<IP_ADDRESS>","gateway":"<IP_ADDRESS>"},{"port":"2_2","ip":"20.1.1.2","gateway":"20.1.1.1"}]}'
 
 step "2/6 tg_apply_traffic_template"
 post tg_apply_traffic_template '{"template":"udp-demo","tx_port":"0","rx_port":"1","ip_version":"ipv4","l4_protocol":"udp","l4_sport":1234,"l4_dport":5678,"traffic_mode":"count","rate":"100pps","count":500}'
@@ -723,7 +723,7 @@ echo; echo "==================== done ===================="
 **continuous 持续流**（不指定 count，靠第 ⑤ 步 stop 停）：
 
 ```bash
-tg tg_apply_traffic_template --template cont-demo --tx-port 0 --rx-port 1 \
+tg tg_apply_traffic_template --template cont-demo --tx-port 2_1 --rx-port 2_2 \
   --ip-version ipv4 --l4-protocol udp --l4-sport 1234 --l4-dport 5678 \
   --traffic-mode continuous --rate 100pps
 ```
@@ -731,7 +731,7 @@ tg tg_apply_traffic_template --template cont-demo --tx-port 0 --rx-port 1 \
 **IPv6 流**（必须给 src_ip/dst_ip，第 ① 步也要用 IPv6 网关触发 ND）：
 
 ```bash
-tg tg_apply_traffic_template --template ipv6-demo --tx-port 0 --rx-port 1 \
+tg tg_apply_traffic_template --template ipv6-demo --tx-port 2_1 --rx-port 2_2 \
   --ip-version ipv6 --l4-protocol udp --l4-sport 1234 --l4-dport 5678 \
   --traffic-mode count --rate 100pps --count 500 \
   --src-ip 2001:db8::1 --dst-ip 2001:db8::2

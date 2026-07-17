@@ -4,6 +4,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from typing import Any, Protocol
 
+from trex_api.port_mapping import resolve_port, resolve_ports
 from trex_api.schemas import InterfaceConfig, StartTrafficStreamRequest, StopTrafficStreamRequest
 from trex_api.trex.template_renderer import read_template_yaml
 
@@ -88,13 +89,13 @@ class TrexPythonApiClient:
 
     def configure_interfaces(self, interfaces: list[InterfaceConfig]) -> list[dict[str, Any]]:
         client = self._get_client()
-        ports = [int(item.port) for item in interfaces]
+        ports = [resolve_port(item.port) for item in interfaces]
         try:
             client.acquire(ports=ports, force=True)
             client.set_service_mode(ports=ports, enabled=True)
             results = []
             for item in interfaces:
-                port = int(item.port)
+                port = resolve_port(item.port)
                 version = ip_address(item.ip).version
                 if version == 4:
                     client.set_l3_mode(
@@ -146,9 +147,9 @@ class TrexPythonApiClient:
         api = _load_trex_api()
         template = read_template_yaml(template_path)
         client = self._get_client()
-        ports = [int(port) for port in request.ports]
-        tx_port = int(request.txport)
-        rx_port = int(request.rxport)
+        ports = resolve_ports(request.ports)
+        tx_port = resolve_port(request.txport)
+        rx_port = resolve_port(request.rxport)
         client.acquire(ports=ports, force=True)
         client.stop(ports=[tx_port])
         client.remove_all_streams(ports=[tx_port])
@@ -180,15 +181,15 @@ class TrexPythonApiClient:
 
     def get_port_stats(self, ports: list[str]) -> dict[str, Any]:
         client = self._get_client()
-        return client.get_stats(ports=[int(port) for port in ports])
+        return client.get_stats(ports=resolve_ports(ports))
 
     def stop_stream(self, request: StopTrafficStreamRequest) -> dict[str, Any]:
         client = self._get_client()
-        ports = [int(port) for port in request.ports]
+        ports = resolve_ports(request.ports)
         try:
             client.acquire(ports=ports, force=True)
-            client.stop(ports=[int(request.txport)])
-            client.remove_all_streams(ports=[int(request.txport)])
+            client.stop(ports=[resolve_port(request.txport)])
+            client.remove_all_streams(ports=[resolve_port(request.txport)])
             return {"name": request.name, "stopped": True, "cleaned": True}
         finally:
             client.release(ports=ports)
