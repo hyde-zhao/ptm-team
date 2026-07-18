@@ -11,7 +11,7 @@
 | 能力 | 说明 | 状态 |
 |------|------|------|
 | 设备管理（精简核心） | 设备清单（devices.yaml）+ 型号映射 + SSH/Telnet 双轨连接 + 系统快照采集 | ✅ |
-| 策略路由用例执行 | 基于 `ptm-atomic` CLI 消费 `fw_*` 原子操作（15 op_id / 5 族双层映射，CR-028 扩展后） | ✅ |
+| 策略路由用例执行 | 基于 `ptm-atomic` CLI 消费 `fw_*` 原子操作（15 op_id / 5 族） + `tg_*` TRex 流量操作（6 op_id / tg 族，v1.5 接入）— 共 21 op / 6 族双层映射 | ✅ |
 | 运行时验证 | hg3250-51 端到端 | ⏳ follow-up（T-01，需设备 + --execute 授权） |
 
 ## 编排流程
@@ -33,7 +33,8 @@
 |-------|------|------|
 | `device-management` | 设备清单（devices.yaml）+ 型号映射查表（纯元数据，不含连接） | 无 |
 | `device-connection` | SSH/Telnet 双轨连接 + 回退 + 系统快照采集（before/after） | ssh_exec.py / collect_sysinfo.py |
-| `policy-route-execution` | op_id->子命令 + args->flag 双层映射 + 干跑/执行/verify + inverse_op 清理 | op_mapper.py |
+| `policy-route-execution` | op_id->子命令 + args->flag 双层映射 + 干跑/执行/verify + inverse_op 清理（含 tg 族三层命令 `tg trex <action>`，v1.5） | op_mapper.py |
+| `trex-traffic` | TRex 流量发生器 atom 规范与 `tg` CLI（6 个 `tg_*` op，v1.5 接入；执行经 `ptm-atomic run tg trex`） | op_mapper.py 承载映射；`tg` CLI 随 ptm-atomic 工具安装 |
 
 ## 安装
 

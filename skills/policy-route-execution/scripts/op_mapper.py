@@ -54,10 +54,12 @@ class ValidationResult:
 # ===== 映射表常量（模块级真相源，单点维护） =====
 
 # 第一层映射：op_id -> (family, action) CLI 子命令
-# 真相源：run_policy_route.py / run_auth.py / run_object.py / run_interface.py / run_operation_log.py build_subtree()
-# 共 15 个 op_id（1 auth + 7 policy-route + 1 operation-log + 1 object + 5 interface）
+# 真相源：run_policy_route.py / run_auth.py / run_object.py / run_interface.py / run_operation_log.py / run_trex.py build_subtree()
+# 共 21 个 op_id（1 auth + 7 policy-route + 1 operation-log + 1 object + 5 interface + 6 tg）
 # 注：安装版 ptm-atomic 0.1.0 的 object 族仅暴露 config；update/delete/delete-batch/verify 源码已定义但安装版未暴露，
 #     记入 op 覆盖矩阵 gap（docs/ptm-te/op-coverage-matrix.md），ptm-atomic 升级后可激活。
+# tg 族（v1.5 trex-traffic 接入）：命令树三层 `tg trex <action>`，action 名与 op_id 不同（如 tg_config_interface -> config-interface）；
+#     build_command 对 family=="tg" 插入 "trex"。真相源 atoms/tg/*.yaml + run_trex.py build_subtree() + ptm-atomic show 实测。
 OP_ID_TO_SUBCOMMAND: Dict[str, Tuple[str, str]] = {
     # auth 族（来源 run_auth.py）
     "fw_login_web_management": ("auth", "login"),
@@ -80,6 +82,13 @@ OP_ID_TO_SUBCOMMAND: Dict[str, Tuple[str, str]] = {
     "fw_delete_interface": ("interface", "delete"),
     "fw_delete_batch_interface": ("interface", "delete-batch"),
     "fw_verify_interface": ("interface", "verify"),
+    # tg 族（来源 run_trex.py build_subtree()；命令树三层 tg trex <action>，action 名与 op_id 不同）
+    "tg_config_interface": ("tg", "config-interface"),
+    "tg_apply_traffic_template": ("tg", "apply-template"),
+    "tg_delete_traffic_template": ("tg", "delete-template"),
+    "tg_start_traffic_stream": ("tg", "start-stream"),
+    "tg_stop_traffic_stream": ("tg", "stop-stream"),
+    "tg_verify_traffic_loss": ("tg", "verify-loss"),
 }
 
 # 第二层映射：args key -> CLI flag（per op_id）
@@ -202,6 +211,52 @@ ARGS_TO_FLAGS: Dict[str, Dict[str, str]] = {
     "fw_verify_interface": {
         "id": "--id",
     },
+    # tg 族（真相源：run_trex.py _params_from_args + _add_*_args；flag 名与 trex-traffic tg CLI 对齐）
+    # 注意 apply 用 --tx-port/--rx-port（连字符），start/stop/verify 用 --txport/--rxport（无连字符）
+    "tg_config_interface": {
+        "interfaces": "--interfaces",  # list -> json.dumps 序列化
+    },
+    "tg_apply_traffic_template": {
+        "template": "--template",
+        "tx_port": "--tx-port",
+        "rx_port": "--rx-port",
+        "ip_version": "--ip-version",
+        "l4_protocol": "--l4-protocol",
+        "l4_sport": "--l4-sport",
+        "l4_dport": "--l4-dport",
+        "traffic_mode": "--traffic-mode",
+        "rate": "--rate",
+        "count": "--count",
+        "frame_size": "--frame-size",
+        "vlan": "--vlan",
+        "src_ip": "--src-ip",
+        "dst_ip": "--dst-ip",
+        "src_mac": "--src-mac",
+        "dst_mac": "--dst-mac",
+    },
+    "tg_start_traffic_stream": {
+        "ports": "--ports",  # list -> 逗号串
+        "txport": "--txport",
+        "rxport": "--rxport",
+        "template": "--template",
+        "name": "--name",
+    },
+    "tg_stop_traffic_stream": {
+        "ports": "--ports",
+        "txport": "--txport",
+        "rxport": "--rxport",
+        "name": "--name",
+    },
+    "tg_verify_traffic_loss": {
+        "ports": "--ports",
+        "txport": "--txport",
+        "rxport": "--rxport",
+        "name": "--name",
+        "max_loss": "--max-loss",
+    },
+    "tg_delete_traffic_template": {
+        "template": "--template",
+    },
 }
 
 # required flag 校验表（来源 run_policy_route.py _add_*_args 的 required=True）
@@ -223,6 +278,16 @@ REQUIRED_FLAGS: Dict[str, List[str]] = {
     "fw_delete_interface": ["--id"],
     "fw_delete_batch_interface": ["--id"],
     "fw_verify_interface": ["--id"],
+    # tg 族（来源 run_trex.py _add_*_args 的 required=True）
+    "tg_config_interface": ["--interfaces"],
+    "tg_apply_traffic_template": [
+        "--template", "--tx-port", "--rx-port", "--l4-protocol",
+        "--l4-sport", "--l4-dport", "--traffic-mode", "--rate",
+    ],
+    "tg_start_traffic_stream": ["--ports", "--txport", "--rxport", "--template", "--name"],
+    "tg_stop_traffic_stream": ["--ports", "--txport", "--rxport", "--name"],
+    "tg_verify_traffic_loss": ["--ports", "--txport", "--rxport", "--name", "--max-loss"],
+    "tg_delete_traffic_template": ["--template"],
 }
 
 # 回滚策略表（真相源：ptm-atomic list 2026-07-10 实测 rollback 字段）
@@ -309,6 +374,36 @@ ROLLBACK_STRATEGY: Dict[str, Dict[str, Any]] = {
         "type": "none",
         "reason": "observation，只读，不回滚",
     },
+    # tg 族（真相源：atoms/tg/*.yaml rollback_strategy + ptm-atomic show 实测，2026-07-17）
+    # 实测：仅 tg_start_traffic_stream 有 inverse_op 回滚；tg_stop 为 manual_required；其余无 rollback_strategy
+    "tg_config_interface": {
+        "type": "none",
+        "reason": "atom 无 rollback_strategy；测试仪接口配置不强制回滚，由用例决定",
+    },
+    "tg_apply_traffic_template": {
+        "type": "none",
+        "reason": "atom 无 rollback_strategy；模板 YAML 文件遗留无害，由用例决定是否 delete-template",
+    },
+    "tg_start_traffic_stream": {
+        "type": "inverse_op",
+        "inverse_op_id": "tg_stop_traffic_stream",
+        "inverse_args_key": "name",  # 声明驱动 mode E 按 required_inputs=[ports,txport,rxport,name] 构造
+        "snapshot_required": False,
+    },
+    "tg_stop_traffic_stream": {
+        "type": "manual_required",  # atom rollback_strategy.type=manual_required（新类型）
+        "reason": "atom rollback_strategy.type=manual_required；本身是清理动作，不自动回滚",
+        "as_cleanup_skip": True,
+    },
+    "tg_verify_traffic_loss": {
+        "type": "none",
+        "reason": "observation，只读校验，不回滚",
+    },
+    "tg_delete_traffic_template": {
+        "type": "none",
+        "reason": "atom 无 rollback_strategy；本身是清理动作",
+        "as_cleanup_skip": True,
+    },
 }
 
 # OP 元数据缓存（来源 ptm-atomic list 实测，2026-07-10）
@@ -392,10 +487,42 @@ OP_METADATA: Dict[str, Dict[str, Any]] = {
         "rollback": "",
         "idempotent": True,
     },
+    # tg 族（真相源：atoms/tg/*.yaml side_effect/rollback/idempotent，2026-07-17 实测）
+    # 新 side_effect 枚举 traffic_runtime（tg_start/tg_stop）；新 rollback 类型 manual_required（tg_stop）
+    "tg_config_interface": {
+        "side_effect": "state_mutation",
+        "rollback": "",  # atom 无 rollback_strategy
+        "idempotent": True,
+    },
+    "tg_apply_traffic_template": {
+        "side_effect": "state_mutation",
+        "rollback": "",  # atom 无 rollback_strategy
+        "idempotent": True,
+    },
+    "tg_start_traffic_stream": {
+        "side_effect": "traffic_runtime",
+        "rollback": "inverse_op:tg_stop_traffic_stream",
+        "idempotent": False,
+    },
+    "tg_stop_traffic_stream": {
+        "side_effect": "traffic_runtime",
+        "rollback": "manual_required",  # atom rollback_strategy.type
+        "idempotent": True,
+    },
+    "tg_verify_traffic_loss": {
+        "side_effect": "observation",
+        "rollback": "",
+        "idempotent": True,
+    },
+    "tg_delete_traffic_template": {
+        "side_effect": "state_mutation",
+        "rollback": "",  # atom 无 rollback_strategy
+        "idempotent": True,
+    },
 }
 
-# 预期 op_id 总数（校验基准）：8（v1）+ 7（CR-028 新增 operation-log/object/interface）= 15
-EXPECTED_OP_COUNT = 15
+# 预期 op_id 总数（校验基准）：8（v1）+ 7（CR-028 operation-log/object/interface）+ 6（v1.5 tg 族）= 21
+EXPECTED_OP_COUNT = 21
 
 
 # ===== 第一层映射 =====
@@ -450,6 +577,13 @@ def map_args_to_flags(op_id: str, args: dict) -> List[str]:
             # password_env 特殊处理：空值时默认 FW_WEB_PASSWORD
             if args_key == "password_env" and not value:
                 value = "FW_WEB_PASSWORD"
+            # list 值序列化（tg 族：interfaces -> JSON 串；ports 等其他 list -> 逗号串）
+            # 真相源：run_trex.py _parse_interfaces（json.loads）/ _parse_ports（逗号分隔）
+            if isinstance(value, list):
+                if args_key == "interfaces":
+                    value = json.dumps(value, ensure_ascii=False)
+                else:
+                    value = ",".join(str(v) for v in value)
             result.append(cli_flag)
             result.append(str(value))
         elif args_key == "password_env" and op_id == "fw_login_web_management":
@@ -604,6 +738,11 @@ def build_command(
     flags = map_args_to_flags(op_id, args)
     _check_required_flags(op_id, flags)
     validate_args(op_id, args)  # P2-11 参数合法性预检
+    # 子命令树：fw 族两层 `<family> <action>`；tg 族三层 `tg trex <action>`（run_trex.py build_subtree）
+    if family == "tg":
+        subtree: List[str] = [family, "trex", action]
+    else:
+        subtree = [family, action]
     command: List[str] = [
         "ptm-atomic",
         "run",
@@ -613,8 +752,7 @@ def build_command(
         session_file,
         "--format",
         "json",  # 统一 JSON 输出便于解析
-        family,
-        action,
+        *subtree,
         *flags,
     ]
     if not dry_run:
@@ -1301,16 +1439,28 @@ def build_inverse_args(
     authorized: bool = False,
     timeout: int = 30,
 ) -> dict:
-    """按 id_source 模式构造 inverse_op 的 args（回滚清理用）。
+    """按 rollback_strategy 声明构造 inverse_op 的 args（回滚清理用）。
 
-    - response/args/query：{id: <解析值>}，顺带携带 type/policy_type
-    - placeholder（mode D，rename-back）：id 取占位，互换 old_name <-> new_name
+    - mode A/B/C（response/args/query）：{id: <解析值>}，顺带携带 type/policy_type
+    - mode D（placeholder，rename-back）：id 取占位，互换 old_name <-> new_name
+    - mode E（required_inputs，tg 族）：从 forward_args 取声明的字段（无 id_source，如 ports/txport/.../name）
     无声明时返回空 dict（调用方回退旧 _extract_inverse_id 路径自行构造）。
     """
     if not decl or not isinstance(decl, dict):
         return {}
     rs = decl.get("rollback_strategy")
-    if not isinstance(rs, dict) or not rs.get("id_source"):
+    if not isinstance(rs, dict):
+        return {}
+    # mode E：tg 族 required_inputs（无 id_source）- 从 forward_args 取声明的字段构造 inverse_args
+    # 真相源：atoms/tg/*.yaml rollback_strategy.required_inputs（如 tg_start: [ports,txport,rxport,name]）
+    required_inputs = rs.get("required_inputs")
+    if required_inputs and not rs.get("id_source"):
+        inv_args: dict = {}
+        for k in required_inputs:
+            if k in forward_args and forward_args[k] is not None:
+                inv_args[k] = forward_args[k]
+        return inv_args
+    if not rs.get("id_source"):
         return {}
     id_source = rs["id_source"]
     inverse_args: dict = {}
@@ -1496,6 +1646,17 @@ def handle_rollback(
             "",
         )
 
+    elif rtype == "manual_required":
+        # tg_stop_traffic_stream：atom rollback_strategy.type=manual_required，需人工处理，不自动回滚
+        return _build_envelope(
+            op_id,
+            "rollback",
+            "success",
+            {"rollback": "manual_required", "reason": strategy.get("reason", "")},
+            "NONE",
+            "",
+        )
+
     else:
         # none：只读或无元数据，不回滚
         return _build_envelope(
@@ -1592,6 +1753,12 @@ def validate_mapping_consistency() -> ValidationResult:
                 f"{op_id}: OP_METADATA.rollback='irreversible' "
                 f"但 ROLLBACK_STRATEGY.type='{strategy_type}'"
             )
+        # manual_required -> type=manual_required（tg_stop_traffic_stream，v1.5）
+        elif meta_rollback == "manual_required" and strategy_type != "manual_required":
+            mismatches.append(
+                f"{op_id}: OP_METADATA.rollback='manual_required' "
+                f"但 ROLLBACK_STRATEGY.type='{strategy_type}'"
+            )
         # 空 rollback -> type=none
         elif meta_rollback == "" and strategy_type not in ("none",):
             mismatches.append(
@@ -1660,6 +1827,23 @@ def validate_mapping_consistency() -> ValidationResult:
             mismatches.append(f"interface 子命令缺失: {missing}")
         if extra:
             mismatches.append(f"interface 子命令多余: {extra}")
+
+    # [5e] tg 族子命令校验（v1.5 trex-traffic 接入，6 个 action：三层命令 tg trex <action>）
+    expected_tg_actions = {
+        "config-interface", "apply-template", "delete-template",
+        "start-stream", "stop-stream", "verify-loss",
+    }
+    actual_tg_actions = {
+        action for (family, action) in OP_ID_TO_SUBCOMMAND.values()
+        if family == "tg"
+    }
+    if actual_tg_actions != expected_tg_actions:
+        missing = expected_tg_actions - actual_tg_actions
+        extra = actual_tg_actions - expected_tg_actions
+        if missing:
+            mismatches.append(f"tg 子命令缺失: {missing}")
+        if extra:
+            mismatches.append(f"tg 子命令多余: {extra}")
 
     # [7] required flag 与 ARGS_TO_FLAGS 一致性校验
     # required flag 必须在对应 op 的 ARGS_TO_FLAGS 值集合中
