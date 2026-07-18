@@ -337,6 +337,7 @@ python scripts/op_mapper.py execute \
 2. **op yaml `inputs.params`** - 参数名（source_network/dst_network/next_hop_ip/in_interface/type/id）
 3. **`ptm-atomic run ... --help`** - CLI flag 名（--source-network 等）
 4. **op yaml `returns.data`** - config 返回的 id 字段名（`policy_route_id`），供 inverse_op 回滚与 update/delete 取用
+5. **`run_trex.py` `build_subtree()` + `atoms/tg/*.yaml`** - tg 族 6 op（v1.5）：命令树三层 `tg trex <action>`，action 名与 op_id 不同（如 `tg_config_interface`→`config-interface`）；`rollback_strategy.required_inputs`（mode E 回滚）；`side_effect=traffic_runtime`（新枚举）；`rollback_strategy.type=manual_required`（新回滚类型）
 
 ## 修订记录
 
@@ -345,3 +346,4 @@ python scripts/op_mapper.py execute \
 | v1.0 | 2026-07-13 | host-orchestrator（CR-024） | policy-route-execution skill v1 初始交付（8 op 双层映射 + 执行 + 回滚） |
 | v1.1 | 2026-07-13 | host-orchestrator（CR-028） | op_mapper 扩展至 15 op（5 族）；op 覆盖矩阵文档 |
 | v1.2 | 2026-07-14 | host-orchestrator | Gotcha #8 刷新：id 来源优先 config 响应 `data.policy_route_id`（真相源 `fw_config_policy_route.yaml returns`），verify 查询仅兜底；Gotcha #9 刷新：update --id 已注册可用（ptm-atomic 0.1.0 修复，原 O-08 风险消除）；op_mapper `handle_rollback` 增加 `result_envelope` 参数从 config 响应提取 id；真相源锁定增加第 4 处 `returns.data`。注：CR-025 后 args key 对齐 op yaml params（source_network 等），但本 SKILL 映射表示例仍含旧 src_addr 命名，留 follow-up 同步。 |
+| v1.3 | 2026-07-17 | host-orchestrator | op_mapper 扩展 tg 族 6 op（`EXPECTED_OP_COUNT` 15→21，v1.5 trex-traffic 接入）：命令树三层 `tg trex <action>`，`build_inverse_args` mode E（`required_inputs`），`manual_required` 回滚类型。真相源锁定增加第 5 处（`run_trex.py` + `atoms/tg/`）。 |

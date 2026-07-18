@@ -10,14 +10,14 @@ truth_source: ptm-atomic atoms/fw/*.yaml（118 op）+ 安装版 ptm-atomic 0.1.0
 
 ## 概览
 
-ptm-atomic 共 **118 个 op**（`atoms/fw/*.yaml`），分布在 16 个族。ptm-te 的 `op_mapper.py` 当前覆盖情况：
+ptm-atomic 共 **124 个 op**（`atoms/fw/*.yaml` 118 个 + `atoms/tg/*.yaml` 6 个），分布在 17 个族。ptm-te 的 `op_mapper.py` 当前覆盖情况：
 
 | 状态 | 数量 | 说明 |
 |------|------|------|
-| ✅ mapped | 15 | 已在 `OP_ID_TO_SUBCOMMAND`，op_mapper 可翻译执行 |
+| ✅ mapped | 21 | 已在 `OP_ID_TO_SUBCOMMAND`，op_mapper 可翻译执行（15 fw + 6 tg） |
 | ⚠️ gap | 6 | 源码已定义，但 CLI 安装版未暴露或无 CLI 子命令 |
 | ⬜ unmapped | 97 | 未覆盖，按实战需求后续 CR 扩展 |
-| **合计** | **118** | |
+| **合计** | **124** | |
 
 真相源日期：2026-07-13（`ptm-atomic list` + `atoms/fw/` + 安装版 CLI `--help` 实测）。
 
@@ -40,6 +40,19 @@ ptm-atomic 共 **118 个 op**（`atoms/fw/*.yaml`），分布在 16 个族。ptm
 | interface | `fw_delete_interface` | `interface delete` | CR-028 |
 | interface | `fw_delete_batch_interface` | `interface delete-batch` | CR-028 |
 | interface | `fw_verify_interface` | `interface verify` | CR-028 |
+
+### tg 族（trex-traffic / ptm-atomic atoms/tg/，v1.5 接入，6 op）
+
+| 族 | op_id | CLI 子命令 | 来源 |
+|----|-------|-----------|------|
+| tg | `tg_config_interface` | `tg trex config-interface`（三层命令） | v1.5（trex-traffic 接入 / ptm-atomic TRex 迁移） |
+| tg | `tg_apply_traffic_template` | `tg trex apply-template` | v1.5 |
+| tg | `tg_start_traffic_stream` | `tg trex start-stream` | v1.5 |
+| tg | `tg_verify_traffic_loss` | `tg trex verify-loss` | v1.5 |
+| tg | `tg_stop_traffic_stream` | `tg trex stop-stream` | v1.5 |
+| tg | `tg_delete_traffic_template` | `tg trex delete-template` | v1.5 |
+
+> tg 族 op 不属 `atoms/fw/*.yaml`（118 op）范围，是 ptm-atomic atoms/tg/ 独立 atom（TRex 替代 Ixia-C）。命令树三层 `tg trex <action>`，action 名与 op_id 不同（如 `tg_config_interface`→`config-interface`）。rollback 新增 `traffic_runtime` side_effect + `manual_required` 回滚类型。真相源 `run_trex.py build_subtree()` + `atoms/tg/*.yaml`。
 
 ## ⚠️ gap（6 个，源码有但暂不可用）
 
@@ -99,3 +112,4 @@ ptm-atomic 共 **118 个 op**（`atoms/fw/*.yaml`），分布在 16 个族。ptm
 |------|------|--------|---------|
 | v1.0 | 2026-07-13 | host-orchestrator（CR-028） | 创建；mapped 15 / gap 6 / unmapped 97 / total 118 |
 | v1.1 | 2026-07-14 | host-orchestrator | 注：`fw_update_policy_route` 的 `--id` 已于 ptm-atomic 0.1.0 注册可用（原 SKILL Gotcha #9 / O-08 风险消除）；update 仍在 mapped，非 gap。 |
+| v1.2 | 2026-07-17 | host-orchestrator | op_mapper 扩展 tg 族 6 op（v1.5 trex-traffic 接入）：命令树三层 `tg trex <action>`；mapped 15→21（15 fw + 6 tg）；total 118→124（118 fw + 6 tg）；新增 tg 族章节。基于 ptm-atomic TRex 迁移（commit 7dc810f）与 `atoms/tg/` 实测。 |

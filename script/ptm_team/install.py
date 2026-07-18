@@ -97,11 +97,12 @@ PMT_TDE_SKILLS = [
     "bug-gap-analyzer",
 ]
 
-# ptm-te referenced skills（设备管理 + 策略路由执行）
+# ptm-te referenced skills（设备管理 + 策略路由执行 + TRex 流量）
 PTM_TE_SKILLS = [
     "device-management",
     "device-connection",
     "policy-route-execution",
+    "trex-traffic",  # v1.4 声明但漏加，v1.5 修正；tg_* 执行经 ptm-atomic run tg trex，skill 提供 atom 文档/参考
 ]
 
 # ptm-tse referenced skills (CR-030: ITR ingestion, reverse analysis, CAPA governance)
