@@ -123,7 +123,7 @@ class PtmTeRuleBlockTests(unittest.TestCase):
     def test_ptm_te_skills_consistent(self) -> None:
         for mod in self._both_modules():
             skills = mod.get_agent_skills("ptm-te")
-            self.assertEqual(skills, ["device-management", "device-connection", "policy-route-execution"])
+            self.assertEqual(skills, ["device-management", "device-connection", "policy-route-execution", "trex-traffic"])
 
     def test_ptm_te_rule_block_registry(self) -> None:
         for mod in self._both_modules():

@@ -389,3 +389,28 @@ JSON `data` 示例：
 | 文档 | 内容 |
 |---|---|
 | `references/six-atom-walkthrough.md` | 6 原子操作完整实操手册（含每步背后行为、部署形态与远端验证方法）。 |
+
+## ptm-te 编排接入（v1.5）
+
+ptm-te 测试执行工程师通过 op_mapper 承载 tg_* 编排：
+
+- **执行路径**：`ptm-atomic run --base-url <trex-api> [--session-file] tg trex <action> [flags] [--execute]`（`tg` CLI 也可独立用于人工/脚本直调）。
+- **映射层**：`skills/policy-route-execution/scripts/op_mapper.py` 的 `OP_ID_TO_SUBCOMMAND` 等 5 张表已覆盖 6 个 tg op，命令树三层 `tg trex <action>`（action 名与 op_id 不同，如 `tg_config_interface`→`config-interface`）。
+- **回滚**：`tg_start_traffic_stream` 的 inverse_op 为 `tg_stop_traffic_stream`（声明驱动 mode E：按 `required_inputs=[ports,txport,rxport,name]` 构造 args）；`tg_stop` 为 `manual_required`（不自动回滚）；其余无 rollback_strategy。
+- **session**：tg 族的 `--base-url` 是 trex-api 地址（非 NGFW），`--session-file` 对 tg 无害（trex runner 忽略）。trex-api 常驻 client 与 ptm-te session 体系独立。
+
+## Gotchas
+
+- **`tg` CLI 默认 API URL 硬编码**：`src/trex_api/cli.py` 默认 `http://<IP_ADDRESS>:8000`，与 SKILL.md「默认 127.0.0.1:8000」不一致。ptm-te 编排经 `ptm-atomic run --base-url` 传 trex-api 地址覆盖；人工直调 `tg` 时用 `TREX_API_URL` 环境变量覆盖。
+- **apply 与 start/stop/verify 的 flag 命名不同**：apply 用 `--tx-port/--rx-port`（连字符），start/stop/verify 用 `--txport/--rxport`（无连字符）。op_mapper 的 `ARGS_TO_FLAGS` 已按 `run_trex.py` 真相源精确映射。
+- **count 模式阻塞**：`tg_start_traffic_stream --traffic-mode count` 会阻塞至发包完成，atom 定义 `timeout_ms=60000`；编排需预留足够超时。
+- **`STATE_MISMATCH` 不等于用例 FAIL**：verify 丢包超阈值时 `error_type=STATE_MISMATCH`，但负向用例（验证 ACL 拦截）期望丢包，需与 `expected_result` 语义比对。
+- **`delete-template` 前必须 `stop`**：否则返回 `RESOURCE_CONFLICT`。
+- **`tg` 命令随 ptm-atomic 工具安装**：`ptm-atomic run tg trex --help` 可验证可用性；人工直调用 `tg --help`（需 `uv pip install -e skills/trex-traffic` 注册 `[project.scripts] tg`）。
+
+## 修订记录
+
+| 版本 | 日期 | 修订人 | 变更要点 |
+|------|------|--------|---------|
+| v1.0 | 2026-07-15 | host-orchestrator | trex-traffic skill 初始交付（6 atom + tg CLI + trex-api 服务定义） |
+| v1.1 | 2026-07-17 | host-orchestrator | ptm-te 编排接入（op_mapper 扩展 tg 族，v1.5）；新增 Gotchas 章节与 ptm-te 编排接入小节 |
