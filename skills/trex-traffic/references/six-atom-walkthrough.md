@@ -709,6 +709,7 @@ echo; echo "==================== done ===================="
 | 第 ③ 步卡住 | 不是卡死，count 模式在等发完 | 等 5 秒；或改用 `continuous` 模式 |
 | 第 ③ 步返回 `RESOURCE_NOT_FOUND` | 模板名不对或第 ② 步没成功 | 确认 `--template` 与第 ② 步一致 |
 | 第 ④ 步 `tx_packets:0` | 第 ③ 步 `clear_stats` 后没真正发包，或 trex-api 被重启丢基线 | 不要中途重启 trex-api；重跑 ③④ |
+| 第 ④ 步 `tx_packets:0` 但设备实际在发包 | `t-rex-64` 的 `get_stats` 返回的端口计数以**物理端口号 int** 为 key，但代码用逻辑名 `"2_3"` 查；旧实现 fallback `int("2_3")` 在 Python 3.6+ 把下划线当数字分隔符，返回 `23` 而非报错，于是读到不存在的端口 23，静默返回 0 | 已修复：`stats_parser` 改为先 `resolve_port("2_3") -> 2` 再查 stats；升级 `trex-api` 后重跑 ③④ |
 | 第 ⑥ 步 `RESOURCE_CONFLICT` | 没先 stop | 先执行第 ⑤ 步 |
 | 本机 CLI 连不上 | 没设 `TREX_API_URL` | `export TREX_API_URL=http://<IP_ADDRESS>:8000` |
 | 本机 curl 走了代理 | 设过 `http_proxy` | 加 `--noproxy '*'` 或 `unset http_proxy https_proxy` |
