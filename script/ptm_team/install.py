@@ -467,13 +467,14 @@ def render_ptm_te_rule_body(platform: str) -> str:
 
 本项目安装了 `ptm-te` 测试执行工程师 Agent。{platform_label} 中执行 `ptm-te` / `te` 相关工作时必须遵守以下规则：
 
-1. **dry-run 默认门**：默认 `--dry-run`，不修改真实设备；`--execute` 写操作必须经用户单次授权（DQ-01），作为 `runtime_authorization` 决策项独立确认，设计通过不等于运行授权。
+1. **dry-run 默认门与授权粒度**：默认 `--dry-run`，不修改真实设备；`--execute` 写操作必须经用户单次授权（DQ-01），作为 `runtime_authorization` 决策项独立确认，设计通过不等于运行授权。一次 `--execute` 授权覆盖本轮全部用例（含子集重跑复用本轮授权），不跨轮延续--新一轮启动需重新授权；每条 `result.json` 的 `runtime_authorization` 记录授权主体/范围/时间。
 2. **凭据安全**：`devices.yaml` 凭据用 `${{ENV_VAR}}` 占位，禁止明文入库；Web 密码经 `--password-env FW_WEB_PASSWORD` 传环境变量名，禁止命令行明文密码。
 3. **session 路径**：`--session-file` 必须写入 `~/.local/state/ptm-atomic/` 下，禁止写入仓库目录（ptm-atomic 拒绝 `RUNNER_SESSION_INVALID`）。
 4. **执行入口**：用例从 `cases/upload/<特性名>特性测试用例.md` 读取，不直接读 ptm-tde 的 `ppdcs/delivery/`。
 5. **op_id 未识别阻塞**：op_mapper 无映射时阻塞，`error_type=OP_NOT_FOUND`，不得跳过或猜测映射，反馈 ptm-tae。
 6. **id 来源**：`config` 创建策略路由的响应 `data.policy_route_id` 直接返回 id，`update`/`delete`/`reset-hitcount` 的 `--id` 优先从 config 响应取，verify 查询仅作兜底。
 7. **清理回滚**：`config` 的 inverse_op=`delete` 用 config 返回的 `policy_route_id` 清理；`irreversible` 类（reset-hitcount）不回滚，由用例设计接受；不得凭 op 名字推断 rollback 类型。
+8. **重装 ptm-atomic 前置检查与版本锁定**：ptm-te 依赖的 ptm-atomic 验证版本为 commit `952a625`（branch `main`，version `0.1.0`）；重装时按此 commit 检出再 `uv tool install`，避免装到不含 trex 子命令或含已知缺陷的版本。重装前在 ptm-atomic 源码仓库 `git ls-files | grep run_trex` 确认分支含 trex；重装后验证 `ptm-atomic --version`、`ptm-atomic run tg trex --help` 子命令存在、uv tool site-packages 含 trex 改动，三项全过才执行用例。
 """
 
 
