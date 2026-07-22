@@ -91,6 +91,8 @@ runs/<run-id>/
 
 首期默认 `--dry-run`（不真实修改设备）；`--execute` 写操作需单次授权（CP2 DQ-01）。
 
+**DQ-01 授权粒度（P2，CR-032）**：一次 `--execute` 授权覆盖本轮 exec_v4 的全部用例（含 `--cases` 子集重跑），不跨轮延续--新一轮启动需重新授权。子集重跑复用本轮授权，无需逐用例确认；每条 `result.json` 的 `runtime_authorization` 记录授权主体/范围/时间。详见 `docs/ptm-te/执行指导.md` §5.1。
+
 ## 关键设计
 
 | 设计 | 说明 |

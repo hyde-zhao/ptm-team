@@ -406,7 +406,7 @@ ptm-te 测试执行工程师通过 op_mapper 承载 tg_* 编排：
 - **count 模式阻塞**：`tg_start_traffic_stream --traffic-mode count` 会阻塞至发包完成，atom 定义 `timeout_ms=60000`；编排需预留足够超时。
 - **`STATE_MISMATCH` 不等于用例 FAIL**：verify 丢包超阈值时 `error_type=STATE_MISMATCH`，但负向用例（验证 ACL 拦截）期望丢包，需与 `expected_result` 语义比对。
 - **`delete-template` 前必须 `stop`**：否则返回 `RESOURCE_CONFLICT`。
-- **`tg` 命令随 ptm-atomic 工具安装**：`ptm-atomic run tg trex --help` 可验证可用性；人工直调用 `tg --help`（需 `uv pip install -e skills/trex-traffic` 注册 `[project.scripts] tg`）。
+- **`tg` 命令随 ptm-atomic 工具安装（重装后必检）**：每次重装 ptm-atomic 后必须执行 `ptm-atomic run tg trex --help` 验证子命令存在——trex 子命令缺失会导致 `tg_*` 用例批量 `OP_NOT_FOUND` 回归。完整重装前置检查与版本锁定（commit `952a625`）见目标项目 `CLAUDE.md` 的 `ptm-te-workflow` 规则块第 8 条。人工直调用 `tg --help`（需 `uv pip install -e skills/trex-traffic` 注册 `[project.scripts] tg`）。
 
 ## 修订记录
 
